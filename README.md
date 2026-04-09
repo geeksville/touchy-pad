@@ -2,11 +2,17 @@
 
 This is a not yet implemented set of ideas:
 
-* An open-source multitouch USB/BT touchpad (for use with PC)
+* An open-source multitouch USB touchpad (for use with Mac/Linux/Windows/Android)
 * A cheap graphical screen (devboard is only about $40)
-* Provide [Stream-controller](https://streamcontroller.github.io/docs/latest/) compatible API so that a graphical button array can be selected instead of touchpad
+* Provide [Stream-controller](https://streamcontroller.github.io/docs/latest/) compatible API so that a graphical button array can be selected instead of touchpad.  Use my auto-populated per-app button standard.
 * When used as a touchpad provide cute water droplet or some sort of other touch/grab/gesture visualization
+* If haptic hardware installed haptically render taps/clicks/buttons.
+* Reserve a top/bottom (user selectable) row of graphical buttons for things like 'touchpad mode on/off', a couple of always visible customizable buttons, left/middle/right click (for users who don't like gestures/taps)
+* Use a flipable lasercut or 3d printed template to allow those critical buttons to have physical 'feel' separating them from the touchpad/other buttons.
+* Default to use the material design icons
+* Allow simple key shortcut/macros without need for leaving the stream-controller app running.  Generate entirely within app.
 
+Possibly no need for the full stream-controller app, just go straight from per app yaml to an optional python helper app (use to set icons/shortcuts etc).
 
 ## Possible hardware 
 
