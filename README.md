@@ -28,6 +28,7 @@ This is a not yet implemented set of ideas:
 
 ## Existing projects
 
+FreeTouchDeck - code seems a bit yucky and limited to just a button array, possibly not reuse...
 * Does the button portion already?  semi abandoned?  https://github.com/DustinWatts/FreeTouchDeck https://hackaday.io/project/175827/instructions 
 * Newer platformio version of that project: https://github.com/dejavu1987/FreeTouchDeck 
 * This old abandoned helper app: https://github.com/DustinWatts/FreeTouchDeck-Helper 
