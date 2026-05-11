@@ -12,7 +12,7 @@
 
 Development will proceeed in a series of stages.  Currently none of these stages are implemented, after implementing each stage update this document as appropriate.
 
-## Stage 0: Stub appload builds under platformIO
+## Stage 0: Stub appload builds under platformIO ✓ DONE
 
 At this point a basic hello world app builds on plaformIO and runs on the target hardware.  It prints 'hello world' using the arduino console.
 
