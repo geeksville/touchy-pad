@@ -16,7 +16,7 @@ Development will proceeed in a series of stages.  Currently none of these stages
 
 At this point a basic hello world app builds on plaformIO and runs on the target hardware.  It prints 'hello world' using the arduino console.
 
-## Stage 1: Helloworld extended to support LCD display
+## Stage 1: Helloworld extended to support LCD display ✓ DONE
 
 Prints 'hello world' on the LCD screen of the devboard
 Use the https://registry.platformio.org/libraries/iamfaraz/Waveshare_ST7262_LVGL platformIO library to interface with the LCD screen, and use LVGL to render the text.
