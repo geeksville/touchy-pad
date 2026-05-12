@@ -88,7 +88,7 @@
  *   3. Even if the patch version is not consistent, it will not affect normal functionality.
  */
 #define ESP_UTILS_CONF_FILE_VERSION_MAJOR 1
-#define ESP_UTILS_CONF_FILE_VERSION_MINOR 2
+#define ESP_UTILS_CONF_FILE_VERSION_MINOR 5
 #define ESP_UTILS_CONF_FILE_VERSION_PATCH 0
 
 // *INDENT-ON*

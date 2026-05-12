@@ -19,7 +19,6 @@ At this point a basic hello world app builds on plaformIO and runs on the target
 ## Stage 1: Helloworld extended to support LCD display ✓ DONE
 
 Prints 'hello world' on the LCD screen of the devboard
-Use the https://registry.platformio.org/libraries/iamfaraz/Waveshare_ST7262_LVGL platformIO library to interface with the LCD screen, and use LVGL to render the text.
 
 ## Stage 10: Appears on the host as a USB HID mouse device.  
 

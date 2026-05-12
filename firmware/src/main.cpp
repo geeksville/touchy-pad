@@ -12,6 +12,7 @@ void setup()
     Serial.begin(115200);
     Serial.println("Initializing board");
 
+#if 0
     Board *board = new Board();
     board->init();
 
@@ -40,6 +41,7 @@ void setup()
     lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 
     lvgl_port_unlock();
+#endif
 }
 
 void loop()
