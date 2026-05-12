@@ -20,7 +20,7 @@ At this point a basic hello world app builds on plaformIO and runs on the target
 
 Prints 'hello world' on the LCD screen of the devboard
 
-## Stage 10: Appears on the host as a USB HID mouse device.  
+## Stage 10: Appears on the host as a USB HID mouse device. ✓ DONE
 
 Work items:
 * Create a new C++ class called TrackpadWidget (corresponding new a new lvgl widget)
