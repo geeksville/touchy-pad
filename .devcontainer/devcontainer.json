@@ -1,0 +1,88 @@
+{
+	"name": "PlatformIO (Community)",
+	"build": {
+		"dockerfile": "Containerfile",
+		"context": ".",
+		"args": {
+			"FEDORA_COMPAT" : "1", // enables fedora compatibility mode (extra dialout group with gid 18)
+			"VARIANT": "bookworm"
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "zsh"
+			},
+			"extensions": [
+				"ms-vscode.cpptools",
+				"platformio.platformio-ide"
+			]
+		}
+	},
+	"forwardPorts": [
+		8008
+	],
+	"mounts": [
+		"source=/dev/,target=/dev/,type=bind,consistency=consistent",
+		"source=/run/user/1000,target=/run/user/1000,type=bind",
+
+		// vscode auto export of git config into my container sometimes seems busted (I'm not sure why this is only needed sometimes)
+		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached",
+
+		// It is handy to have some test images available in the container
+		//"source=${localEnv:HOME}/Pictures/telescope,target=/workspaces/starbash/images,type=bind,consistency=cached",
+		//"source=/mnt/kshared,target=/mnt/kshared,type=bind,consistency=cached",
+		// This is necessary to prevent newer vscode created images from being able to write to /tmp
+		"type=tmpfs,destination=/tmp,tmpfs-mode=1777",
+		// My external USB drive
+		//"source=/mnt/fast_stick,destination=/mnt/fast_stick,type=bind"
+
+		// Atuin Identity: Read-only mount of your encryption key
+		"source=${localEnv:HOME}/.local/share/atuin/key,target=/home/vscode/.local/share/atuin/key,type=bind,consistency=cached,readonly",
+		// Atuin Config: Read-only mount of your config (contains username/server)
+		"source=${localEnv:HOME}/.config/atuin/config.toml,target=/home/vscode/.config/atuin/config.toml,type=bind,consistency=cached,readonly",
+		// AtuinPersistence: A Named Volume to store the session/db so it survives rebuilds
+		"source=atuin-session-${localWorkspaceFolderBasename},target=/home/vscode/.local/share/atuin,type=volume",
+
+		// This isn't needed - much better to just pass in the XAUTHORITY env var (because this filename keeps changing)
+		// Mount the X11 authority file to allow GUI apps in the container to connect to the host's display
+		//"source=${localEnv:XAUTHORITY},target=${localEnv:XAUTHORITY},type=bind",
+
+		// NOTE: None of the following are allowed in GitHub CI devcontainers
+		// Needed for x11 forwarding, but throws: invalid mount config for type "bind": bind source path does not exist: /run/user/1000
+		"source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+		// on github CI.
+		{
+			// was ${env:XAUTHORITY} but that file keeps changing, so just mount a temp file and have fix-xauth.sh update it
+			"source": "${localEnv:HOME}/myxauth.lnk",
+			"target": "/tmp/.docker.xauth",
+			"type": "bind"
+		},
+        // let container see host dbus, so that flatpak can work inside
+        "source=/run/dbus,target=/run/dbus,type=bind"
+	],
+	"runArgs": [
+		"--hostname=dc_${localWorkspaceFolderBasename}", // Use a better hostname than random digits
+		"--privileged", // Allow full hw access from host, also allows writing core dump files
+		// "--network=host", // Use host network rather than our bridged container network
+		"--ipc=host", // Needed to make python SharedMemory work
+		"--user=1000:1000",
+		// Recommended https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.2.0/how-to/docker.html
+		"--security-opt=seccomp=unconfined",
+		// Not needed for now
+		// "--ulimit=core=-1:-1" // Allow core dumps
+		// NOTE: Not allowed in github CI devcontainers
+		"--userns=keep-id:uid=1000,gid=1000",
+		// We pre-create this data-only container in initializeCommand
+		//"--volumes-from=starbash-test-data:ro"
+	],
+	"features": {
+		// add git
+		"ghcr.io/devcontainers/features/git:1": {},
+		// add the github cli tool (gh)
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		// use https://just.systems/ for developer scripts via https://github.com/guiyomh/features/tree/main/src/just
+		"ghcr.io/guiyomh/features/just:0": {}
+	}
+	// "postAttachCommand": "sudo service udev restart"
+}
