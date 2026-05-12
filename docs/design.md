@@ -22,12 +22,20 @@ Prints 'hello world' on the LCD screen of the devboard
 
 ## Stage 10: Appears on the host as a USB HID mouse device.  
 
-## Stage 11: Multitouch gestures supported
+Work items:
+* Create a new C++ class called TrackpadWidget (corresponding new a new lvgl widget)
+* This class should contain an instance of a USBHidMouse (so it can send mouse events to the host when the user does gestures on the 'trackpad')
+* Initially create an instance of TrackpadWidget filling most of the display.  But just above that widget reserve
+space for a debug output line.
+* if the user touches the TrackpadWidget, print debug output to the logs and the debug line at the top of the display
+* Create the TrackpadWidget somewhere in setup() but check for touches etc... in loop()
+
+### Multitouch gestures supported
 * one finger tap = left click
 * two finger tap = right click
 * three finger tap = middle click
 * one finger drag = mouse move
-* two finger drag = scroll (left/right = horizontal scroll, up/down = vertical scroll)
+* (don't implement yet) two finger drag = scroll (left/right = horizontal scroll, up/down = vertical scroll)
 
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 
