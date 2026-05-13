@@ -10,7 +10,9 @@
       "-DBOARD_HAS_PSRAM",
       "-DARDUINO_ESP32S3_DEV",
       "-DARDUINO_USB_MODE=1",
-      "-DARDUINO_USB_CDC_ON_BOOT=1"
+      "-DARDUINO_USB_CDC_ON_BOOT=1",
+      "-DESP_PANEL_BOARD_DEFAULT_USE_SUPPORTED=1",
+      "-DBOARD_WAVESHARE_ESP32_S3_TOUCH_LCD_7"
     ],
     "f_cpu": "240000000L",
     "f_flash": "80000000L",
@@ -18,7 +20,7 @@
     "hwids": [
       [
         "0X303A",
-        "0x1001"
+        "0x4403"
       ]
     ],
     "mcu": "esp32s3",

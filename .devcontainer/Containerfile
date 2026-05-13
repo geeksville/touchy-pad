@@ -9,7 +9,7 @@ RUN sudo apt-get update \
  && sudo apt-get -y install --no-install-recommends \
       clang \
       python3-venv \
-      udev sudo
+      udev sudo python3 python3-pip python3-venv python-is-python3 
 
 # Create a non-root user if one doesn't exist, and give it sudo rights
 RUN if ! id -u ${USERNAME} > /dev/null 2>&1; then \
@@ -28,16 +28,24 @@ ARG FEDORA_COMPAT=0
 ### Set up compatibility with Fedora host (if needed)
 ### Since Fedora uses `18` as the group for dialout, we need to add it to the container
 RUN if [ "$FEDORA_COMPAT" = "1" ]; then \
-  sudo groupadd -g 18 compat_dialout; \
-  sudo usermod -a -G compat_dialout vscode; \
+  groupadd -g 18 compat_dialout; \
+  usermod -a -G compat_dialout vscode; \
 fi
 
+# Install Espressif IoT Development Framework
+RUN echo "deb [trusted=yes] https://dl.espressif.com/dl/eim/apt/ stable main" | sudo tee /etc/apt/sources.list.d/espressif.list
+RUN apt update
+RUN apt install -y eim-cli
+RUN eim install
+RUN chown -R vscode /root/.espressif && chmod a+rx /root
 
 # Install PlatformIO CLI
 USER vscode
+RUN ln -s /root/.espressif $HOME
 RUN curl -fsSL -o /tmp/get-platformio.py https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py
 RUN python3 /tmp/get-platformio.py
 RUN echo 'export PATH="$PATH:$HOME/.platformio/penv/bin"' | tee -a /home/vscode/.bashrc /home/vscode/.zshrc 
 RUN echo 'export PATH="$PATH:$HOME/.platformio/penv/bin"' | sudo tee -a /root/.bashrc /root/.zshrc
+RUN echo 'source ~/.espressif/tools/activate_idf_v6.0.1.sh' | tee -a /home/vscode/.bashrc /home/vscode/.zshrc
 
 

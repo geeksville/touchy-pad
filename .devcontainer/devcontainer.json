@@ -23,7 +23,7 @@
 		8008
 	],
 	"mounts": [
-		"source=/dev/,target=/dev/,type=bind,consistency=consistent",
+		"source=/dev/,target=/host/dev/,type=bind,consistency=consistent",
 		"source=/run/user/1000,target=/run/user/1000,type=bind",
 
 		// vscode auto export of git config into my container sometimes seems busted (I'm not sure why this is only needed sometimes)
@@ -72,7 +72,7 @@
 		// Not needed for now
 		// "--ulimit=core=-1:-1" // Allow core dumps
 		// NOTE: Not allowed in github CI devcontainers
-		"--userns=keep-id:uid=1000,gid=1000",
+		"--userns=keep-id:uid=1000,gid=1000"
 		// We pre-create this data-only container in initializeCommand
 		//"--volumes-from=starbash-test-data:ro"
 	],
