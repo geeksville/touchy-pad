@@ -4,6 +4,7 @@
 #include "lvgl_v8_port.h"
 #include "lv_conf.h"
 #include "trackpad_widget.h"
+#include "tusb_config.h"
 
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;

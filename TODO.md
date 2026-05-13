@@ -12,3 +12,4 @@
 * Make python helper app (share code with my streamdeck project)
 * make a CLAUDE.md file
 * figure out best way to mount haptics for best effect
+* Increase CPU, FLASH and RAM speeds to the max.  currently v2 picked slow/safe defaults

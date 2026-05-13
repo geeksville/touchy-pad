@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+# Managed components pulled from the Espressif Component Registry.
+# https://components.espressif.com
+dependencies:
+  # Tested against the installed ESP-IDF (v6.0.x).  No upper bound so newer
+  # toolchain releases continue to work; bump the lower bound if a new API is
+  # required.
+  idf: ">=5.3"
+
+  # LVGL graphics library (v8.4 to match the v1 firmware).
+  lvgl/lvgl: "~8.4.0"
+
+  # Bridge between esp_lcd / esp_lcd_touch and LVGL (creates the
+  # display + indev objects, runs the LVGL task, anti-tearing, etc).
+  espressif/esp_lvgl_port: "^2.3.0"
+
+  # GT911 capacitive multi-touch driver (esp_lcd_touch wrapper).
+  espressif/esp_lcd_touch_gt911: "^1.1.0"
+
+  # NOTE: The CH422G IO expander is driven directly from board.cpp via the
+  # new i2c_master driver – the upstream `espressif/esp32_io_expander`
+  # component is unbuildable under ESP-IDF 6.0.1 (legacy I2C header EOL +
+  # duplicate `esp_io_expander.h`).
+
+  # TinyUSB wrapper – HID mouse interface.  v2.x has a new (breaking) API.
+  espressif/esp_tinyusb: "^2.2.0"

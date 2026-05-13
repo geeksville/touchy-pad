@@ -8,6 +8,13 @@
 
 * The initially targeted hardware is https://docs.waveshare.com/ESP32-S3-Touch-LCD-7, eventually many other similar boards will be supported.  For more information on this board see https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7B
 
+* jc4827w543
+The JC4827W543 (often sold under names like Guition or Sunton) is an ESP32-S3 board paired with a 4.3" 480x272 RGB display (using an NV3041A or ST3401A controller) and usually a GT911 capacitive touch chip.
+A word of caution on this specific board: Make absolutely sure you initialize the backlight pin (usually GPIO 2) to HIGH in your setup() loop immediately. Many people think their LVGL implementation is broken, but they just forgot to turn the backlight LED on.
+for working example code see https://github.com/thelastoutpostworkshop/JC4827W543_radio_lvgl/blob/main/JC4827W543_radio_lvgl.ino
+lvgl conf https://github.com/lsdlsd88/JC4827W543/tree/main/1-Demo/Demo_Arduino/3_3-3_TFT-LVGL-Widgets 
+for detailed hw docs https://github.com/profi-max/JC4827W543_4.3inch_ESP32S3_board
+
 # Development stages
 
 Development will proceeed in a series of stages.  Currently none of these stages are implemented, after implementing each stage update this document as appropriate.
