@@ -53,7 +53,15 @@ TrackpadWidget::TrackpadWidget(Touch *touch, lv_obj_t *parent)
 void TrackpadWidget::begin()
 {
     _mouse.begin();
-    USB.begin();
+#ifdef OVERIDE_USB_VID
+    USB.VID(OVERIDE_USB_VID);
+#endif
+#ifdef OVERIDE_USB_PID
+    USB.PID(OVERIDE_USB_PID);
+#endif
+    if (!USB.begin()) {
+        _setDebug("Failed to initialize USB");
+    }
 }
 
 // ---------------------------------------------------------------------------
