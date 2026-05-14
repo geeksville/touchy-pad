@@ -28,10 +28,10 @@ FIXME, store images as files (possibly with no filetype conversion on this host)
 * Event_Consume - Pop an event from the device event queue (returns the event or none)
 * Image_Reset - Discard all saved images
 * Image_Save(name, bin_data) - Save an image file (so they can be used in screens etc...).  All images saved in this fashion will be registed with lv_xml_register_image() and then available in expressions such as ```<lv_image src="avatar" align="center"/>```
-* Sys_Reboot_Bootloader - Reboot into bootloader
+* Sys_Reboot_Bootloader - Reboot into bootloader (for firmware update)
 * Sys_Set_Lock(secret) - Assign a secret needed for any future communication.  Once set the device will need to be unlocked before it responds to any command (or a factory reset to clear the device to a virgin state)
 * Sys_Unlock(secret) - Unlock device (device will respond to commands until the host PC disconnects)
-* Sys_Version_Get - Get the firmware version info
+* Sys_Version_Get - Get the protocol and firmware version info 
 
 ### Event endpoint messages
 
