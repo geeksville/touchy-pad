@@ -60,12 +60,9 @@ void TrackpadWidget::poll()
     // Pull a fresh multi-point sample from the GT911.
     esp_lcd_touch_read_data(_touch);
 
-    uint16_t xs[MAX_FINGERS] = {0};
-    uint16_t ys[MAX_FINGERS] = {0};
-    uint16_t strengths[MAX_FINGERS] = {0};
-    uint8_t  count = 0;
-    bool pressed = esp_lcd_touch_get_coordinates(_touch, xs, ys, strengths,
-                                                  &count, MAX_FINGERS);
+    esp_lcd_touch_point_data_t pts[MAX_FINGERS] = {};
+    uint8_t count = 0;
+    bool pressed = (esp_lcd_touch_get_data(_touch, pts, &count, MAX_FINGERS) == ESP_OK) && count > 0;
     if (!pressed) count = 0;
     if (count > MAX_FINGERS) count = MAX_FINGERS;
 
@@ -75,8 +72,8 @@ void TrackpadWidget::poll()
     int new_start = (_prev_count < MAX_FINGERS) ? _prev_count : MAX_FINGERS;
     for (int i = new_start; i < count; i++) {
         _fingers[i].active   = true;
-        _fingers[i].start_x  = _fingers[i].last_x = static_cast<int16_t>(xs[i]);
-        _fingers[i].start_y  = _fingers[i].last_y = static_cast<int16_t>(ys[i]);
+        _fingers[i].start_x  = _fingers[i].last_x = static_cast<int16_t>(pts[i].x);
+        _fingers[i].start_y  = _fingers[i].last_y = static_cast<int16_t>(pts[i].y);
         _fingers[i].start_ms = now;
         _fingers[i].dragging = false;
         if (static_cast<uint8_t>(i + 1) > _session_max_fingers) {
@@ -86,11 +83,11 @@ void TrackpadWidget::poll()
 
     // ── Single-finger drag (mouse move) ──────────────────────────────
     if (count == 1 && _fingers[0].active) {
-        int16_t dx = static_cast<int16_t>(xs[0]) - _fingers[0].last_x;
-        int16_t dy = static_cast<int16_t>(ys[0]) - _fingers[0].last_y;
+        int16_t dx = static_cast<int16_t>(pts[0].x) - _fingers[0].last_x;
+        int16_t dy = static_cast<int16_t>(pts[0].y) - _fingers[0].last_y;
 
-        int16_t total_move = std::abs(static_cast<int>(xs[0]) - _fingers[0].start_x) +
-                             std::abs(static_cast<int>(ys[0]) - _fingers[0].start_y);
+        int16_t total_move = std::abs(static_cast<int>(pts[0].x) - _fingers[0].start_x) +
+                             std::abs(static_cast<int>(pts[0].y) - _fingers[0].start_y);
         if (total_move > TAP_MAX_MOVE) _fingers[0].dragging = true;
 
         if (_fingers[0].dragging && (dx != 0 || dy != 0)) {
@@ -105,8 +102,8 @@ void TrackpadWidget::poll()
             _setDebug("drag %+d,%+d", mx, my);
         }
 
-        _fingers[0].last_x = static_cast<int16_t>(xs[0]);
-        _fingers[0].last_y = static_cast<int16_t>(ys[0]);
+        _fingers[0].last_x = static_cast<int16_t>(pts[0].x);
+        _fingers[0].last_y = static_cast<int16_t>(pts[0].y);
     }
 
     // ── All fingers lifted → check for tap ───────────────────────────

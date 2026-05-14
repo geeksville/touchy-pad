@@ -14,16 +14,20 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
 # ----- Console / UART -----
-# By default ESP32-S3 routes the console through the built-in USB
-# Serial/JTAG controller, which holds the USB D+/D- pins and prevents
-# TinyUSB from enumerating as a HID device. Switch the console to UART0
-# so the OTG peripheral is free for HID.
+# Primary console: UART0.  This works at boot, before USB enumerates, and
+# when no USB host is connected.  The USB-Serial/JTAG controller is disabled
+# because it shares the OTG D+/D- pins (GPIO 19/20) with TinyUSB; leaving it
+# enabled causes a brief enumeration conflict on power-up.
+# A second copy of log output is forwarded to the TinyUSB CDC-ACM interface
+# at runtime by calling esp_tusb_init_console() after tinyusb_driver_install().
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
 
-# ----- USB (TinyUSB device, HID mouse) -----
+# ----- USB (TinyUSB composite: CDC-ACM + HID mouse) -----
 CONFIG_TINYUSB_DEBUG_LEVEL=0
+CONFIG_TINYUSB_CDC_ENABLED=n
+CONFIG_TINYUSB_CDC_COUNT=0
 CONFIG_TINYUSB_HID_COUNT=1
 
 # ----- LVGL -----

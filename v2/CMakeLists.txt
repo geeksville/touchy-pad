@@ -8,16 +8,16 @@
 #
 # Selecting a board:
 #
-#   idf.py -DBOARD=jc4827w543 build              # one-shot
+#   idf.py -DBOARD=waveshare_s3_lcd_7b build              # one-shot
 #   idf.py -DBOARD=jc4827w543 set-target esp32s3 # persists in CMake cache
 #
-# The default is `waveshare_s3_lcd_7b`. See `README.md` for the full list.
+# The default is `jc4827w543`. See `README.md` for the full list.
 
 cmake_minimum_required(VERSION 3.16)
 
 # ---- Board selection ---------------------------------------------------------
 
-set(BOARD "waveshare_s3_lcd_7b" CACHE STRING
+set(BOARD "jc4827w543" CACHE STRING
     "Target board (subdirectory name under boards/)")
 
 set(BOARD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD}")

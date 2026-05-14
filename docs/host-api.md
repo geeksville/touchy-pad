@@ -3,14 +3,15 @@ This file is the design doc for the protocol used to talk between the device and
 
 ## Legacy HID descriptors
 
-Unrelated to the 'fancy' custom API, the device will also expose HID keyboard and mouse endpoints.  These endpoints are used to provide button press and touchpad events to the PC even if our helper app is not being used.  
+Unrelated to the 'fancy' custom API, the device will also expose HID keyboard and mouse interfaces/endpoints.  These are used to provide button press and touchpad events to the PC even if our helper app is not being used.  
 
 ## Touchy Host API
 
-We will provide a custom API on custom USB endpoints. 
+We will provide a custom API on custom USB interface composed of three endpoints. 
 
-* Command Endpoint (from PC to device). A message pipe.  The host sends commands (as protocol buffers?) and reads back a response (one response per command)
-* Event endpoint (from device to PC). A stream pipe.   Used to send async events from the device (user pressed button X, moved slider Y to Z etc...)
+* Command Endpoint (OUT from PC to device). A message pipe.   The host sends commands (as protocol buffers?).
+* Response Endpoint (IN to the PC) reads back a response (one response per command)
+* Event endpoint (IN to PC). An interrupt stream pipe.   Used to send async events from the device (user pressed button X, moved slider Y to Z etc...)
 
 Note: the event endpoint max packet size is quite small so possibly we'll just have an event for "AsyncEventReady" and then the host will issue a "ConsumeEvent"
 
@@ -21,17 +22,20 @@ FIXME - possibly generalize how layout xml is used? let host write arbitrary fil
 FIXME, store images as files (possibly with no filetype conversion on this host).  This [should](https://lvgl.io/docs/open/main-modules/images/decoders) allow LVGL caching to auto discard LRU images and reread from 'disk' as needed. 
 
 * XML_Reset - Discard all saved xml
-* XML_Save(filepath, xml) - Set a screen layout or other lvgl config file.  If that screen is already displayed screen, the screen will be refreshed based on this xml.
+* XML_Save(filepath, xml_string) - Set a screen layout or other lvgl config file.  If that screen is already displayed screen, the screen will be refreshed based on this xml.
 * Screen_Load(screen_name) - Set the currently displayed screen
 * Screen_Wake - Turn backlight on
-* Screen_SleepTimeout(msec) - Auto sleep after x ms of non-use
-* Event_Consume - Pop an event from the device event queue (returns the event or none)
+* Screen_Sleep_Timeout(msec) - Auto sleep after x ms of non-use
+* Event_Consume - Pop an event from the device event queue (returns the event message or empty)
 * Image_Reset - Discard all saved images
-* Image_Save(name, bin_data) - Save an image file (so they can be used in screens etc...).  All images saved in this fashion will be registed with lv_xml_register_image() and then available in expressions such as ```<lv_image src="avatar" align="center"/>```
+* Image_Save(filepath, binary_data) - Save an image file (so they can be used in screens etc...).  All images saved in this fashion will be registed with lv_xml_register_image() and then available in expressions such as ```<lv_image src="avatar" align="center"/>```
 * Sys_Reboot_Bootloader - Reboot into bootloader (for firmware update)
-* Sys_Set_Lock(secret) - Assign a secret needed for any future communication.  Once set the device will need to be unlocked before it responds to any command (or a factory reset to clear the device to a virgin state)
-* Sys_Unlock(secret) - Unlock device (device will respond to commands until the host PC disconnects)
 * Sys_Version_Get - Get the protocol and firmware version info 
+
+### Command responses
+
+* Response(code) - 0 = okay, anything is some TBD error
+* Sys_Version_Response(protocol_vernum, firmware_ver_num, firmware_ver_str)
 
 ### Event endpoint messages
 
@@ -57,4 +61,4 @@ FIXME, possibly instead just forward a lightly wrapped version of lv_event_type.
 </view>
 ```
 
-See https://lvgl.io/docs/open/xml/ui_elements/events and https://lvgl.io/docs/open/api/core/lv_event_h for more info
+See https://lvgl.io/docs/open/xml/ui_elements/events, https://lvgl.io/docs/open/common-widget-features/events#fields-of-lv_event_t and https://lvgl.io/docs/open/api/core/lv_event_h for more info

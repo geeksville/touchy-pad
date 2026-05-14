@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
+#include "tinyusb_console.h"
 #include "class/hid/hid_device.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -17,7 +18,7 @@ static const uint8_t s_hid_report_descriptor[] = {
     TUD_HID_REPORT_DESC_MOUSE()
 };
 
-// Required by tinyusb when CDC is disabled but HID is enabled.
+// Required by tinyusb for HID descriptor queries.
 extern "C" uint8_t const *tud_hid_descriptor_report_cb(uint8_t /*instance*/)
 {
     return s_hid_report_descriptor;
@@ -37,21 +38,23 @@ extern "C" void tud_hid_set_report_cb(uint8_t /*instance*/, uint8_t /*report_id*
 }
 
 // ----- String / device descriptors -----
-static const char *s_string_desc[5] = {
+static const char *s_string_desc[6] = {
     (const char[]){0x09, 0x04},   // 0: supported language (English)
     "Geeksville",                  // 1: Manufacturer
     "Touchy-Pad",                  // 2: Product
     "000001",                      // 3: Serial
-    "Touchy-Pad HID",              // 4: HID interface
+    "Touchy-Pad CDC",              // 4: CDC interface
+    "Touchy-Pad HID",              // 5: HID interface
 };
 
 static const tusb_desc_device_t s_device_desc = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
     .bcdUSB             = 0x0200,
-    .bDeviceClass       = 0x00,
-    .bDeviceSubClass    = 0x00,
-    .bDeviceProtocol    = 0x00,
+    // Miscellaneous Device class with IAD is required for composite CDC+HID.
+    .bDeviceClass       = 0xEF,
+    .bDeviceSubClass    = 0x02,
+    .bDeviceProtocol    = 0x01,
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor           = 0x4403,    // matches v1
     .idProduct          = 0x1002,    // matches v1
@@ -62,21 +65,40 @@ static const tusb_desc_device_t s_device_desc = {
     .bNumConfigurations = 0x01,
 };
 
-// Single HID interface, IN endpoint 0x81, 8-byte FS poll rate 10 ms.
-enum { ITF_NUM_HID = 0, ITF_NUM_TOTAL };
-#define EPNUM_HID 0x81
-#define CFG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
+// Composite CDC-ACM + HID mouse.
+// CDC uses two interfaces (control + data) and three endpoints.
+// HID uses one interface and one endpoint.
+enum {
+#if CFG_TUD_CDC 
+    ITF_NUM_CDC = 0,
+    ITF_NUM_CDC_DATA,
+#endif   
+    ITF_NUM_HID,
+    ITF_NUM_TOTAL
+};
+#define EPNUM_CDC_NOTIF  0x81
+#define EPNUM_CDC_OUT    0x02
+#define EPNUM_CDC_IN     0x82
+#define EPNUM_HID        (0x81 + ITF_NUM_HID)
+
+#define CFG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + (CFG_TUD_CDC ? TUD_CDC_DESC_LEN : 0) + TUD_HID_DESC_LEN)
 
 static const uint8_t s_config_desc[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CFG_TOTAL_LEN, 0, 100),
-    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 4, HID_ITF_PROTOCOL_NONE,
+#if CFG_TUD_CDC    
+    // CDC-ACM: notification EP, bulk OUT, bulk IN, 64-byte packet size.
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8,
+                       EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
+#endif
+    // HID mouse: IN EP, 8-byte max packet, 10 ms poll interval.
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 5, HID_ITF_PROTOCOL_NONE,
                        sizeof(s_hid_report_descriptor),
                        EPNUM_HID, 8, 10),
 };
 
 extern "C" void usb_hid_init(void)
 {
-    ESP_LOGI(TAG, "Starting TinyUSB (HID mouse, VID:PID = 0x%04x:0x%04x)",
+    ESP_LOGI(TAG, "Starting TinyUSB (CDC-ACM + HID mouse, VID:PID = 0x%04x:0x%04x)",
              s_device_desc.idVendor, s_device_desc.idProduct);
 
     // esp_tinyusb 2.x: start from the target-default config (full-speed on
@@ -88,16 +110,10 @@ extern "C" void usb_hid_init(void)
     tusb_cfg.descriptor.full_speed_config  = s_config_desc;
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
 
-#if 0
-    // After the bootloader ran USB-Serial/JTAG (303a:1001) the host has seen
-    // a disconnect.  Force a clean re-enumeration by briefly pulling D+ low
-    // so the host registers a new connect event.  Use a 500 ms hold-off so
-    // the host port fully settles before we assert the new device.
-    vTaskDelay(pdMS_TO_TICKS(20));
-    tud_disconnect();
-    vTaskDelay(pdMS_TO_TICKS(500));
-    tud_connect();
-    ESP_LOGI(TAG, "USB reconnect pulse sent");
+#if CFG_TUD_CDC
+    // Mirror esp_log output to the CDC-ACM interface.  Logs emitted before
+    // the host opens the port are silently dropped (UART0 still has them).
+    ESP_ERROR_CHECK(tinyusb_console_init(ITF_NUM_CDC));
 #endif
 }
 

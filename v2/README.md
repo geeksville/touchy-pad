@@ -9,9 +9,9 @@ multiple ESP32-S3 touch-LCD development boards.
 | `BOARD=` value          | Hardware                                                                 | Display                              | Touch | Status      |
 |-------------------------|--------------------------------------------------------------------------|--------------------------------------|-------|-------------|
 | `waveshare_s3_lcd_7b`   | [Waveshare ESP32-S3-Touch-LCD-7B](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7B) (N16R8, 16 MB flash, 8 MB OPI PSRAM) | 800×480 ST7262 16-bit parallel RGB   | GT911 | Builds; tested incomplete |
-| `jc4827w543`            | "JC4827W543" 4.3-inch ESP32-S3 board (4 MB flash, 8 MB OPI PSRAM)         | 480×272 NV3041A 4-line QSPI IPS      | GT911 | Builds; **untested**      |
+| `jc4827w543`            | "JC4827W543" 4.3-inch ESP32-S3 board (4 MB flash, 8 MB OPI PSRAM)         | 480×272 NV3041A 4-line QSPI IPS      | GT911 | Builds;      |
 
-The default is `waveshare_s3_lcd_7b`.
+The default is `jc4827w543`.
 
 What it does today (parity with v1 Stage 10):
 
@@ -125,7 +125,7 @@ idf.py -DBOARD=jc4827w543          set-target esp32s3       # 4.3" JC4827W543
 
 # Build, flash, monitor (UART USB-C, not the OTG one).
 idf.py build
-idf.py -p /dev/ttyACM0 flash monitor
+idf.py -p /host/dev/ttyACM0 flash monitor
 ```
 
 After flashing, plug the **OTG** USB-C port of the board into the host
