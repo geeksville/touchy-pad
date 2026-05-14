@@ -40,7 +40,7 @@ extern "C" void tud_hid_set_report_cb(uint8_t /*instance*/, uint8_t /*report_id*
 static const char *s_string_desc[5] = {
     (const char[]){0x09, 0x04},   // 0: supported language (English)
     "Geeksville",                  // 1: Manufacturer
-    "Touchy-Pad v2",               // 2: Product
+    "Touchy-Pad",                  // 2: Product
     "000001",                      // 3: Serial
     "Touchy-Pad HID",              // 4: HID interface
 };

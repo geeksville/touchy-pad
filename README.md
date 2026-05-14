@@ -14,6 +14,11 @@ This is a not yet implemented set of ideas:
 * Allow simple key shortcut/macros without need for leaving the stream-controller app running.  Generate entirely within app.
 Possibly no need for the full stream-controller app, just go straight from per app yaml to an optional python helper app (use to set icons/shortcuts etc).
 
+## Documentation
+
+Current [design documents](docs/README.md).
+Current rough [TODO list](TODO.md).
+
 ## Possible hardware 
 
 (the last one - 7" with built in case seems ideal):
