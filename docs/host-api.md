@@ -33,4 +33,26 @@ FIXME - possibly generalize how layout xml is used? let host write arbitrary fil
 
 ### Event endpoint messages
 
-* Event - various subclasses of Event (ButtonEvent, TouchpadEvent, CheckboxEvent)?
+* Event_LV - A wrapped version of an LVGL event.
+FIXME, possibly instead just forward a lightly wrapped version of lv_event_type.  The host PC can populate event_cb nodes with a custom user_data so that they can then map the received lv_event_t/trigger/user_data and handle it as they wish (for any needed host side handling).  They would specify callback as "host_handled_event_cb".
+
+```xml
+<view>
+    <lv_button width="200" height="100">
+        <event_cb callback="host_handled_cb" trigger="clicked" user_data="someuniqueid-assigned-by-host"/>
+        <lv_label text="Hello"/>
+    </lv_button>
+</view>
+```
+
+* If the host wants event based macro handling, that could possibly be done by just doing something like:
+```xml
+<view>
+    <lv_button width="200" height="100">
+        <event_cb callback="event_macro_cb" trigger="clicked" user_data="somebase64-string-of-event-codes"/>
+        <lv_label text="Hello"/>
+    </lv_button>
+</view>
+```
+
+See https://lvgl.io/docs/open/xml/ui_elements/events and https://lvgl.io/docs/open/api/core/lv_event_h for more info
