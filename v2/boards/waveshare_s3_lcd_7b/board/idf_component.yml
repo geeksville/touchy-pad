@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Board-specific deps for Waveshare ESP32-S3-Touch-LCD-7B.
+dependencies:
+  # GT911 capacitive multi-touch driver (esp_lcd_touch wrapper).
+  espressif/esp_lcd_touch_gt911: "^1.1.0"
+  # NOTE: CH422G IO expander is driven directly from board.cpp via the new
+  # i2c_master driver; the upstream `espressif/esp32_io_expander` component
+  # is unbuildable under ESP-IDF 6.0.1.

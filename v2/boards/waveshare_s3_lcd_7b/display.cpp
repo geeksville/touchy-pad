@@ -3,6 +3,7 @@
 #include "display.h"
 
 #include "board.h"
+#include "board_pins.h"
 
 #include "esp_log.h"
 #include "esp_lcd_panel_ops.h"

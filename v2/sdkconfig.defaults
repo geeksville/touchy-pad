@@ -1,79 +1,42 @@
 # SPDX-License-Identifier: Apache-2.0
-# Default configuration for touchy-pad v2 on Waveshare ESP32-S3-Touch-LCD-7B
-# (ESP32-S3, 16 MB QIO flash, 8 MB octal PSRAM)
+# Common defaults for touchy-pad v2 (all boards).
+#
+# Per-board overrides (flash size, PSRAM mode, partition CSV, pixel clock,
+# etc.) live in boards/<board>/sdkconfig.defaults and are layered on top of
+# this file by the top-level CMakeLists.txt.
 
 # ----- Target -----
 CONFIG_IDF_TARGET="esp32s3"
 
 # ----- CPU / FreeRTOS -----
-# ESP-IDF 6.0.1 only ships MSPI timing tables for the (CPU=160M, flash=80M)
-# and (CPU=240M, flash=120M) pairs on ESP32-S3; CPU=240M / flash=80M is
-# missing.  120 MHz flash hits an unrelated HPM-DC source bug in 6.0.1, so
-# we go with the safe (CPU=160M, flash=80M) combination.
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
 CONFIG_FREERTOS_HZ=1000
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# ----- Flash (16 MB, QIO @ 80 MHz) -----
-# 120 MHz HPM mode triggers broken code paths in ESP-IDF 6.0.1 unless
-# CONFIG_BOOTLOADER_FLASH_DC_AWARE is also set; sticking to the safe 80 MHz
-# tier avoids the HPM-DC dance entirely.
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
-CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
-CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
-
-# ----- PSRAM (8 MB, octal SPI @ 80 MHz) -----
-# Required by Waveshare ESP32-S3-N16R8 board.  ESP-IDF 6.0.1 has missing
-# MSPI tuning tables for (core 240M, flash 80M) – which is what we'd get
-# at PSRAM 120M with flash 80M – so we run PSRAM at 80M to keep the whole
-# MSPI clock tree on the safe (no-tuning) path.
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
-CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
-CONFIG_SPIRAM_RODATA=y
-CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
-
 # ----- Console / UART -----
 # By default ESP32-S3 routes the console through the built-in USB
 # Serial/JTAG controller, which holds the USB D+/D- pins and prevents
-# TinyUSB from enumerating as a HID device.  Switch the console to UART0
-# (the CH343 USB-UART chip on this board) so the OTG peripheral is free.
+# TinyUSB from enumerating as a HID device. Switch the console to UART0
+# so the OTG peripheral is free for HID.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
-# Also disable the "secondary" console fallback to USB Serial/JTAG – it
-# implicitly keeps the JTAG controller alive on GPIO19/20 even when the
-# primary console is UART.  With both options cleared, USJ_ENABLE_USB_SERIAL_JTAG
-# is not selected and the OTG PHY can take full ownership of those pins.
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
-# Explicitly disable the USB Serial/JTAG peripheral driver.  Its Kconfig
-# defaults to 'y' regardless of the console selection above, so without
-# this it keeps the USB D+/D- pins (GPIO19/20) tied to the JTAG controller
-# and TinyUSB / USB OTG cannot enumerate.
 CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
 
 # ----- USB (TinyUSB device, HID mouse) -----
-# We use the USB-OTG port for the HID interface and the UART port (CH343)
-# for flashing + ESP_LOG output.
-# In esp_tinyusb v2.x the per-class TINYUSB_*_ENABLED Kconfig knobs have
-# been removed; classes are now enabled implicitly by the descriptors we
-# hand to tinyusb_driver_install().  TUSB_CFG_DEVICE_*_CDC etc. is set in
-# tusb_config.h supplied by esp_tinyusb itself.
 CONFIG_TINYUSB_DEBUG_LEVEL=0
-# Enable one HID interface (mouse).
 CONFIG_TINYUSB_HID_COUNT=1
 
 # ----- LVGL -----
-# Keep LVGL math/copy primitives fast and IRAM-resident.
 CONFIG_LV_MEM_CUSTOM=y
 CONFIG_LV_MEMCPY_MEMSET_STD=y
 CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
 CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_USE_PERF_MONITOR=n
-# Larger Montserrat fonts used by the on-screen status overlay.
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_30=y
 
 # ----- Log -----
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# ----- Custom partition table (filename supplied per-board) -----
+CONFIG_PARTITION_TABLE_CUSTOM=y

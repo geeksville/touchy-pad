@@ -35,8 +35,6 @@ extern "C" void app_main(void)
     pad = new TrackpadWidget(tp, lv_scr_act());
     lvgl_port_unlock();
 
-    usb_hid_init();
-
     ESP_LOGI(TAG, "Ready");
     while (true) {
         pad->poll();

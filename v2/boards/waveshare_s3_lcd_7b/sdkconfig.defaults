@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Board-specific Kconfig defaults for Waveshare ESP32-S3-Touch-LCD-7B
+# (ESP32-S3-N16R8: 16 MB QIO flash, 8 MB octal PSRAM).
+
+# ----- Flash (16 MB, QIO @ 80 MHz) -----
+# 120 MHz HPM mode hits broken code paths in ESP-IDF 6.0.1 unless
+# CONFIG_BOOTLOADER_FLASH_DC_AWARE is also set; the safe 80 MHz tier avoids
+# the HPM-DC dance entirely.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="boards/waveshare_s3_lcd_7b/partitions.csv"
+
+# ----- PSRAM (8 MB, octal SPI @ 80 MHz) -----
+# Required by the N16R8 board variant. IDF 6.0.1 has missing MSPI tuning
+# tables for (core 240M, flash 80M) so we run PSRAM/CPU at 80M/160M.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y

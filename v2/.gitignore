@@ -2,6 +2,11 @@
 build/
 sdkconfig
 sdkconfig.old
+# Per-board generated sdkconfig (top-level CMakeLists.txt picks
+# sdkconfig.<board>); keep sdkconfig.defaults and boards/*/sdkconfig.defaults
+# under version control but ignore the generated copies.
+sdkconfig.*
+!sdkconfig.defaults
 managed_components/
 dependencies.lock
 .cache/

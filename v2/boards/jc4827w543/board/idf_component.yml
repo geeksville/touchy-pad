@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Board-specific deps for JC4827W543 4.3-inch ESP32-S3 board.
+dependencies:
+  # GT911 capacitive multi-touch driver.
+  espressif/esp_lcd_touch_gt911: "^1.1.0"

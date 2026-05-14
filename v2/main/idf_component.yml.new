@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Board-agnostic dependencies for touchy-pad v2.
 # Per-board deps (esp_lcd_touch_gt911, panel drivers, etc.) live in
-# boards/<board>/board/idf_component.yml.
+# boards/<board>/idf_component.yml.
 dependencies:
   idf: ">=5.3"
 
@@ -14,7 +14,3 @@ dependencies:
 
   # TinyUSB wrapper – HID mouse interface (v2.x has a new API).
   espressif/esp_tinyusb: "^2.2.0"
-
-  # Common esp_lcd_touch abstraction; touch.h uses esp_lcd_touch_handle_t.
-  # Concrete drivers (GT911 etc.) live in board-specific idf_component.yml.
-  espressif/esp_lcd_touch: "^1.1"

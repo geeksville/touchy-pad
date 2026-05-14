@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#include "board.h"
+#include "board.h"          // public API (main/board.h)
+#include "board_pins.h"     // private pin map
 
 #include "esp_log.h"
 #include "esp_err.h"
