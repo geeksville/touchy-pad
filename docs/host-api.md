@@ -15,6 +15,9 @@ We will provide a custom API on custom USB endpoints.
 Note: the event endpoint max packet size is quite small so possibly we'll just have an event for "AsyncEventReady" and then the host will issue a "ConsumeEvent"
 
 ### Command messages
+
+FIXME - possibly generalize how layout xml is used? let host write arbitrary filesystem paths rather than just 'screens'.  Then instead we could just use File_Write(path, payload) to do images, screens, any other required metadata.  Possibly providing a nice way to let the host swap out just small parts of the GUI 'on-the-fly'?  Read lvgl docs a bit more...
+
 * Screen_Reset - Discard all saved screens
 * Screen_Save(screen_num, xml) - Set a screen layout
 * Screen_SetCurrent(screen_num) - Set the currently displayed screen
