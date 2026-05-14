@@ -3,6 +3,9 @@
 The basic GUI is layed out via [LVGL xml](https://viewer.lvgl.io/?repo=geeksville%2Ftouchy-pad%2Ftree%2Fmain%2Fui).  
 
 ## General thoughts
+
+NOTE: much of this section is now out-of-date because I suspect we'll just be able to use LVGL XML to define all layouts (with the full generality that provides).  We'll make a custom HIDButton widget that can also do 'macro playback' of HID events in addition to its regular button behavior.  And a custom TouchpadWidget.  Otherwise anything allowed by LVGL XML is fine.
+
 * Allow host to send protocol buffer commands to add screens and widgets.  We will store that data in some TBD format (protobuf based?  lvgl xml?) flash filesystem (so the config is persistent without even an app provisioning)
 * any interaction with widgets by the user will generate protobuf events on our private USB characteristic
 * Some interactions (touchpad widget or button presses) might generate standard USB HID (mouse/keyboard) events (so many behaviors can be used by the user without even using our helper app)

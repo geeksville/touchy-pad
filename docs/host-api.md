@@ -18,9 +18,9 @@ Note: the event endpoint max packet size is quite small so possibly we'll just h
 
 FIXME - possibly generalize how layout xml is used? let host write arbitrary filesystem paths rather than just 'screens'.  Then instead we could just use File_Write(path, payload) to do images, screens, any other required metadata.  Possibly providing a nice way to let the host swap out just small parts of the GUI 'on-the-fly'?  Read lvgl docs a bit more...
 
-* Screen_Reset - Discard all saved screens
-* Screen_Save(screen_num, xml) - Set a screen layout
-* Screen_SetCurrent(screen_num) - Set the currently displayed screen
+* XML_Reset - Discard all saved xml
+* XML_Save(filepath, xml) - Set a screen layout or other lvgl config file.  If that screen is already displayed screen, the screen will be refreshed based on this xml.
+* Screen_Load(screen_name) - Set the currently displayed screen
 * Screen_Wake - Turn backlight on
 * Screen_SleepTimeout(msec) - Auto sleep after x ms of non-use
 * Event_Consume - Pop an event from the device event queue (returns the event or none)
