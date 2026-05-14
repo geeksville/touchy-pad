@@ -86,12 +86,19 @@ idf.py fullclean
 
 ---
 
+## efuse settings
+
+DANGER: This option also seems to break bootloader updates over the UART1 serial port!!!  Do not use.
+In order for USB-OTG to work reliably, the built in Serial/JTAG over those same pins must be disabled.  It doesn't work well anyways.  
+
+espefuse.py --port /host/dev/ttyACM1 burn_efuse DIS_USB_SERIAL_JTAG
+
 ## Flash & monitor
 
 Plug the **UART** USB-C port into your computer.
 
 ```bash
-idf.py -p /host/dev/ttyACM1 flash monitor
+idf.py -p /host/dev/ttyACM* flash monitor
 ```
 
 (`idf.py monitor` alone also works once flashed.) Exit the monitor with

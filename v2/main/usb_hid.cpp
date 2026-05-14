@@ -87,6 +87,18 @@ extern "C" void usb_hid_init(void)
     tusb_cfg.descriptor.string_count       = sizeof(s_string_desc) / sizeof(s_string_desc[0]);
     tusb_cfg.descriptor.full_speed_config  = s_config_desc;
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
+
+#if 0
+    // After the bootloader ran USB-Serial/JTAG (303a:1001) the host has seen
+    // a disconnect.  Force a clean re-enumeration by briefly pulling D+ low
+    // so the host registers a new connect event.  Use a 500 ms hold-off so
+    // the host port fully settles before we assert the new device.
+    vTaskDelay(pdMS_TO_TICKS(20));
+    tud_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(500));
+    tud_connect();
+    ESP_LOGI(TAG, "USB reconnect pulse sent");
+#endif
 }
 
 // Helper to wait briefly for the host to enumerate / accept the next report.

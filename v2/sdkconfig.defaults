@@ -36,6 +36,23 @@ CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 
+# ----- Console / UART -----
+# By default ESP32-S3 routes the console through the built-in USB
+# Serial/JTAG controller, which holds the USB D+/D- pins and prevents
+# TinyUSB from enumerating as a HID device.  Switch the console to UART0
+# (the CH343 USB-UART chip on this board) so the OTG peripheral is free.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# Also disable the "secondary" console fallback to USB Serial/JTAG – it
+# implicitly keeps the JTAG controller alive on GPIO19/20 even when the
+# primary console is UART.  With both options cleared, USJ_ENABLE_USB_SERIAL_JTAG
+# is not selected and the OTG PHY can take full ownership of those pins.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+# Explicitly disable the USB Serial/JTAG peripheral driver.  Its Kconfig
+# defaults to 'y' regardless of the console selection above, so without
+# this it keeps the USB D+/D- pins (GPIO19/20) tied to the JTAG controller
+# and TinyUSB / USB OTG cannot enumerate.
+CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
+
 # ----- USB (TinyUSB device, HID mouse) -----
 # We use the USB-OTG port for the HID interface and the UART port (CH343)
 # for flashing + ESP_LOG output.

@@ -19,6 +19,12 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "touchy-pad v2 booting");
 
+    // Bring USB up first so the host sees the HID device enumerate quickly,
+    // right after the USB-Serial/JTAG peripheral is disabled at IDF startup.
+    // If USB were initialised after display/touch (which can take ~1 s) the
+    // host port may time out waiting for a re-connection.
+    usb_hid_init();
+
     board_init();
     lv_disp_t *disp = display_init();
     esp_lcd_touch_handle_t tp = touch_init(disp);
