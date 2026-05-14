@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
+#include "tinyusb_cdc_acm.h"
 #include "tinyusb_console.h"
 #include "class/hid/hid_device.h"
 #include "freertos/FreeRTOS.h"
@@ -111,6 +112,19 @@ extern "C" void usb_hid_init(void)
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
 
 #if CFG_TUD_CDC
+    // Bring up the CDC-ACM class driver before redirecting the console to it.
+    // tinyusb_console_init() requires this to have been called first; without
+    // it the call returns ESP_ERR_INVALID_STATE, ESP_ERROR_CHECK aborts, and
+    // the chip reboots in a loop — preventing USB enumeration.
+    const tinyusb_config_cdcacm_t cdc_cfg = {
+        .cdc_port                     = TINYUSB_CDC_ACM_0,
+        .callback_rx                  = nullptr,
+        .callback_rx_wanted_char      = nullptr,
+        .callback_line_state_changed  = nullptr,
+        .callback_line_coding_changed = nullptr,
+    };
+    ESP_ERROR_CHECK(tinyusb_cdcacm_init(&cdc_cfg));
+
     // Mirror esp_log output to the CDC-ACM interface.  Logs emitted before
     // the host opens the port are silently dropped (UART0 still has them).
     ESP_ERROR_CHECK(tinyusb_console_init(ITF_NUM_CDC));
