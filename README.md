@@ -16,8 +16,8 @@ Possibly no need for the full stream-controller app, just go straight from per a
 
 ## Documentation
 
-Current [design documents](docs/README.md).
-Current rough [TODO list](TODO.md).
+* Current [design documents](docs/README.md).
+* Current rough [TODO list](TODO.md).
 
 ## Possible hardware 
 
