@@ -18,6 +18,8 @@ Note: the event endpoint max packet size is quite small so possibly we'll just h
 
 FIXME - possibly generalize how layout xml is used? let host write arbitrary filesystem paths rather than just 'screens'.  Then instead we could just use File_Write(path, payload) to do images, screens, any other required metadata.  Possibly providing a nice way to let the host swap out just small parts of the GUI 'on-the-fly'?  Read lvgl docs a bit more...
 
+FIXME, store images as files (possibly with no filetype conversion on this host).  This [should](https://lvgl.io/docs/open/main-modules/images/decoders) allow LVGL caching to auto discard LRU images and reread from 'disk' as needed. 
+
 * XML_Reset - Discard all saved xml
 * XML_Save(filepath, xml) - Set a screen layout or other lvgl config file.  If that screen is already displayed screen, the screen will be refreshed based on this xml.
 * Screen_Load(screen_name) - Set the currently displayed screen
@@ -25,7 +27,7 @@ FIXME - possibly generalize how layout xml is used? let host write arbitrary fil
 * Screen_SleepTimeout(msec) - Auto sleep after x ms of non-use
 * Event_Consume - Pop an event from the device event queue (returns the event or none)
 * Image_Reset - Discard all saved images
-* Image_Save(name, bin_data) - Save an image file (so they can be used in screens etc...)
+* Image_Save(name, bin_data) - Save an image file (so they can be used in screens etc...).  All images saved in this fashion will be registed with lv_xml_register_image() and then available in expressions such as ```<lv_image src="avatar" align="center"/>```
 * Sys_Reboot_Bootloader - Reboot into bootloader
 * Sys_Set_Lock(secret) - Assign a secret needed for any future communication.  Once set the device will need to be unlocked before it responds to any command (or a factory reset to clear the device to a virgin state)
 * Sys_Unlock(secret) - Unlock device (device will respond to commands until the host PC disconnects)
@@ -45,7 +47,7 @@ FIXME, possibly instead just forward a lightly wrapped version of lv_event_type.
 </view>
 ```
 
-* If the host wants event based macro handling, that could possibly be done by just doing something like:
+* If the host wants device side HID-event macros, that could possibly be done by just doing something like:
 ```xml
 <view>
     <lv_button width="200" height="100">

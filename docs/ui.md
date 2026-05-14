@@ -26,6 +26,12 @@ Images sent from host are always in LVGL BIN format.  Converted on the host.  So
 * Touchpad - A rectangular region, presses inside this region generate mouse/touch events on the host.  Can contain a background image and and optional touch image (to mark finger positions while touching)
 * Slider
 
+## Touchpad Widget
+
+### Gestures
+
+FIXME Perhaps the gesture stuff I've been hand coding could be do instead with https://lvgl.io/docs/open/examples/others/gestures?
+
 ## Special events
 Some event codes are special and handled locally entirely within the device.
 
