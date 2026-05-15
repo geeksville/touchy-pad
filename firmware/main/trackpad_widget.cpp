@@ -6,7 +6,6 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "esp_lvgl_port.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -53,13 +52,31 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent)
     lv_obj_set_style_text_color(hint, lv_color_hex(0x334466), 0);
     lv_obj_set_style_text_font(hint, &lv_font_montserrat_30, 0);
     lv_obj_center(hint);
+
+    // ── LVGL event-driven touch handling ──────────────────────────────
+    // We hook into the input events LVGL already generates for this object
+    // instead of running a busy poll loop. LVGL's indev driver (installed by
+    // lvgl_port_add_touch) reads the GT911 every refresh tick and dispatches
+    // PRESSED / PRESSING / RELEASED to the object under the finger. From
+    // inside those callbacks we re-query the GT911 via esp_lcd_touch_get_data
+    // to recover the *multi-finger* snapshot (LVGL itself only tracks one
+    // point). All event callbacks run on the LVGL task with the port lock
+    // already held, so _setDebug() can update labels without extra locking.
+    lv_obj_add_event_cb(_container, _eventCb, LV_EVENT_PRESSED,  this);
+    lv_obj_add_event_cb(_container, _eventCb, LV_EVENT_PRESSING, this);
+    lv_obj_add_event_cb(_container, _eventCb, LV_EVENT_RELEASED, this);
 }
 
-void TrackpadWidget::poll()
+void TrackpadWidget::_eventCb(lv_event_t *e)
 {
-    // Pull a fresh multi-point sample from the GT911.
-    esp_lcd_touch_read_data(_touch);
+    static_cast<TrackpadWidget *>(lv_event_get_user_data(e))->_process();
+}
 
+void TrackpadWidget::_process()
+{
+    // LVGL has already issued esp_lcd_touch_read_data() this tick via its
+    // indev driver, so get_data returns the freshest multi-finger snapshot
+    // without a redundant I2C round-trip.
     esp_lcd_touch_point_data_t pts[MAX_FINGERS] = {};
     uint8_t count = 0;
     bool pressed = (esp_lcd_touch_get_data(_touch, pts, &count, MAX_FINGERS) == ESP_OK) && count > 0;
@@ -150,8 +167,7 @@ void TrackpadWidget::_setDebug(const char *fmt, ...)
 
     ESP_LOGI(TAG, "%s", buf);
 
-    if (lvgl_port_lock(50)) {
-        lv_label_set_text(_debug_label, buf);
-        lvgl_port_unlock();
-    }
+    // Always called from an LVGL event callback, which already holds the
+    // LVGL port lock — so we can touch widgets directly.
+    lv_label_set_text(_debug_label, buf);
 }

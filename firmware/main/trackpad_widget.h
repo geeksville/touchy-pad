@@ -19,9 +19,6 @@ public:
 
     TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent);
 
-    // Call from main loop / dedicated task; reads touch + emits HID reports.
-    void poll();
-
 private:
     esp_lcd_touch_handle_t _touch;
     lv_obj_t *_container    = nullptr;
@@ -39,6 +36,11 @@ private:
     FingerState _fingers[MAX_FINGERS]{};
     uint8_t     _prev_count          = 0;
     uint8_t     _session_max_fingers = 0;
+
+    // LVGL event entry points. _process() is the shared state machine,
+    // dispatched from PRESSED / PRESSING / RELEASED on the touchpad container.
+    static void _eventCb(lv_event_t *e);
+    void _process();
 
     void _clickButton(int finger_count);
     void _setDebug(const char *fmt, ...);

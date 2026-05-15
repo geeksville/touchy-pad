@@ -17,7 +17,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 * Make python helper app (share code with my streamdeck project)
 * !make a CLAUDE.md file
 * Add credits for BSD licenced https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp
-* ensure no 10ms delay on loop polling
+* !ensure no 10ms delay on loop polling
 * Pick a real USB VID/PID for our device
 * determine security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
 

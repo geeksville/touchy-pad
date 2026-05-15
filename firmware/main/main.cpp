@@ -32,15 +32,14 @@ extern "C" void app_main(void)
     lv_disp_t *disp = display_init();
     esp_lcd_touch_handle_t tp = touch_init(disp);
 
-    // Build the LVGL UI under the port lock.
-    TrackpadWidget *pad = nullptr;
+    // Build the LVGL UI under the port lock. The widget hooks itself into
+    // LVGL's input events; no further driving needed from this task.
     lvgl_port_lock(0);
-    pad = new TrackpadWidget(tp, lv_scr_act());
+    new TrackpadWidget(tp, lv_scr_act());
     lvgl_port_unlock();
 
     ESP_LOGI(TAG, "Ready");
-    while (true) {
-        pad->poll();
-        vTaskDelay(pdMS_TO_TICKS(10)); // FIXME, remove this poll and try to not poll the touchpad at all, instead use some sort of interrupt
-    }
+    // Nothing else to do here — TrackpadWidget reacts to LVGL touch events
+    // on the LVGL task, and TinyUSB runs in its own task.
+    vTaskDelete(NULL);
 }
