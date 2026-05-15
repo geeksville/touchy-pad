@@ -47,6 +47,8 @@ jobs:
 
       - name: Generate proto bindings
         working-directory: ${{ github.workspace }}
+        env:
+          SYS_PYTHON: python3
         run: just build-proto-py
 
       - name: Install dependencies

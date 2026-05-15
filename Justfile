@@ -17,7 +17,12 @@ c_proto_dst  := "proto"
 # The system Python (NOT the ESP-IDF venv). The ESP-IDF activate script
 # overrides `python3` on PATH inside this devcontainer, but the host-side
 # protobuf and nanopb packages were pip-installed to /usr/bin/python3.
-sys_python := "/usr/bin/python3"
+#
+# Override by setting SYS_PYTHON in the environment, e.g.:
+#   SYS_PYTHON=python3 just build-proto-py
+# CI sets this to `python3` so it uses the actions/setup-python interpreter
+# where grpcio-tools and nanopb are installed.
+sys_python := env("SYS_PYTHON", "/usr/bin/python3")
 
 # ---------------------------------------------------------------------------
 # Proto generation
