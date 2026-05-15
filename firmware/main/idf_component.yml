@@ -18,3 +18,10 @@ dependencies:
   # Common esp_lcd_touch abstraction; touch.h uses esp_lcd_touch_handle_t.
   # Concrete drivers (GT911 etc.) live in board-specific idf_component.yml.
   espressif/esp_lcd_touch: "^1.1"
+
+  # nanopb C runtime for the host_api custom USB protocol (stage 13). The
+  # protobuf .pb.c/.pb.h files are generated from proto/touchy.proto by
+  # `just build-proto-c` and live at proto/touchy.pb.{c,h} (gitignored).
+  # `livekit/nanopb` is a thin repackage of upstream nanopb 0.4.9 wired up
+  # as an IDF component; matches the generator version we use locally.
+  livekit/nanopb: "^0.4.9"

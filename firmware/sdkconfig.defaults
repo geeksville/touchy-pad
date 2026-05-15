@@ -24,11 +24,16 @@ CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
 
-# ----- USB (TinyUSB composite: CDC-ACM + HID mouse) -----
+# ----- USB (TinyUSB composite: CDC-ACM + HID mouse + custom vendor) -----
 CONFIG_TINYUSB_DEBUG_LEVEL=0
 CONFIG_TINYUSB_CDC_ENABLED=y
 CONFIG_TINYUSB_CDC_COUNT=1
 CONFIG_TINYUSB_HID_COUNT=1
+# Stage 13: custom vendor interface for the host_api command/response/event
+# protocol (see docs/host-api.md). esp_tinyusb derives CFG_TUD_VENDOR from
+# this count, which compiles in tud_vendor_* support so we can drive the
+# bulk OUT/IN endpoints from host_api.cpp.
+CONFIG_TINYUSB_VENDOR_COUNT=1
 
 # ----- LVGL -----
 CONFIG_LV_MEM_CUSTOM=y

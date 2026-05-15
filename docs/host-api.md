@@ -87,13 +87,19 @@ firmware evolves — locate interfaces by class, not number):
 3. **Touchy custom protocol** — `bInterfaceClass = 0xFF` (vendor-specific),
    `bInterfaceSubClass = 0x54` ("T"), `bInterfaceProtocol = 0x01`.
 
-The vendor interface has exactly three endpoints:
+The vendor interface has up to three endpoints:
 
 | Endpoint        | Direction | Type      | `wMaxPacketSize` | Purpose                        |
 |-----------------|-----------|-----------|------------------|--------------------------------|
 | Command (OUT)   | host → device | Bulk      | 64 bytes (FS) / 512 bytes (HS) | length-prefixed `Command` |
 | Response (IN)   | device → host | Bulk      | 64 / 512 bytes   | length-prefixed `Response`     |
-| Event (IN)      | device → host | Interrupt | 16 bytes, `bInterval = 8 ms` | length-prefixed `Event`        |
+| Event (IN)      | device → host | Interrupt | 16 bytes, `bInterval = 8 ms` | length-prefixed `Event` (optional, post-stage-13)|
+
+The stage-13 firmware ships only the bulk command/response pair. The
+interrupt-IN event endpoint is reserved by the protocol but not yet
+advertised in the configuration descriptor; the host library treats it
+as optional and `recv_event()` raises a `TransportError` against firmware
+that lacks it.
 
 The host library locates this interface by scanning the active
 configuration for `bInterfaceClass == 0xFF`. See

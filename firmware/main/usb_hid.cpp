@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "usb_hid.h"
+#include "host_api.h"
 
 #include "esp_log.h"
 #include "tinyusb.h"
@@ -8,6 +9,7 @@
 #include "tinyusb_cdc_acm.h"
 #include "tinyusb_console.h"
 #include "class/hid/hid_device.h"
+#include "class/vendor/vendor_device.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -39,13 +41,14 @@ extern "C" void tud_hid_set_report_cb(uint8_t /*instance*/, uint8_t /*report_id*
 }
 
 // ----- String / device descriptors -----
-static const char *s_string_desc[6] = {
+static const char *s_string_desc[7] = {
     (const char[]){0x09, 0x04},   // 0: supported language (English)
     "Geeksville",                  // 1: Manufacturer
     "Touchy-Pad",                  // 2: Product
     "000001",                      // 3: Serial
     "Touchy-Pad CDC",              // 4: CDC interface
     "Touchy-Pad HID",              // 5: HID interface
+    "Touchy-Pad HostAPI",          // 6: Vendor interface (host_api)
 };
 
 static const tusb_desc_device_t s_device_desc = {
@@ -66,23 +69,33 @@ static const tusb_desc_device_t s_device_desc = {
     .bNumConfigurations = 0x01,
 };
 
-// Composite CDC-ACM + HID mouse.
+// Composite CDC-ACM + HID mouse + custom vendor (host_api).
 // CDC uses two interfaces (control + data) and three endpoints.
 // HID uses one interface and one endpoint.
+// Vendor uses one interface with two bulk endpoints (command OUT,
+// response IN). The interrupt-IN event endpoint described in
+// docs/host-api.md is reserved for a future stage; the host transport
+// treats it as optional.
 enum {
 #if CFG_TUD_CDC 
     ITF_NUM_CDC = 0,
     ITF_NUM_CDC_DATA,
 #endif   
     ITF_NUM_HID,
+    ITF_NUM_VENDOR,
     ITF_NUM_TOTAL
 };
 #define EPNUM_CDC_NOTIF  0x81
 #define EPNUM_CDC_OUT    0x02
 #define EPNUM_CDC_IN     0x82
-#define EPNUM_HID        (0x81 + ITF_NUM_HID)
+#define EPNUM_HID        0x83
+#define EPNUM_VENDOR_OUT 0x04
+#define EPNUM_VENDOR_IN  0x84
 
-#define CFG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + (CFG_TUD_CDC ? TUD_CDC_DESC_LEN : 0) + TUD_HID_DESC_LEN)
+#define CFG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN \
+                       + (CFG_TUD_CDC ? TUD_CDC_DESC_LEN : 0) \
+                       + TUD_HID_DESC_LEN \
+                       + TUD_VENDOR_DESC_LEN)
 
 static const uint8_t s_config_desc[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CFG_TOTAL_LEN, 0, 100),
@@ -95,6 +108,10 @@ static const uint8_t s_config_desc[] = {
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, 5, HID_ITF_PROTOCOL_NONE,
                        sizeof(s_hid_report_descriptor),
                        EPNUM_HID, 8, 10),
+    // Vendor (host_api): bulk OUT (command) + bulk IN (response), 64-byte
+    // packets. wMaxPacketSize=64 is the full-speed maximum and matches the
+    // host transport's framing expectation.
+    TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 6, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, 64),
 };
 
 extern "C" void usb_hid_init(void)
@@ -127,6 +144,19 @@ extern "C" void usb_hid_init(void)
     // the host opens the port are silently dropped (UART0 still has them).
     ESP_ERROR_CHECK(tinyusb_console_init(ITF_NUM_CDC));
 #endif
+
+    // Stage 13: start the host_api command/response dispatcher. It owns
+    // the vendor bulk endpoints; the rx-cb below feeds it.
+    host_api_start();
+}
+
+// TinyUSB calls this from its USB task whenever the vendor OUT endpoint
+// receives bytes. We just nudge the host_api dispatcher; it does the
+// actual draining via tud_vendor_read().
+extern "C" void tud_vendor_rx_cb(uint8_t /*itf*/, uint8_t const * /*buffer*/,
+                                 uint16_t /*bufsize*/)
+{
+    host_api_on_rx();
 }
 
 // Helper to wait briefly for the host to enumerate / accept the next report.

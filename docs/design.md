@@ -62,6 +62,28 @@ Create a python app based on the following:
 * select and use a popular usb library for communicating with the device
 * improve host-api.md with more specifics on USB endpoints to support this API (so that I can eventually have the C++ device code refer to that document for its implementation)
 
+## Stage 13: device side custom USB protocol ✓ DONE
+
+* Most of this code should be in host_api.cpp
+* per host-api.md add a new USB interface/endpoints
+* listen on the command endpoint and send responses as appropriate
+* for now, just implement the getversion command and associate responses, we'll add other stuff later
+* after your done (and I've flashed the code) i'll use the python app to test it
+
+Stage 13 implementation notes:
+* `firmware/main/host_api.{h,cpp}` runs a FreeRTOS dispatcher task that
+  reads `Command` frames (u16 LE length + nanopb payload) from the
+  vendor-class bulk OUT endpoint and writes the matching `Response` to
+  the bulk IN endpoint.
+* The vendor interface (class `0xFF`, subclass `0x54`, protocol `0x01`)
+  is declared in `usb_hid.cpp` alongside the existing CDC-ACM + HID-mouse
+  interfaces. The host transport locates it by class, not interface number.
+* Only `SysVersionGet` is fully implemented; every other command currently
+  returns `RESULT_NOT_SUPPORTED`. The interrupt-IN event endpoint is
+  deferred to a later stage (it requires a custom TinyUSB class driver to
+  coexist with the bulk pair on the same interface); the host library
+  treats it as optional.
+
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 
 Use lv_buttonmatrix to provide matrixes of buttons

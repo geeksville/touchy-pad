@@ -139,10 +139,13 @@ class UsbTransport(Transport):
                 ep_in = ep
             elif attrs == 0x03 and direction == 0x80:
                 ep_evt = ep
-        if ep_out is None or ep_in is None or ep_evt is None:
+        if ep_out is None or ep_in is None:
             raise TransportError(
-                "Vendor interface is missing bulk OUT, bulk IN, or interrupt IN endpoint"
+                "Vendor interface is missing bulk OUT or bulk IN endpoint"
             )
+        # The interrupt-IN event endpoint is optional: stage 13 firmware
+        # ships only the bulk command/response pair. recv_event() raises
+        # when no event endpoint was advertised.
         self._ep_out = ep_out
         self._ep_in = ep_in
         self._ep_evt = ep_evt
@@ -168,6 +171,11 @@ class UsbTransport(Transport):
 
     def recv_event(self, timeout_ms: int = 0) -> bytes | None:
         # timeout_ms=0 means non-blocking via a very short USB timeout.
+        if self._ep_evt is None:
+            raise TransportError(
+                "Device does not expose an event endpoint (firmware predates "
+                "stage 14)"
+            )
         try:
             buf = bytes(self._ep_evt.read(self._ep_evt.wMaxPacketSize, timeout=timeout_ms or 1))
         except self._usb_core.USBError as e:
