@@ -129,14 +129,12 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         fill_sys_version(resp);
         break;
 
-    case touchy_Command_xml_reset_tag:
-    case touchy_Command_xml_save_tag:
+    case touchy_Command_file_reset_tag:
+    case touchy_Command_file_save_tag:
     case touchy_Command_screen_load_tag:
     case touchy_Command_screen_wake_tag:
     case touchy_Command_screen_sleep_timeout_tag:
     case touchy_Command_event_consume_tag:
-    case touchy_Command_image_reset_tag:
-    case touchy_Command_image_save_tag:
     case touchy_Command_sys_reboot_bootloader_tag:
         ESP_LOGW(TAG, "command tag %u not yet implemented",
                  (unsigned)cmd->which_cmd);

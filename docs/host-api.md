@@ -17,18 +17,19 @@ Note: the event endpoint max packet size is quite small so possibly we'll just h
 
 ### Command messages
 
-We generalize how layout xml is used. let host write arbitrary filesystem paths rather than just 'screens'.  Then instead we could just use File_Write(path, payload) to do images, screens, any other required metadata.  Possibly providing a nice way to let the host swap out just small parts of the GUI 'on-the-fly'?  Read lvgl docs a bit more...
+Files (XML layouts, images, fonts, or any other resource) are managed via
+a single generic pair of commands. The device inspects the file extension
+after writing to decide how to post-process it (reload the active screen
+for `.xml`, register with `lv_xml_register_image()` for known image
+formats, etc.):
 
-Store images as files in the device filesystem (possibly with no filetype conversion on this host).  If conversion on the host is required (unlikely) we [could](https://lvgl.io/docs/open/main-modules/images/decoders) allow LVGL caching to auto discard LRU images and reread from 'disk' as needed. 
-
-* XML_Reset - Discard all saved xml
-* XML_Save(filepath, xml_string) - Set a screen layout or other lvgl config file.  If that screen is already displayed screen, the screen will be refreshed based on this xml.
+* File_Reset - Discard all files on the device filesystem
+* File_Save(path, data) - Write a file at `path`; `data` is raw bytes (text or binary).
+  Examples: `File_Save("screens/home.xml", xml_string)`, `File_Save("img/avatar.png", png_bytes)`
 * Screen_Load(screen_name) - Set the currently displayed screen
 * Screen_Wake - Turn backlight on
 * Screen_Sleep_Timeout(msec) - Auto sleep after x ms of non-use
 * Event_Consume - Pop an event from the device event queue (returns the event message or empty)
-* Image_Reset - Discard all saved images
-* Image_Save(filepath, binary_data) - Save an image file (so they can be used in screens etc...).  All images saved in this fashion will be registed with lv_xml_register_image() and then available in expressions such as ```<lv_image src="avatar" align="center"/>```
 * Sys_Reboot_Bootloader - Reboot into bootloader (for firmware update)
 * Sys_Version_Get - Get the protocol and firmware version info 
 

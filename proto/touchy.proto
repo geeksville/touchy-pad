@@ -44,16 +44,20 @@ enum ResultCode {
 // Commands (host -> device, on the command OUT endpoint)
 // ---------------------------------------------------------------------------
 
-// Discard all stored XML layouts on the device's filesystem.
-message XmlResetCmd {
+// Discard all files stored on the device filesystem (XML layouts, images, etc.).
+message FileResetCmd {
 }
 
-// Write an XML file (screen layout or other lv_xml resource) to the device.
-// If `path` matches the currently displayed screen, the screen is reloaded
-// immediately.
-message XmlSaveCmd {
+// Write an arbitrary file to the device filesystem. The device inspects the
+// file extension to decide how to handle the content after writing:
+//   * ".xml"  — treated as an lv_xml resource; if `path` matches the
+//               currently displayed screen it is reloaded immediately.
+//   * images  — any extension LVGL can decode (PNG, JPEG, bin) is registered
+//               with lv_xml_register_image() so it can be referenced in XML.
+//   * other   — written verbatim; no post-processing.
+message FileSaveCmd {
     string path = 1;      // virtual filesystem path, e.g. "screens/home.xml"
-    string xml  = 2;      // raw XML payload
+    bytes  data = 2;      // file payload (text or binary)
 }
 
 // Switch the currently displayed screen to `name`.
@@ -80,19 +84,6 @@ message ScreenSleepTimeoutCmd {
 message EventConsumeCmd {
 }
 
-// Discard all stored image resources on the device's filesystem.
-message ImageResetCmd {
-}
-
-// Write an image file to the device filesystem. The contents are stored
-// verbatim — the file format must already be one lvgl can decode (PNG,
-// JPEG, or lvgl's native bin format). Images saved via this command are
-// automatically registered with `lv_xml_register_image()`.
-message ImageSaveCmd {
-    string path = 1;      // virtual filesystem path, e.g. "img/avatar.png"
-    bytes  data = 2;      // file payload
-}
-
 // Reboot the device into the ROM bootloader for firmware update.
 message SysRebootBootloaderCmd {
 }
@@ -104,14 +95,12 @@ message SysVersionGetCmd {
 // Top-level command envelope. Exactly one `cmd` is set per message.
 message Command {
     oneof cmd {
-        XmlResetCmd            xml_reset             = 1;
-        XmlSaveCmd             xml_save              = 2;
+        FileResetCmd           file_reset            = 1;
+        FileSaveCmd            file_save             = 2;
         ScreenLoadCmd          screen_load           = 3;
         ScreenWakeCmd          screen_wake           = 4;
         ScreenSleepTimeoutCmd  screen_sleep_timeout  = 5;
         EventConsumeCmd        event_consume         = 6;
-        ImageResetCmd          image_reset           = 7;
-        ImageSaveCmd           image_save            = 8;
         SysRebootBootloaderCmd sys_reboot_bootloader = 9;
         SysVersionGetCmd       sys_version_get       = 10;
     }
@@ -203,18 +192,16 @@ message Event {
 // nanopb ignores `service` blocks, so adding this here has no embedded-side
 // cost.
 service Touchy {
-    // ----- XML / screen management ------------------------------------
-    rpc XmlReset(XmlResetCmd) returns (Response);
-    rpc XmlSave(XmlSaveCmd) returns (Response);
+    // ----- Generic filesystem (XML, images, fonts, …) -----------------
+    rpc FileReset(FileResetCmd) returns (Response);
+    rpc FileSave(FileSaveCmd) returns (Response);
+
+    // ----- Screen management ------------------------------------------
     rpc ScreenLoad(ScreenLoadCmd) returns (Response);
 
     // ----- Backlight / power ------------------------------------------
     rpc ScreenWake(ScreenWakeCmd) returns (Response);
     rpc ScreenSleepTimeout(ScreenSleepTimeoutCmd) returns (Response);
-
-    // ----- Image filesystem -------------------------------------------
-    rpc ImageReset(ImageResetCmd) returns (Response);
-    rpc ImageSave(ImageSaveCmd) returns (Response);
 
     // ----- System -----------------------------------------------------
     rpc SysRebootBootloader(SysRebootBootloaderCmd) returns (Response);

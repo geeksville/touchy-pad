@@ -1,6 +1,7 @@
 # UI design guide
 
 The basic GUI is layed out via [LVGL xml](https://viewer.lvgl.io/?repo=geeksville%2Ftouchy-pad%2Ftree%2Fmain%2Fui).  
+Note: my test layout XML (hardwired) currently lives [here](/ui).  You can view this 'hello world' XML on your dev PC by running https://github.com/lvgl/lvgl_editor/releases/tag/nightly appimage and opening that directory.
 
 ## General thoughts
 

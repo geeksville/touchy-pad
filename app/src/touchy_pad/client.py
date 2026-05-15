@@ -76,20 +76,24 @@ class TouchyClient:
             screen_sleep_timeout=_proto.ScreenSleepTimeoutCmd(timeout_ms=timeout_ms)
         )))
 
+    def file_reset(self) -> None:
+        """Discard all files stored on the device filesystem."""
+        _check(self._rpc(_proto.Command(file_reset=_proto.FileResetCmd())))
+
+    def file_save(self, path: str, data: bytes | str) -> None:
+        """Write a file to the device filesystem.
+
+        *path* is the virtual filesystem path (e.g. ``"screens/home.xml"`` or
+        ``"img/avatar.png"``).  *data* may be ``bytes`` (for binary files such
+        as images) or ``str`` (for XML layouts, encoded as UTF-8).
+        """
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        _check(self._rpc(_proto.Command(file_save=_proto.FileSaveCmd(path=path, data=data))))
+
     def screen_load(self, name: str) -> None:
         _check(self._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(name=name))))
 
-    def xml_reset(self) -> None:
-        _check(self._rpc(_proto.Command(xml_reset=_proto.XmlResetCmd())))
-
-    def xml_save(self, path: str, xml: str) -> None:
-        _check(self._rpc(_proto.Command(xml_save=_proto.XmlSaveCmd(path=path, xml=xml))))
-
-    def image_reset(self) -> None:
-        _check(self._rpc(_proto.Command(image_reset=_proto.ImageResetCmd())))
-
-    def image_save(self, path: str, data: bytes) -> None:
-        _check(self._rpc(_proto.Command(image_save=_proto.ImageSaveCmd(path=path, data=data))))
 
     def event_consume(self) -> _proto.Event | None:
         """Pop one pending event from the device queue, or return ``None``."""
