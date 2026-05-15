@@ -29,13 +29,13 @@ extern "C" void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(5000));
 
     board_init();
-    lv_disp_t *disp = display_init();
+    lv_display_t *disp = display_init();
     esp_lcd_touch_handle_t tp = touch_init(disp);
 
     // Build the LVGL UI under the port lock. The widget hooks itself into
     // LVGL's input events; no further driving needed from this task.
     lvgl_port_lock(0);
-    new TrackpadWidget(tp, lv_scr_act());
+    new TrackpadWidget(tp, lv_screen_active());
     lvgl_port_unlock();
 
     ESP_LOGI(TAG, "Ready");

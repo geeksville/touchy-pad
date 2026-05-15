@@ -84,6 +84,8 @@ Stage 13 implementation notes:
   coexist with the bulk pair on the same interface); the host library
   treats it as optional.
 
+## Stage 14: host side simulator
+
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 
 Use lv_buttonmatrix to provide matrixes of buttons

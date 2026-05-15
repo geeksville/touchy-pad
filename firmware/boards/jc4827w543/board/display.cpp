@@ -24,17 +24,15 @@ static nv3041a_handle_t s_panel = nullptr;
 
 // SPI ISR callback: fires when the final byte of a flush has left the wire.
 // Tells LVGL the buffer is free for reuse so it can start the next slice
-// concurrently with whatever the LVGL task is doing. lv_disp_flush_ready() is
-// only used for partial-mode dual-buffer flushes here, where the operation is
-// a simple atomic store to the disp_drv's "buf_act" / busy flags — safe to do
-// from ISR (this is the same pattern used by esp_lcd_panel_io_spi's
-// on_color_trans_done hook).
+// concurrently with whatever the LVGL task is doing. lv_display_flush_ready()
+// only mutates a couple of flags on the display object — safe to call from an
+// ISR (same pattern as esp_lcd_panel_io_spi's on_color_trans_done hook).
 //
 // Marked IRAM_ATTR so it remains callable while flash cache is disabled.
 static IRAM_ATTR void flush_done_isr(void *user)
 {
-    auto *drv = static_cast<lv_disp_drv_t *>(user);
-    lv_disp_flush_ready(drv);
+    auto *disp = static_cast<lv_display_t *>(user);
+    lv_display_flush_ready(disp);
 }
 
 // LVGL flush callback: queue the SPI transactions and return immediately;
@@ -42,18 +40,25 @@ static IRAM_ATTR void flush_done_isr(void *user)
 // actually consumed the buffer. This lets LVGL render the next slice into
 // the other partial buffer while the SPI peripheral DMAs this one out.
 // LVGL serialises flush_cb calls so we don't need our own mutex here.
-static void lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area,
-                          lv_color_t *color_p)
+//
+// The NV3041A QSPI panel expects MSB-first RGB565 on the wire. LVGL v9
+// renders RGB565 in native (little-endian) byte order, so we swap in place
+// before handing the buffer to the SPI peripheral.
+static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
+                          uint8_t *px_map)
 {
     const uint16_t x1 = area->x1, y1 = area->y1;
     const uint16_t x2 = area->x2, y2 = area->y2;
     const size_t   n  = (size_t)(x2 - x1 + 1) * (y2 - y1 + 1);
 
+    lv_draw_sw_rgb565_swap(px_map, n);
+
     nv3041a_set_window(s_panel, x1, y1, x2, y2);
-    nv3041a_write_pixels(s_panel, (uint16_t *)color_p, n, flush_done_isr, drv);
+    nv3041a_write_pixels(s_panel, reinterpret_cast<uint16_t *>(px_map), n,
+                         flush_done_isr, disp);
 }
 
-extern "C" lv_disp_t *display_init(void)
+extern "C" lv_display_t *display_init(void)
 {
     // Backlight high.
     if (BOARD_LCD_GPIO_BACKLIGHT != GPIO_NUM_NC) {
@@ -93,34 +98,30 @@ extern "C" lv_disp_t *display_init(void)
     ESP_ERROR_CHECK(lvgl_port_init(&port_cfg));
 
     // ----- Software LVGL display (no esp_lcd) -----
-    // Allocate a partial draw buffer in internal RAM (~10 lines = ~10 KB).
-    // Two buffers so LVGL can ping-pong.
+    // Allocate two partial draw buffers in DMA-capable internal RAM so LVGL
+    // can ping-pong while the SPI peripheral streams the previous slice.
     constexpr size_t LINES_PER_BUF = 40;
-    const size_t buf_px = BOARD_LCD_H_RES * LINES_PER_BUF;
-    auto *buf1 = (lv_color_t *)heap_caps_malloc(buf_px * sizeof(lv_color_t),
-                                                MALLOC_CAP_DMA);
-    auto *buf2 = (lv_color_t *)heap_caps_malloc(buf_px * sizeof(lv_color_t),
-                                                MALLOC_CAP_DMA);
+    const size_t buf_px    = BOARD_LCD_H_RES * LINES_PER_BUF;
+    const size_t buf_bytes = buf_px * sizeof(uint16_t);  // RGB565
+    auto *buf1 = heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA);
+    auto *buf2 = heap_caps_malloc(buf_bytes, MALLOC_CAP_DMA);
     if (!buf1 || !buf2) {
         ESP_LOGE(TAG, "Failed to allocate LVGL draw buffers");
         return nullptr;
     }
 
-    static lv_disp_draw_buf_t draw_buf;
-    lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buf_px);
-
-    static lv_disp_drv_t disp_drv;
-    lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res  = BOARD_LCD_H_RES;
-    disp_drv.ver_res  = BOARD_LCD_V_RES;
-    disp_drv.flush_cb = lvgl_flush_cb;
-    disp_drv.draw_buf = &draw_buf;
-
     lvgl_port_lock(0);
-    lv_disp_t *disp = lv_disp_drv_register(&disp_drv);
-    lvgl_port_unlock();
+    lv_display_t *disp = lv_display_create(BOARD_LCD_H_RES, BOARD_LCD_V_RES);
     if (!disp) {
-        ESP_LOGE(TAG, "lv_disp_drv_register failed");
+        lvgl_port_unlock();
+        ESP_LOGE(TAG, "lv_display_create failed");
+        return nullptr;
     }
+    lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
+    lv_display_set_buffers(disp, buf1, buf2, buf_bytes,
+                           LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(disp, lvgl_flush_cb);
+    lvgl_port_unlock();
+
     return disp;
 }

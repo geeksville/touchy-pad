@@ -35,10 +35,17 @@ CONFIG_TINYUSB_HID_COUNT=1
 # bulk OUT/IN endpoints from host_api.cpp.
 CONFIG_TINYUSB_VENDOR_COUNT=1
 
-# ----- LVGL -----
-CONFIG_LV_MEM_CUSTOM=y
-CONFIG_LV_MEMCPY_MEMSET_STD=y
-CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
+# ----- LVGL (v9) -----
+# Route LVGL's stdlib bindings to libc so esp_heap_caps / newlib are used for
+# malloc/memcpy/memset/sprintf (replaces v8's LV_MEM_CUSTOM=y).
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+# LVGL 9.5 places several draw functions in numbered .iram1.N sections; GCC
+# rejects the conflicting attributes when LV_ATTRIBUTE_FAST_MEM_USE_IRAM is
+# enabled (compile error -Werror=attributes on lv_draw_sw_blend_to_a8.c).
+# Keep the FAST_MEM attribute as a no-op until upstream resolves this.
+# CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM is not set
 CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_USE_PERF_MONITOR=n
 CONFIG_LV_FONT_MONTSERRAT_16=y

@@ -11,7 +11,7 @@ extern "C" {
 // the panel as an LVGL display driver. Returns the LVGL display handle.
 //
 // Caller must hold no LVGL lock when calling this.
-lv_disp_t *display_init(void);
+lv_display_t *display_init(void);
 
 #ifdef __cplusplus
 }

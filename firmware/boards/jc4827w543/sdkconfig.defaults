@@ -17,5 +17,6 @@ CONFIG_SPIRAM_RODATA=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 
 # ----- LVGL: feed pixels to the NV3041A QSPI panel in big-endian RGB565.
-# The panel expects MSB-first 16-bit colour on the wire
-CONFIG_LV_COLOR_16_SWAP=y
+# The panel expects MSB-first 16-bit colour on the wire. LVGL v9 no longer
+# has a CONFIG_LV_COLOR_16_SWAP option; the byte swap is performed by the
+# flush_cb in boards/jc4827w543/board/display.cpp via lv_draw_sw_rgb565_swap.

@@ -18,7 +18,7 @@ extern "C" {
 //
 // Returns the underlying esp_lcd_touch handle so the trackpad widget can read
 // raw multi-point data (LVGL itself only forwards a single point).
-esp_lcd_touch_handle_t touch_init(lv_disp_t *disp);
+esp_lcd_touch_handle_t touch_init(lv_display_t *disp);
 
 #ifdef __cplusplus
 }

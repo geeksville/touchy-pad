@@ -5,8 +5,8 @@
 dependencies:
   idf: ">=5.3"
 
-  # LVGL graphics library (v8.4 to match the v1 firmware).
-  lvgl/lvgl: "~8.4.0"
+  # LVGL graphics library (v9.5+).
+  lvgl/lvgl: "~9.5.0"
 
   # Bridge between esp_lcd / esp_lcd_touch and LVGL (creates the display +
   # indev objects, runs the LVGL task, anti-tearing, etc).

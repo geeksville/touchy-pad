@@ -12,7 +12,7 @@
 
 static const char *TAG = "display";
 
-extern "C" lv_disp_t *display_init(void)
+extern "C" lv_display_t *display_init(void)
 {
     ESP_LOGI(TAG, "Configuring %dx%d RGB panel @ %d MHz",
              BOARD_LCD_H_RES, BOARD_LCD_V_RES,
@@ -79,6 +79,7 @@ extern "C" lv_disp_t *display_init(void)
     disp_cfg.hres            = BOARD_LCD_H_RES;
     disp_cfg.vres            = BOARD_LCD_V_RES;
     disp_cfg.monochrome      = false;
+    disp_cfg.color_format    = LV_COLOR_FORMAT_RGB565;
     disp_cfg.flags.buff_dma  = false;
     disp_cfg.flags.buff_spiram = true;
 
@@ -86,7 +87,7 @@ extern "C" lv_disp_t *display_init(void)
     rgb_cfg.flags.bb_mode     = true;   // bounce buffer mode
     rgb_cfg.flags.avoid_tearing = true;
 
-    lv_disp_t *disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
+    lv_display_t *disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
     if (disp == nullptr) {
         ESP_LOGE(TAG, "lvgl_port_add_disp_rgb failed");
     }
