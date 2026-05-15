@@ -44,8 +44,23 @@ space for a debug output line.
 * one finger drag = mouse move
 * (don't implement yet) two finger drag = scroll (left/right = horizontal scroll, up/down = vertical scroll)
 
-## Stage 11: Protobufs defined
+## Stage 11: Protobufs defined ✓ DONE
 
+* create a touchy.proto protobuf definition based on host-api.md.
+
+## Stage 12: host side app created
+
+Create a python app based on the following:
+
+* create in "app" directory, call the pypi package "touchy-pad", call the executable wrapper "touchy"
+* poetry build system, using best practices for directory layout, test harness, ready to be published to pypi etc...
+* update .devcontainer with required tools for building/running python/poetry/pip
+* include github ci actions to build the python app 
+* use a popular python library for python wrappers to talk using our touchy.proto to the USB device
+* structure the app where most of the functionality is available as an API library, the command line "touchy" app just just uses that API library to do its work
+* Implement "touchy getversion" - have it send a get version protobuf to the device and print the response.  I'll have you reuse most of this code in the future to implement other commands.
+* select and use a popular usb library for communicating with the device
+* improve host-api.md with more specifics on USB endpoints to support this API (so that I can eventually have the C++ device code refer to that document for its implementation)
 
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 

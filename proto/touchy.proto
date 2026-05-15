@@ -1,0 +1,244 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Touchy-Pad host <-> device protocol.
+//
+// This file defines the message types exchanged over the device's custom
+// USB interface (see docs/host-api.md). Three USB endpoints are used:
+//
+//   * Command  (host -> device, bulk OUT) carries `Command` messages.
+//   * Response (device -> host, bulk IN)  carries `Response` messages.
+//                                         Exactly one response per command.
+//   * Event    (device -> host, interrupt IN) carries `Event` messages
+//                                         asynchronously originating on the
+//                                         device.
+//
+// Wire format: each message is a length-prefixed serialised `Command`,
+// `Response`, or `Event` (proto3 binary). The length prefix is a single
+// little-endian uint16 carrying the byte count of the following payload.
+//
+// proto3 is used so the file is consumable both by Python (host CLI/library
+// via `protoc --python_out`) and by the embedded firmware via nanopb. See
+// `touchy.options` for nanopb size hints that bound dynamically-sized
+// fields (strings/bytes) so nanopb can allocate them statically.
+
+syntax = "proto3";
+
+package touchy;
+
+// ---------------------------------------------------------------------------
+// Common types
+// ---------------------------------------------------------------------------
+
+// Generic result code shared by every Response.
+enum ResultCode {
+    RESULT_OK             = 0;
+    RESULT_UNKNOWN_ERROR  = 1;
+    RESULT_INVALID_ARG    = 2;
+    RESULT_NOT_FOUND      = 3;
+    RESULT_NO_SPACE       = 4;
+    RESULT_IO_ERROR       = 5;
+    RESULT_NOT_SUPPORTED  = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Commands (host -> device, on the command OUT endpoint)
+// ---------------------------------------------------------------------------
+
+// Discard all stored XML layouts on the device's filesystem.
+message XmlResetCmd {
+}
+
+// Write an XML file (screen layout or other lv_xml resource) to the device.
+// If `path` matches the currently displayed screen, the screen is reloaded
+// immediately.
+message XmlSaveCmd {
+    string path = 1;      // virtual filesystem path, e.g. "screens/home.xml"
+    string xml  = 2;      // raw XML payload
+}
+
+// Switch the currently displayed screen to `name`.
+message ScreenLoadCmd {
+    string name = 1;      // previously-registered screen name
+}
+
+// Force the backlight on (cancels any pending auto-sleep).
+message ScreenWakeCmd {
+}
+
+// Auto-sleep the backlight after `timeout_ms` of no user input. 0 disables.
+message ScreenSleepTimeoutCmd {
+    uint32 timeout_ms = 1;
+}
+
+// Pop a single event from the device's event queue. The corresponding
+// Response is the Event message itself (wrapped in `Response.event`), or an
+// empty Response with code = RESULT_NOT_FOUND when the queue is empty.
+//
+// Used in conjunction with the asynchronous "event ready" interrupt that
+// the device sends on the event endpoint when it cannot fit a full event
+// payload in a single interrupt packet.
+message EventConsumeCmd {
+}
+
+// Discard all stored image resources on the device's filesystem.
+message ImageResetCmd {
+}
+
+// Write an image file to the device filesystem. The contents are stored
+// verbatim — the file format must already be one lvgl can decode (PNG,
+// JPEG, or lvgl's native bin format). Images saved via this command are
+// automatically registered with `lv_xml_register_image()`.
+message ImageSaveCmd {
+    string path = 1;      // virtual filesystem path, e.g. "img/avatar.png"
+    bytes  data = 2;      // file payload
+}
+
+// Reboot the device into the ROM bootloader for firmware update.
+message SysRebootBootloaderCmd {
+}
+
+// Query device protocol/firmware version. Response is SysVersionResponse.
+message SysVersionGetCmd {
+}
+
+// Top-level command envelope. Exactly one `cmd` is set per message.
+message Command {
+    oneof cmd {
+        XmlResetCmd            xml_reset             = 1;
+        XmlSaveCmd             xml_save              = 2;
+        ScreenLoadCmd          screen_load           = 3;
+        ScreenWakeCmd          screen_wake           = 4;
+        ScreenSleepTimeoutCmd  screen_sleep_timeout  = 5;
+        EventConsumeCmd        event_consume         = 6;
+        ImageResetCmd          image_reset           = 7;
+        ImageSaveCmd           image_save            = 8;
+        SysRebootBootloaderCmd sys_reboot_bootloader = 9;
+        SysVersionGetCmd       sys_version_get       = 10;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Responses (device -> host, on the response IN endpoint)
+// ---------------------------------------------------------------------------
+
+// Reply to SysVersionGetCmd.
+message SysVersionResponse {
+    uint32 protocol_version = 1;    // increment on wire-incompatible changes
+    uint32 firmware_version = 2;    // monotonically-increasing build number
+    string firmware_version_str = 3; // human-readable "1.2.3" or git hash
+}
+
+// Reply to EventConsumeCmd. Carries the popped event, if any. When the
+// queue is empty, the outer Response sets `code = RESULT_NOT_FOUND` and
+// leaves `event` unset.
+message EventConsumeResponse {
+    Event event = 1;
+}
+
+// Top-level response envelope. Every command is followed by exactly one
+// Response on the response IN endpoint. `code` is the generic result, and
+// `payload` (optional) carries any command-specific data.
+message Response {
+    ResultCode code = 1;
+    oneof payload {
+        SysVersionResponse   sys_version    = 2;
+        EventConsumeResponse event_consume  = 3;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Events (device -> host, on the event interrupt IN endpoint)
+// ---------------------------------------------------------------------------
+
+// A lightly-wrapped lvgl event. Mirrors the subset of `lv_event_t` that the
+// host can act on: which trigger fired, the originating widget's
+// host-assigned `user_data` (see docs/host-api.md for the
+// `host_handled_event_cb` pattern), and any per-event payload bytes.
+//
+// `code` values follow lvgl's `lv_event_code_t`; see
+// https://lvgl.io/docs/open/api/core/lv_event_h .
+message LvEvent {
+    uint32 code      = 1;     // lv_event_code_t value
+    string user_data = 2;     // value of event_cb user_data attribute
+    bytes  extra     = 3;     // optional per-event payload (e.g. encoder dx)
+}
+
+// Top-level event envelope sent on the event IN endpoint.
+//
+// The event endpoint's max packet size is small; if a real event payload
+// does not fit, the device instead sends an `EventReady` placeholder and
+// the host fetches the full event via EventConsumeCmd on the command pipe.
+message Event {
+    oneof evt {
+        // "There is at least one event waiting; please send EventConsumeCmd."
+        // Used when the actual event payload doesn't fit in one interrupt
+        // packet. Carries no further data.
+        bool     event_ready = 1;
+
+        // A full event, delivered inline when it fits.
+        LvEvent  lv          = 2;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Service definition
+// ---------------------------------------------------------------------------
+//
+// This service describes the logical RPC surface exposed by the device. It
+// is consumed by the host-side Python library (which speaks the wire format
+// directly over USB; the gRPC machinery is not used on-device — the embedded
+// firmware only handles `Command`/`Response`/`Event` envelopes via nanopb).
+//
+// Mapping to the USB wire protocol:
+//   * Each unary RPC corresponds to one round-trip on the
+//     command-OUT / response-IN endpoint pair. The host wraps the request
+//     in a `Command` (selecting the matching oneof variant), reads the
+//     reply `Response`, and unpacks `Response.payload` for RPCs that
+//     return more than just a ResultCode.
+//   * `StreamEvents` is implemented as a long-lived read on the event
+//     interrupt-IN endpoint; each `Event` packet (or `EventReady`
+//     placeholder followed by an `EventConsume` round-trip) becomes one
+//     element in the returned stream.
+//
+// nanopb ignores `service` blocks, so adding this here has no embedded-side
+// cost.
+service Touchy {
+    // ----- XML / screen management ------------------------------------
+    rpc XmlReset(XmlResetCmd) returns (Response);
+    rpc XmlSave(XmlSaveCmd) returns (Response);
+    rpc ScreenLoad(ScreenLoadCmd) returns (Response);
+
+    // ----- Backlight / power ------------------------------------------
+    rpc ScreenWake(ScreenWakeCmd) returns (Response);
+    rpc ScreenSleepTimeout(ScreenSleepTimeoutCmd) returns (Response);
+
+    // ----- Image filesystem -------------------------------------------
+    rpc ImageReset(ImageResetCmd) returns (Response);
+    rpc ImageSave(ImageSaveCmd) returns (Response);
+
+    // ----- System -----------------------------------------------------
+    rpc SysRebootBootloader(SysRebootBootloaderCmd) returns (Response);
+    rpc SysVersionGet(SysVersionGetCmd) returns (Response);
+
+    // ----- Async events -----------------------------------------------
+    // Single-shot drain: pops one queued event, returning RESULT_NOT_FOUND
+    // if none are pending. Mirrors the on-device EventConsumeCmd directly;
+    // intended mainly as the follow-up to an `EventReady` notification on
+    // the interrupt endpoint.
+    rpc EventConsume(EventConsumeCmd) returns (Response);
+
+    // Long-lived event stream. The host library typically uses this in
+    // preference to polling EventConsume: it reads the event interrupt
+    // endpoint and yields each `Event` it receives (transparently issuing
+    // EventConsume round-trips behind the scenes when the device only sent
+    // an `EventReady` placeholder). The stream terminates when the device
+    // is disconnected.
+    rpc StreamEvents(StreamEventsCmd) returns (stream Event);
+}
+
+// Empty request marker for the streaming RPC. (proto3 requires a request
+// message type even when there are no fields; we don't reuse
+// google.protobuf.Empty so the file stays free of external imports — which
+// matters for nanopb.)
+message StreamEventsCmd {
+}

@@ -9,6 +9,7 @@ RUN sudo apt-get update \
  && sudo apt-get -y install --no-install-recommends \
       clang \
       python3-venv \
+      protobuf-compiler \
       udev sudo python3 python3-pip python3-venv python-is-python3 
 
 # Create a non-root user if one doesn't exist, and give it sudo rights
@@ -51,5 +52,14 @@ RUN python3 /tmp/get-platformio.py
 RUN echo 'export PATH="$PATH:$HOME/.platformio/penv/bin"' | tee -a /home/vscode/.bashrc /home/vscode/.zshrc 
 RUN echo 'export PATH="$PATH:$HOME/.platformio/penv/bin"' | sudo tee -a /root/.bashrc /root/.zshrc
 RUN echo 'source ~/.espressif/tools/activate_idf_v6.0.1.sh' | tee -a /home/vscode/.bashrc /home/vscode/.zshrc
+
+# Python tooling for the host-side protobuf workflow (touchy.proto) and the
+# embedded-side nanopb generator. Installed system-wide via --break-system-packages
+# because Debian Bookworm marks the system Python as externally-managed (PEP 668)
+# and the devcontainer has no separate venv for these dev tools.
+RUN sudo pip install --break-system-packages \
+      protobuf \
+      grpcio-tools \
+      nanopb
 
 

@@ -78,11 +78,11 @@
 	],
 	"features": {
 		// add git
-		"ghcr.io/devcontainers/features/git:1": {}
+		"ghcr.io/devcontainers/features/git:1": {},
 		// add the github cli tool (gh)
 		// "ghcr.io/devcontainers/features/github-cli:1": {}
-		// use https://just.systems/ for developer scripts via https://github.com/guiyomh/features/tree/main/src/just
-		// "ghcr.io/guiyomh/features/just:0": {}
+		// https://just.systems/ — task runner used by ./Justfile
+		"ghcr.io/guiyomh/features/just:0": {}
 	},
 	// "postAttachCommand": "sudo service udev restart",
 	"initializeCommand": "sudo chown -R 1000 /dev/bus/usb"

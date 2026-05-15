@@ -1,0 +1,29 @@
+# nanopb options for touchy.proto.
+#
+# Sets maximum sizes for dynamically-sized fields so nanopb can generate
+# fixed-size C structures (no malloc on the embedded side). Tune as needed;
+# these are upper bounds, not allocations per message.
+#
+# See https://jpa.kapsi.fi/nanopb/docs/concepts.html#field-allocation
+
+# Filesystem paths — long enough for any practical layout/image path.
+touchy.XmlSaveCmd.path                 max_size:64
+touchy.ImageSaveCmd.path               max_size:64
+touchy.ScreenLoadCmd.name              max_size:64
+
+# XML payload for a single screen layout. lvgl XML files are small; 4 KB
+# leaves comfortable headroom for one screen description.
+touchy.XmlSaveCmd.xml                  max_size:4096
+
+# Image payload. Bumped high so a full ~32 KB PNG/JPEG can be uploaded in a
+# single command; larger files should be split client-side or use a
+# (future) chunked-upload command.
+touchy.ImageSaveCmd.data               max_size:32768
+
+# Version string (semver or git short hash).
+touchy.SysVersionResponse.firmware_version_str  max_size:32
+
+# Event payloads — the host-assigned user_data string is typically a short
+# unique identifier; extra is a per-event scratch buffer.
+touchy.LvEvent.user_data               max_size:32
+touchy.LvEvent.extra                   max_size:32
