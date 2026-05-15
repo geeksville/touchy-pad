@@ -62,4 +62,10 @@ RUN sudo pip install --break-system-packages \
       grpcio-tools \
       nanopb
 
+# Poetry — build system used by app/ (the host-side touchy-pad Python package).
+# Install via the official installer rather than pip so it lives in its own
+# venv and doesn't interfere with the system / IDF Python environments.
+RUN curl -sSL https://install.python-poetry.org | python3 - \
+ && echo 'export PATH="$HOME/.local/bin:$PATH"' | tee -a /home/vscode/.bashrc /home/vscode/.zshrc
+
 

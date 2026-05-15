@@ -1,0 +1,69 @@
+name: app CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "proto/**"
+      - ".github/workflows/app-ci.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "proto/**"
+      - ".github/workflows/app-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install libusb (runtime dependency of pyusb)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
+
+      - name: Install Python tooling for proto generation
+        run: pip install grpcio-tools nanopb
+
+      - name: Generate proto bindings
+        working-directory: ${{ github.workspace }}
+        run: just build-proto-py
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Ruff lint
+        run: poetry run ruff check src tests
+
+      - name: Pytest
+        run: poetry run pytest --cov=touchy_pad --cov-report=term-missing
+
+      - name: Build wheel + sdist
+        run: poetry build
+
+      - name: Upload build artifacts
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: touchy-pad-dist
+          path: app/dist/*

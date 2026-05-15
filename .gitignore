@@ -1,0 +1,38 @@
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Generated protobuf bindings (rebuilt by `just build-proto`).
+# Source of truth is proto/touchy.proto.
+app/src/touchy_pad/_proto/touchy_pb2.py
+app/src/touchy_pad/_proto/touchy_pb2.pyi
+proto/touchy.pb.c
+proto/touchy.pb.h
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# --- Editor / OS junk -------------------------------------------------------
+.DS_Store
+Thumbs.db

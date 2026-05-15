@@ -48,7 +48,7 @@ space for a debug output line.
 
 * create a touchy.proto protobuf definition based on host-api.md.
 
-## Stage 12: host side app created
+## Stage 12: host side app created ✓ DONE
 
 Create a python app based on the following:
 
