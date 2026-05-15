@@ -210,12 +210,19 @@ static void host_api_task(void *)
         }
         if (!vendor_read_exact(s_rx_buf, payload_len)) continue;
 
-        // Decode.
-        touchy_Command cmd = touchy_Command_init_zero;
+        // Decode. `touchy_Command` embeds a 32 KB FileSaveCmd byte buffer
+        // inline, so we keep it in .bss instead of on the dispatcher task's
+        // 8 KB stack to avoid blowing the stack on every file upload. Same
+        // for the response struct (which embeds SysVersionResponse strings
+        // — small today, but cheap to keep static for symmetry).
+        static touchy_Command cmd;
+        static touchy_Response resp;
+        cmd  = touchy_Command_init_zero;
+        resp = touchy_Response_init_zero;
+
         pb_istream_t in = pb_istream_from_buffer(s_rx_buf, payload_len);
         if (!pb_decode(&in, touchy_Command_fields, &cmd)) {
             ESP_LOGE(TAG, "pb_decode failed: %s", PB_GET_ERROR(&in));
-            touchy_Response resp = touchy_Response_init_zero;
             resp.code = touchy_ResultCode_RESULT_INVALID_ARG;
             pb_ostream_t out = pb_ostream_from_buffer(s_tx_buf, sizeof(s_tx_buf));
             if (pb_encode(&out, touchy_Response_fields, &resp)) {
@@ -225,7 +232,6 @@ static void host_api_task(void *)
         }
 
         // Dispatch.
-        touchy_Response resp = touchy_Response_init_zero;
         dispatch(&cmd, &resp);
 
         // Encode + send.
