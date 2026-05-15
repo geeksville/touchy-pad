@@ -4,6 +4,7 @@
 
 #include "board.h"
 #include "display.h"
+#include "fs.h"
 #include "touch.h"
 #include "usb_hid.h"
 #include "trackpad_widget.h"
@@ -24,6 +25,10 @@ extern "C" void app_main(void)
     // If USB were initialised after display/touch (which can take ~1 s) the
     // host port may time out waiting for a re-connection.
     usb_hid_init();
+
+    // Mount the on-device filesystem (stage 14). host_api command handlers
+    // expect /littlefs/from_host to exist by the time they run.
+    Fs::instance().begin();
 
     // Give enough time for user to open a debug serial port to our board
     vTaskDelay(pdMS_TO_TICKS(5000));

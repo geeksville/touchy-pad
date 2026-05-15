@@ -6,6 +6,7 @@ Run ``touchy --help`` for a list of subcommands.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import click
 
@@ -63,22 +64,41 @@ def screen_load(name: str) -> None:
         c.screen_load(name)
 
 
-@cli.command("xml-save")
-@click.argument("path")
-@click.argument("xml_file", type=click.File("r"))
-def xml_save(path: str, xml_file) -> None:
-    """Upload an XML layout file to the device."""
+@cli.command("file-reset")
+def file_reset() -> None:
+    """Delete every file the host has uploaded to the device."""
     with _client() as c:
-        c.xml_save(path, xml_file.read())
+        c.file_reset()
 
 
-@cli.command("image-save")
+@cli.command("file-save")
 @click.argument("path")
-@click.argument("image_file", type=click.File("rb"))
-def image_save(path: str, image_file) -> None:
-    """Upload an image file to the device."""
+@click.argument("file", type=click.File("rb"))
+def file_save(path: str, file) -> None:
+    """Upload a single file to the device under /from_host/<PATH>."""
     with _client() as c:
-        c.image_save(path, image_file.read())
+        c.file_save(path, file.read())
+
+
+@cli.command("writefiles")
+@click.argument(
+    "srcdir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def writefiles(srcdir: Path) -> None:
+    """Mirror SRCDIR onto the device.
+
+    First clears the host-uploaded file area, then recursively walks
+    SRCDIR and uploads every file at its relative path.
+    """
+    with _client() as c:
+        c.file_reset()
+        for p in sorted(srcdir.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(srcdir).as_posix()
+            c.file_save(rel, p.read_bytes())
+            click.echo(f"sent {rel} ({p.stat().st_size} bytes)")
 
 
 @cli.command()

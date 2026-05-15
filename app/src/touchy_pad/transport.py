@@ -260,12 +260,33 @@ class UsbTransport(Transport):
             self._ep_out.write(framed, timeout=2000)
 
     def recv_response(self, timeout_ms: int = 2000) -> bytes:
-        # Pull a frame's worth of bytes. The endpoint's wMaxPacketSize is
-        # typically 64 (full-speed) or 512 (high-speed); responses fit easily
-        # below _MAX_FRAME, so one read is enough.
-        size = max(self._ep_in.wMaxPacketSize, _MAX_FRAME + _LEN_STRUCT.size)
-        buf = bytes(self._ep_in.read(size, timeout=timeout_ms))
-        return _unpack(buf)
+        # The wire framing is a 4-byte LE length followed by `length`
+        # payload bytes. libusb requires each bulk-IN read buffer to be a
+        # whole multiple of the endpoint's wMaxPacketSize (otherwise a
+        # full-size packet from the device causes EOVERFLOW), so we round
+        # every read up to the next packet boundary and stitch the chunks
+        # together until we have the full frame.
+        mps = self._ep_in.wMaxPacketSize
+
+        def _read_at_least(min_bytes: int, accum: bytearray) -> None:
+            while len(accum) < min_bytes:
+                want = ((min_bytes - len(accum) + mps - 1) // mps) * mps
+                # Cap any individual URB at a sensible size — the device
+                # only sends frames up to ImageSaveCmd-equivalent (~32 KB),
+                # but using a big-enough buffer is fine.
+                want = min(want, 64 * 1024)
+                chunk = bytes(self._ep_in.read(want, timeout=timeout_ms))
+                if not chunk:
+                    raise TransportError("device returned 0-byte read")
+                accum.extend(chunk)
+
+        buf = bytearray()
+        _read_at_least(_LEN_STRUCT.size, buf)
+        (length,) = _LEN_STRUCT.unpack_from(buf, 0)
+        if length > _MAX_FRAME:
+            raise TransportError(f"device announced oversize frame: {length} bytes")
+        _read_at_least(_LEN_STRUCT.size + length, buf)
+        return bytes(buf[_LEN_STRUCT.size : _LEN_STRUCT.size + length])
 
     def recv_event(self, timeout_ms: int = 0) -> bytes | None:
         # timeout_ms=0 means non-blocking via a very short USB timeout.

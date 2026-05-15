@@ -3,6 +3,7 @@
 * Use platform.io as the build environment (vscode based, with an 'arduinoish' api)
 * Use LVGL as the rendering library (provides layers and GUI primitives)
 * Primiarily use C++ as the programming lanuage
+* Use C++ classes as needed for new big systems
 
 # Target hardware
 
@@ -84,7 +85,29 @@ Stage 13 implementation notes:
   coexist with the bulk pair on the same interface); the host library
   treats it as optional.
 
-## Stage 14: host side simulator
+## Stage 14: device side filesystem ✓ DONE
+
+### Create fs.cpp/.h with a FS class inside
+* Use LittleFS as the FS format
+* Have the following standard base directories precreated if needed:
+  * /prefs - contains device specific prefs/data (not yet used)
+  * /from_host - a directory tree of files which the host has sent using FileSave/FileReset
+* Have methods for:
+  * readText(name) - returns file as a C++ str
+  * readBinary(name) - news a byte array with the file contents, caller is expected to call delete[] on it later
+  * remove(name) - delete a file
+  * (construct some elegant api for iterating over filenames in a subdir)
+  * writeFile(name, byteptr, len) - write a file to a path
+  * For all methods parse filename for / path separator, create subdirectories as needed
+
+Include logging output for key FS operations
+
+### Use the FS class to implement FileSave/FileReset cmds on device
+* Use the paths provided by the PC client, but prefix them with /fromhost/ (so that all files from host are in that subdir).
+* Implement FileSave and FileReset based on the docs, using FS to do most of the work
+
+### Extend host app/AI to allow file writing
+* Add a new command line option "writefiles SRCDIR".  Which should first do a FileReset and then recursively for every file in SRCDIR do FileSave.
 
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 

@@ -13,8 +13,8 @@ from .touchy_pb2 import (  # noqa: F401  (re-exported)
     Event,
     EventConsumeCmd,
     EventConsumeResponse,
-    ImageResetCmd,
-    ImageSaveCmd,
+    FileResetCmd,
+    FileSaveCmd,
     LvEvent,
     Response,
     ResultCode,
@@ -25,8 +25,6 @@ from .touchy_pb2 import (  # noqa: F401  (re-exported)
     SysRebootBootloaderCmd,
     SysVersionGetCmd,
     SysVersionResponse,
-    XmlResetCmd,
-    XmlSaveCmd,
 )
 
 # Convenience aliases so callers can write `_proto.RESULT_OK` without poking
