@@ -17,9 +17,9 @@ Note: the event endpoint max packet size is quite small so possibly we'll just h
 
 ### Command messages
 
-FIXME - possibly generalize how layout xml is used? let host write arbitrary filesystem paths rather than just 'screens'.  Then instead we could just use File_Write(path, payload) to do images, screens, any other required metadata.  Possibly providing a nice way to let the host swap out just small parts of the GUI 'on-the-fly'?  Read lvgl docs a bit more...
+We generalize how layout xml is used. let host write arbitrary filesystem paths rather than just 'screens'.  Then instead we could just use File_Write(path, payload) to do images, screens, any other required metadata.  Possibly providing a nice way to let the host swap out just small parts of the GUI 'on-the-fly'?  Read lvgl docs a bit more...
 
-FIXME, store images as files (possibly with no filetype conversion on this host).  This [should](https://lvgl.io/docs/open/main-modules/images/decoders) allow LVGL caching to auto discard LRU images and reread from 'disk' as needed. 
+Store images as files in the device filesystem (possibly with no filetype conversion on this host).  If conversion on the host is required (unlikely) we [could](https://lvgl.io/docs/open/main-modules/images/decoders) allow LVGL caching to auto discard LRU images and reread from 'disk' as needed. 
 
 * XML_Reset - Discard all saved xml
 * XML_Save(filepath, xml_string) - Set a screen layout or other lvgl config file.  If that screen is already displayed screen, the screen will be refreshed based on this xml.

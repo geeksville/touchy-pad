@@ -22,8 +22,26 @@ static const char *TAG = "display";
 
 static nv3041a_handle_t s_panel = nullptr;
 
-// LVGL flush callback: ship one rectangle to the panel and tell LVGL we're
-// done. LVGL serialises calls so we don't need our own mutex here.
+// SPI ISR callback: fires when the final byte of a flush has left the wire.
+// Tells LVGL the buffer is free for reuse so it can start the next slice
+// concurrently with whatever the LVGL task is doing. lv_disp_flush_ready() is
+// only used for partial-mode dual-buffer flushes here, where the operation is
+// a simple atomic store to the disp_drv's "buf_act" / busy flags — safe to do
+// from ISR (this is the same pattern used by esp_lcd_panel_io_spi's
+// on_color_trans_done hook).
+//
+// Marked IRAM_ATTR so it remains callable while flash cache is disabled.
+static IRAM_ATTR void flush_done_isr(void *user)
+{
+    auto *drv = static_cast<lv_disp_drv_t *>(user);
+    lv_disp_flush_ready(drv);
+}
+
+// LVGL flush callback: queue the SPI transactions and return immediately;
+// flush_done_isr() will report completion from the ISR once the panel has
+// actually consumed the buffer. This lets LVGL render the next slice into
+// the other partial buffer while the SPI peripheral DMAs this one out.
+// LVGL serialises flush_cb calls so we don't need our own mutex here.
 static void lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area,
                           lv_color_t *color_p)
 {
@@ -32,8 +50,7 @@ static void lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area,
     const size_t   n  = (size_t)(x2 - x1 + 1) * (y2 - y1 + 1);
 
     nv3041a_set_window(s_panel, x1, y1, x2, y2);
-    nv3041a_write_pixels(s_panel, (uint16_t *)color_p, n);
-    lv_disp_flush_ready(drv);
+    nv3041a_write_pixels(s_panel, (uint16_t *)color_p, n, flush_done_isr, drv);
 }
 
 extern "C" lv_disp_t *display_init(void)

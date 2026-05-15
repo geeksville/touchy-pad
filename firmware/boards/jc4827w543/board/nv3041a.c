@@ -13,9 +13,97 @@
 
 static const char *TAG = "nv3041a";
 
-struct nv3041a_dev_t {
-    spi_device_handle_t spi;
+// Size of the in-driver transaction ring buffer. Must be >= the SPI device's
+// `queue_size` AND large enough to cover the worst-case number of
+// transactions submitted between drains (one flush = a couple of register
+// writes + ceil(pixels/CHUNK_PIXELS) data chunks). For a full-screen flush
+// at 480x272 that's ~17 transactions; for the typical 40-line partial flush
+// it's ~5. 32 leaves comfortable head-room.
+#define NV3041A_POOL_SIZE 32
+
+// Per-transaction "done" hook. The SPI driver invokes nv_post_cb() from ISR
+// context after each transaction finishes; if cb is non-NULL it is called
+// with user as its argument. We use this so the LVGL display driver can
+// receive an immediate notification at the end of every flush without the
+// LVGL task having to block on spi_device_get_trans_result().
+struct nv_done {
+    nv3041a_done_cb_t cb;
+    void             *user;
 };
+
+struct nv3041a_dev_t {
+    spi_device_handle_t   spi;
+    // Ring buffer of transaction descriptors. The SPI driver holds pointers
+    // to these from the moment we call spi_device_queue_trans() until we
+    // collect the result via spi_device_get_trans_result(); the descriptor
+    // (including any inline SPI_TRANS_USE_TXDATA payload) must remain valid
+    // for that entire window.
+    spi_transaction_ext_t pool[NV3041A_POOL_SIZE];
+    // Parallel pool of done-callbacks. Each transaction's base.user points
+    // at its corresponding entry here; the entry is cleared when the slot is
+    // (re)allocated and may be populated before the transaction is queued.
+    struct nv_done        done[NV3041A_POOL_SIZE];
+    int                   next_slot;     // index of next slot to hand out
+    int                   outstanding;   // queued but not yet collected
+};
+
+// SPI ISR callback: fires once per finished transaction, from interrupt
+// context. Forwards to the per-slot done callback, if any. Marked IRAM so
+// it's safe to invoke even when flash cache is disabled.
+static void IRAM_ATTR nv_post_cb(spi_transaction_t *t)
+{
+    struct nv_done *d = (struct nv_done *)t->user;
+    if (d && d->cb) d->cb(d->user);
+}
+
+// Drain a single completion from the SPI driver. Blocks until one finishes.
+static esp_err_t nv_drain_one(nv3041a_handle_t dev)
+{
+    spi_transaction_t *done = NULL;
+    esp_err_t err = spi_device_get_trans_result(dev->spi, &done, portMAX_DELAY);
+    if (err == ESP_OK) dev->outstanding--;
+    return err;
+}
+
+// Hand out a fresh transaction slot. If the pool is exhausted we block until
+// one of the in-flight transactions finishes, freeing its slot. Also clears
+// the per-slot done callback and wires t->user to point at the slot's entry
+// so nv_post_cb() can find it.
+static spi_transaction_ext_t *nv_acquire_slot(nv3041a_handle_t dev,
+                                              int *out_slot)
+{
+    if (dev->outstanding >= NV3041A_POOL_SIZE) {
+        // Pool full — wait for the oldest transaction to retire.
+        if (nv_drain_one(dev) != ESP_OK) return NULL;
+    }
+    int i = dev->next_slot;
+    spi_transaction_ext_t *t = &dev->pool[i];
+    dev->next_slot = (i + 1) % NV3041A_POOL_SIZE;
+    memset(t, 0, sizeof(*t));
+    dev->done[i].cb   = NULL;
+    dev->done[i].user = NULL;
+    t->base.user      = &dev->done[i];
+    if (out_slot) *out_slot = i;
+    return t;
+}
+
+static esp_err_t nv_queue(nv3041a_handle_t dev, spi_transaction_ext_t *t)
+{
+    esp_err_t err = spi_device_queue_trans(dev->spi,
+                                           (spi_transaction_t *)t,
+                                           portMAX_DELAY);
+    if (err == ESP_OK) dev->outstanding++;
+    return err;
+}
+
+esp_err_t nv3041a_wait_idle(nv3041a_handle_t dev)
+{
+    while (dev->outstanding > 0) {
+        esp_err_t err = nv_drain_one(dev);
+        if (err != ESP_OK) return err;
+    }
+    return ESP_OK;
+}
 
 // NV3041A commands (subset; full set in the Arduino_GFX header).
 #define NV3041A_SLPOUT  0x11
@@ -40,38 +128,47 @@ struct nv3041a_dev_t {
 // ---- One-byte register write -----------------------------------------------
 static esp_err_t nv_write_reg(nv3041a_handle_t dev, uint8_t reg, uint8_t val)
 {
-    spi_transaction_ext_t t = {};
-    t.base.flags    = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR |
-                      SPI_TRANS_USE_TXDATA;
-    t.command_bits  = 8;
-    t.address_bits  = 24;
-    t.dummy_bits    = 0;
-    t.base.cmd      = NV3041A_PREFIX_WR_REG;
-    t.base.addr     = ((uint32_t)reg) << 8;
-    t.base.length   = 8;        // 8 data bits
-    t.base.tx_data[0] = val;
-    return spi_device_transmit(dev->spi, (spi_transaction_t *)&t);
+    spi_transaction_ext_t *t = nv_acquire_slot(dev, NULL);
+    if (!t) return ESP_FAIL;
+    t->base.flags    = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR |
+                       SPI_TRANS_USE_TXDATA;
+    t->command_bits  = 8;
+    t->address_bits  = 24;
+    t->dummy_bits    = 0;
+    t->base.cmd      = NV3041A_PREFIX_WR_REG;
+    t->base.addr     = ((uint32_t)reg) << 8;
+    t->base.length   = 8;        // 8 data bits
+    t->base.tx_data[0] = val;
+    return nv_queue(dev, t);
 }
 
 // ---- Command with no parameters -------------------------------------------
 static esp_err_t nv_send_cmd(nv3041a_handle_t dev, uint8_t reg)
 {
-    spi_transaction_ext_t t = {};
-    t.base.flags    = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR;
-    t.command_bits  = 8;
-    t.address_bits  = 24;
-    t.dummy_bits    = 0;
-    t.base.cmd      = NV3041A_PREFIX_WR_REG;
-    t.base.addr     = ((uint32_t)reg) << 8;
-    t.base.length   = 0;
-    return spi_device_transmit(dev->spi, (spi_transaction_t *)&t);
+    spi_transaction_ext_t *t = nv_acquire_slot(dev, NULL);
+    if (!t) return ESP_FAIL;
+    t->base.flags    = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR;
+    t->command_bits  = 8;
+    t->address_bits  = 24;
+    t->dummy_bits    = 0;
+    t->base.cmd      = NV3041A_PREFIX_WR_REG;
+    t->base.addr     = ((uint32_t)reg) << 8;
+    t->base.length   = 0;
+    return nv_queue(dev, t);
 }
 
 // ---- Memory write (pixel stream on 4 data lines) ---------------------------
 static esp_err_t nv_write_pixels_raw(nv3041a_handle_t dev,
-                                     const uint16_t *pixels, size_t count)
+                                     const uint16_t *pixels, size_t count,
+                                     nv3041a_done_cb_t done_cb,
+                                     void *done_user)
 {
-    if (count == 0) return ESP_OK;
+    if (count == 0) {
+        // No pixels to send, but the caller may still expect their done
+        // callback to fire. Invoke it inline so we don't lose the signal.
+        if (done_cb) done_cb(done_user);
+        return ESP_OK;
+    }
 
     // 1. Switch the panel into memory-write mode (single-line RAMWR, no data).
     esp_err_t err = nv_send_cmd(dev, NV3041A_RAMWR);
@@ -98,30 +195,40 @@ static esp_err_t nv_write_pixels_raw(nv3041a_handle_t dev,
             (count - off > CHUNK_PIXELS) ? CHUNK_PIXELS : (count - off);
         const bool   last       = (off + this_count == count);
 
-        spi_transaction_ext_t t = {};
-        t.command_bits  = 8;
-        t.address_bits  = 24;
-        t.dummy_bits    = 0;
+        int slot_idx;
+        spi_transaction_ext_t *t = nv_acquire_slot(dev, &slot_idx);
+        if (!t) return ESP_FAIL;
+        t->command_bits  = 8;
+        t->address_bits  = 24;
+        t->dummy_bits    = 0;
 
         uint32_t flags = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR |
                          SPI_TRANS_MODE_QIO;
         if (!last) flags |= SPI_TRANS_CS_KEEP_ACTIVE;
 
         if (first) {
-            t.base.flags = flags;
-            t.base.cmd   = NV3041A_PREFIX_WR_MEM;
-            t.base.addr  = ((uint32_t)NV3041A_QSPI_MEM_REG) << 8;
+            t->base.flags = flags;
+            t->base.cmd   = NV3041A_PREFIX_WR_MEM;
+            t->base.addr  = ((uint32_t)NV3041A_QSPI_MEM_REG) << 8;
             first = false;
         } else {
             // Continuation: no cmd, no addr, no dummy; just keep clocking data.
-            t.base.flags   = flags | SPI_TRANS_VARIABLE_DUMMY;
-            t.command_bits = 0;
-            t.address_bits = 0;
+            t->base.flags   = flags | SPI_TRANS_VARIABLE_DUMMY;
+            t->command_bits = 0;
+            t->address_bits = 0;
         }
-        t.base.length    = this_count * 16;
-        t.base.tx_buffer = pixels + off;
+        t->base.length    = this_count * 16;
+        t->base.tx_buffer = pixels + off;
 
-        err = spi_device_transmit(dev->spi, (spi_transaction_t *)&t);
+        // Only the last chunk's completion signals "flush done". Attach the
+        // caller-supplied callback there; nv_post_cb() will run it from the
+        // SPI ISR as soon as the final bytes have hit the wire.
+        if (last && done_cb) {
+            dev->done[slot_idx].cb   = done_cb;
+            dev->done[slot_idx].user = done_user;
+        }
+
+        err = nv_queue(dev, t);
         if (err != ESP_OK) return err;
         off += this_count;
     }
@@ -220,7 +327,13 @@ esp_err_t nv3041a_create(const nv3041a_config_t *cfg, nv3041a_handle_t *out)
         // peripheral keeps CS asserted for the entire memory-write burst.
         .spics_io_num   = cfg->cs_gpio,
         .flags          = SPI_DEVICE_HALFDUPLEX,
-        .queue_size     = 8,
+        // Must be >= NV3041A_POOL_SIZE: the SPI driver refuses to enqueue
+        // more than `queue_size` transactions at once.
+        .queue_size     = NV3041A_POOL_SIZE,
+        // Fire nv_post_cb() from the SPI ISR after each transaction
+        // completes so the LVGL flush callback can be notified immediately
+        // (rather than the LVGL task polling spi_device_get_trans_result).
+        .post_cb        = nv_post_cb,
     };
     nv3041a_handle_t dev = (nv3041a_handle_t)calloc(1, sizeof(*dev));
     ESP_RETURN_ON_FALSE(dev, ESP_ERR_NO_MEM, TAG, "no mem");
@@ -238,12 +351,20 @@ esp_err_t nv3041a_create(const nv3041a_config_t *cfg, nv3041a_handle_t *out)
         ESP_RETURN_ON_ERROR(nv_write_reg(dev, nv3041a_init_table[i][0],
                                               nv3041a_init_table[i][1]),
                             TAG, "init reg 0x%02x", nv3041a_init_table[i][0]);
+        // Drain periodically so the pool can't overflow during init.
+        if ((i & (NV3041A_POOL_SIZE - 1)) == (NV3041A_POOL_SIZE - 1)) {
+            ESP_RETURN_ON_ERROR(nv3041a_wait_idle(dev), TAG, "init drain");
+        }
     }
+    ESP_RETURN_ON_ERROR(nv3041a_wait_idle(dev), TAG, "init drain");
 
-    // Sleep out + display on.
+    // Sleep out + display on. Drain between each so the explicit vTaskDelays
+    // really do follow the commands rather than racing them.
     ESP_RETURN_ON_ERROR(nv_send_cmd(dev, NV3041A_SLPOUT), TAG, "slpout");
+    ESP_RETURN_ON_ERROR(nv3041a_wait_idle(dev), TAG, "slpout drain");
     vTaskDelay(pdMS_TO_TICKS(120));
     ESP_RETURN_ON_ERROR(nv_send_cmd(dev, NV3041A_DISPON), TAG, "dispon");
+    ESP_RETURN_ON_ERROR(nv3041a_wait_idle(dev), TAG, "dispon drain");
     vTaskDelay(pdMS_TO_TICKS(50));
 
     *out = dev;
@@ -262,17 +383,18 @@ static esp_err_t nv_write_reg_bytes_inline(nv3041a_handle_t dev, uint8_t reg,
                                             const uint8_t *data, size_t len)
 {
     if (len > 4) return ESP_ERR_INVALID_ARG;
-    spi_transaction_ext_t t = {};
-    t.base.flags    = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR |
-                      SPI_TRANS_USE_TXDATA;
-    t.command_bits  = 8;
-    t.address_bits  = 24;
-    t.dummy_bits    = 0;
-    t.base.cmd      = NV3041A_PREFIX_WR_REG;
-    t.base.addr     = ((uint32_t)reg) << 8;
-    t.base.length   = len * 8;
-    for (size_t i = 0; i < len; i++) t.base.tx_data[i] = data[i];
-    return spi_device_transmit(dev->spi, (spi_transaction_t *)&t);
+    spi_transaction_ext_t *t = nv_acquire_slot(dev, NULL);
+    if (!t) return ESP_FAIL;
+    t->base.flags    = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR |
+                       SPI_TRANS_USE_TXDATA;
+    t->command_bits  = 8;
+    t->address_bits  = 24;
+    t->dummy_bits    = 0;
+    t->base.cmd      = NV3041A_PREFIX_WR_REG;
+    t->base.addr     = ((uint32_t)reg) << 8;
+    t->base.length   = len * 8;
+    for (size_t i = 0; i < len; i++) t->base.tx_data[i] = data[i];
+    return nv_queue(dev, t);
 }
 
 esp_err_t nv3041a_set_window(nv3041a_handle_t dev,
@@ -292,7 +414,8 @@ esp_err_t nv3041a_set_window(nv3041a_handle_t dev,
 }
 
 esp_err_t nv3041a_write_pixels(nv3041a_handle_t dev,
-                               const uint16_t *pixels, size_t count)
+                               const uint16_t *pixels, size_t count,
+                               nv3041a_done_cb_t done_cb, void *done_user)
 {
-    return nv_write_pixels_raw(dev, pixels, count);
+    return nv_write_pixels_raw(dev, pixels, count, done_cb, done_user);
 }

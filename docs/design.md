@@ -44,6 +44,9 @@ space for a debug output line.
 * one finger drag = mouse move
 * (don't implement yet) two finger drag = scroll (left/right = horizontal scroll, up/down = vertical scroll)
 
+## Stage 11: Protobufs defined
+
+
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 
 Use lv_buttonmatrix to provide matrixes of buttons

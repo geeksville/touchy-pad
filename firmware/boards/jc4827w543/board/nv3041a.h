@@ -53,9 +53,27 @@ esp_err_t nv3041a_set_window(nv3041a_handle_t dev,
 
 // Blast `count` RGB565 pixels (16 bit big-endian on the wire) into the
 // previously selected window. Safe to call repeatedly for one set_window().
-// Uses DMA / polling depending on the size.
+//
+// NOTE: this call is asynchronous — it enqueues the transactions onto the SPI
+// driver's internal queue via spi_device_queue_trans() and returns as soon as
+// the work is enqueued. The caller MUST NOT modify, free, or reuse the
+// `pixels` buffer until `done_cb` has been called or until
+// nv3041a_wait_idle() has returned.
+//
+// If `done_cb` is non-NULL, it will be invoked **from the SPI ISR** (so it
+// must be IRAM-safe, do minimal work, and return quickly) after the final
+// byte of the pixel buffer has hit the wire. `done_user` is passed through.
+// Pass NULL/NULL if you intend to synchronise via nv3041a_wait_idle().
+typedef void (*nv3041a_done_cb_t)(void *user);
+
 esp_err_t nv3041a_write_pixels(nv3041a_handle_t dev,
-                               const uint16_t *pixels, size_t count);
+                               const uint16_t *pixels, size_t count,
+                               nv3041a_done_cb_t done_cb, void *done_user);
+
+// Block until every queued transaction has actually finished on the wire.
+// Call this before reusing any buffer that was passed to nv3041a_write_pixels
+// or nv3041a_set_window.
+esp_err_t nv3041a_wait_idle(nv3041a_handle_t dev);
 
 #ifdef __cplusplus
 }
