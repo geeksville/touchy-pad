@@ -111,10 +111,8 @@ extern "C" void usb_hid_init(void)
     tusb_cfg.descriptor.full_speed_config  = s_config_desc;
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
 
-#if CFG_TUD_CDC
-    // Bring up the CDC-ACM class driver before redirecting the console to it.
-    // tinyusb_console_init() requires this to have been called first; without
-    // it the call returns ESP_ERR_INVALID_STATE, ESP_ERROR_CHECK aborts, and
+    
+    it the call returns ESP_ERR_INVALID_STATE, ESP_ERROR_CHECK aborts, and
     // the chip reboots in a loop — preventing USB enumeration.
     const tinyusb_config_cdcacm_t cdc_cfg = {
         .cdc_port                     = TINYUSB_CDC_ACM_0,

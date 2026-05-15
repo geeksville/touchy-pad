@@ -15,3 +15,7 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# ----- LVGL: feed pixels to the NV3041A QSPI panel in big-endian RGB565.
+# The panel expects MSB-first 16-bit colour on the wire
+CONFIG_LV_COLOR_16_SWAP=y

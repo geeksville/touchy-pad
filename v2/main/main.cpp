@@ -25,6 +25,9 @@ extern "C" void app_main(void)
     // host port may time out waiting for a re-connection.
     usb_hid_init();
 
+    // Give enough time for user to open a debug serial port to our board
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
     board_init();
     lv_disp_t *disp = display_init();
     esp_lcd_touch_handle_t tp = touch_init(disp);
@@ -38,6 +41,6 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "Ready");
     while (true) {
         pad->poll();
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(10)); // FIXME, remove this poll and try to not poll the touchpad at all, instead use some sort of interrupt
     }
 }
