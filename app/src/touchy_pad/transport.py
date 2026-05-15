@@ -85,6 +85,94 @@ def _unpack(buf: bytes) -> bytes:
     return bytes(buf[_LEN_STRUCT.size : _LEN_STRUCT.size + length])
 
 
+# Some sandboxed environments — most notably the touchy-pad devcontainer —
+# only bind-mount the USB root-hub nodes from the host into the container's
+# /dev/bus/usb, but expose the live udev tree at /host/dev/bus/usb. libusb's
+# enumeration via /sys still finds the device (so pyusb's find() succeeds),
+# but the subsequent libusb_open() fails with ENODEV because the BBB/DDD
+# character device is missing under /dev/bus/usb.
+#
+# Recover by opening the matching node under /host/dev/bus/usb ourselves
+# and handing the fd to libusb_wrap_sys_device(); the resulting
+# libusb_device_handle is indistinguishable from a normal open as far as
+# pyusb's bulk_read/bulk_write paths are concerned.
+_HOST_DEV_USB_ROOT = "/host/dev/bus/usb"
+_LIBUSB_ERROR_NO_DEVICE = 19  # pyusb maps LIBUSB_ERROR_NO_DEVICE → errno 19
+
+
+def _install_host_dev_fallback() -> None:
+    import ctypes
+    import os
+
+    from usb.backend import libusb1 as _lb
+
+    if getattr(_lb, "_touchy_host_dev_patched", False):
+        return
+
+    # pyusb defers loading the libusb DLL until the backend is first used;
+    # poke it so `_lb._lib` is populated before we touch its symbols.
+    if _lb._lib is None:
+        _lb.get_backend()
+    lib = _lb._lib
+    if lib is None:
+        # libusb isn't available at all — nothing to patch.
+        return
+
+    # libusb_wrap_sys_device(ctx, sys_dev, dev_handle*)
+    lib.libusb_wrap_sys_device.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.POINTER(_lb._libusb_device_handle),
+    ]
+    lib.libusb_wrap_sys_device.restype = ctypes.c_int
+    lib.libusb_get_bus_number.argtypes = [ctypes.c_void_p]
+    lib.libusb_get_bus_number.restype = ctypes.c_uint8
+    lib.libusb_get_device_address.argtypes = [ctypes.c_void_p]
+    lib.libusb_get_device_address.restype = ctypes.c_uint8
+
+    _orig_init = _lb._DeviceHandle.__init__
+
+    def _patched_init(self: object, dev: object) -> None:  # type: ignore[override]
+        try:
+            _orig_init(self, dev)
+            return
+        except _lb.USBError as exc:
+            if getattr(exc, "errno", None) != _LIBUSB_ERROR_NO_DEVICE:
+                raise
+            if not os.path.isdir(_HOST_DEV_USB_ROOT):
+                raise
+
+        bus = int(lib.libusb_get_bus_number(dev.devid))
+        addr = int(lib.libusb_get_device_address(dev.devid))
+        path = f"{_HOST_DEV_USB_ROOT}/{bus:03d}/{addr:03d}"
+        try:
+            fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+        except FileNotFoundError as e:
+            raise TransportError(
+                f"device node not found under {_HOST_DEV_USB_ROOT}: {path}"
+            ) from e
+        except PermissionError as e:
+            raise TransportError(
+                f"permission denied opening {path}; check udev rules / group"
+            ) from e
+
+        self.handle = _lb._libusb_device_handle()
+        self.devid = dev.devid
+        rv = lib.libusb_wrap_sys_device(None, fd, ctypes.byref(self.handle))
+        if rv < 0:
+            os.close(fd)
+            # Re-raise as the standard pyusb USBError so callers see the
+            # familiar error type.
+            raise _lb.USBError(_lb._strerror(rv), rv, _lb._libusb_errno.get(rv))
+        # libusb has taken ownership of fd — it'll be closed by libusb_close
+        # on dispose. Stash it for introspection only.
+        self._touchy_host_fd = fd  # type: ignore[attr-defined]
+
+    _lb._DeviceHandle.__init__ = _patched_init
+    _lb._touchy_host_dev_patched = True
+
+
+
 class UsbTransport(Transport):
     """pyusb-backed transport over the device's vendor-specific interface.
 
@@ -102,6 +190,11 @@ class UsbTransport(Transport):
         # libusb installed (e.g. CI lint stages).
         import usb.core
         import usb.util
+
+        # Wire up the /host/dev fallback for sandboxed environments where
+        # newly-attached devices don't appear under /dev/bus/usb. No-op
+        # outside such environments.
+        _install_host_dev_fallback()
 
         self._usb_core = usb.core
         self._usb_util = usb.util
