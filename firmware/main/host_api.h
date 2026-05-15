@@ -9,7 +9,7 @@
 //   * Response (device -> host, bulk IN)  : `touchy.Response` envelopes
 //   * Event    (device -> host, interrupt IN, future)
 //
-// Wire framing is a u16 LE length prefix followed by the protobuf payload.
+// Wire framing is a u32 LE length prefix followed by the protobuf payload.
 // Stage 13 implements just `Sys_Version_Get`; other commands respond with
 // `RESULT_NOT_SUPPORTED` until subsequent stages fill them in.
 

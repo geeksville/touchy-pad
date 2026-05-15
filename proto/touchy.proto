@@ -14,7 +14,7 @@
 //
 // Wire format: each message is a length-prefixed serialised `Command`,
 // `Response`, or `Event` (proto3 binary). The length prefix is a single
-// little-endian uint16 carrying the byte count of the following payload.
+// little-endian uint32 carrying the byte count of the following payload.
 //
 // proto3 is used so the file is consumable both by Python (host CLI/library
 // via `protoc --python_out`) and by the embedded firmware via nanopb. See

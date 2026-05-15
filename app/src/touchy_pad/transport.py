@@ -2,7 +2,7 @@
 
 The wire format is length-prefixed protobuf framing (see
 ``docs/host-api.md``); each protobuf message is preceded by a single
-little-endian uint16 giving the byte count of the payload.
+little-endian uint32 giving the byte count of the payload.
 
 This module exposes:
     - ``Transport``: the abstract base class.
@@ -20,9 +20,12 @@ from abc import ABC, abstractmethod
 
 from .usb_ids import PID, VENDOR_INTERFACE_CLASS, VID
 
-# Wire framing: u16 little-endian length prefix, then payload bytes.
-_LEN_STRUCT = struct.Struct("<H")
-_MAX_FRAME = 0xFFFF
+# Wire framing: u32 little-endian length prefix, then payload bytes.
+# The header is 4 bytes, hosting a payload size up to 4 GiB; in practice
+# we cap accepted frames at _MAX_FRAME bytes so a corrupt or malicious
+# length field can't make us allocate a huge buffer.
+_LEN_STRUCT = struct.Struct("<I")
+_MAX_FRAME = 0x10_0000  # 1 MiB
 
 
 class TransportError(Exception):
@@ -70,7 +73,9 @@ class Transport(ABC):
 
 def _pack(payload: bytes) -> bytes:
     if len(payload) > _MAX_FRAME:
-        raise TransportError(f"payload too large for u16 frame: {len(payload)} bytes")
+        raise TransportError(
+            f"payload exceeds {_MAX_FRAME}-byte cap: {len(payload)} bytes"
+        )
     return _LEN_STRUCT.pack(len(payload)) + payload
 
 
@@ -257,7 +262,7 @@ class UsbTransport(Transport):
     def recv_response(self, timeout_ms: int = 2000) -> bytes:
         # Pull a frame's worth of bytes. The endpoint's wMaxPacketSize is
         # typically 64 (full-speed) or 512 (high-speed); responses fit easily
-        # below the u16 limit, so one read is enough.
+        # below _MAX_FRAME, so one read is enough.
         size = max(self._ep_in.wMaxPacketSize, _MAX_FRAME + _LEN_STRUCT.size)
         buf = bytes(self._ep_in.read(size, timeout=timeout_ms))
         return _unpack(buf)

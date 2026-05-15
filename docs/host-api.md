@@ -108,17 +108,19 @@ configuration for `bInterfaceClass == 0xFF`. See
 ### Wire framing
 
 Every protobuf message — `Command`, `Response`, or `Event` — is prefixed by
-a single little-endian `uint16` carrying the length of the serialised
-payload in bytes. The maximum representable payload (65535 bytes) is
-deliberately larger than any `wMaxPacketSize`, so large messages (notably
-`ImageSaveCmd`) are sent as multiple successive USB transfers and the
+a single little-endian `uint32` carrying the length of the serialised
+payload in bytes. The header is always 4 bytes wide and represents
+payloads up to 4 GiB; in practice each side caps the frame at a small
+multiple of the largest `Command` (currently ~32 KiB for `ImageSaveCmd`)
+so a corrupt or malicious length field cannot force a huge allocation.
+Large messages are sent as multiple successive USB transfers and the
 receiver concatenates them. A USB short packet (transfer length not a
 multiple of `wMaxPacketSize`, including a zero-length packet) terminates a
 frame.
 
 ```
 +---------------------------+---------------------------+
-| u16 length (little-endian)| protobuf payload (length B)|
+| u32 length (little-endian)| protobuf payload (length B)|
 +---------------------------+---------------------------+
 ```
 

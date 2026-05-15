@@ -62,11 +62,13 @@ static bool vendor_read_exact(uint8_t *dst, size_t want)
 
 static bool vendor_write_frame(const uint8_t *payload, size_t len)
 {
-    if (len > 0xFFFF) {
-        ESP_LOGE(TAG, "response too large (%u bytes) — dropping", (unsigned)len);
-        return false;
-    }
-    uint8_t hdr[2] = { (uint8_t)(len & 0xFF), (uint8_t)((len >> 8) & 0xFF) };
+    // u32 LE length prefix; see docs/host-api.md.
+    uint8_t hdr[4] = {
+        (uint8_t)(len & 0xFF),
+        (uint8_t)((len >> 8) & 0xFF),
+        (uint8_t)((len >> 16) & 0xFF),
+        (uint8_t)((len >> 24) & 0xFF),
+    };
 
     // tud_vendor_write returns the number of bytes accepted into the FIFO;
     // it may be less than requested if the FIFO is full. Loop until done.
@@ -164,12 +166,15 @@ static void host_api_task(void *)
             continue;
         }
 
-        // Read the 2-byte length prefix.
-        uint8_t hdr[2];
+        // Read the 4-byte length prefix.
+        uint8_t hdr[4];
         if (!vendor_read_exact(hdr, sizeof(hdr))) continue;
-        uint16_t payload_len = (uint16_t)hdr[0] | ((uint16_t)hdr[1] << 8);
+        uint32_t payload_len = (uint32_t)hdr[0]
+                             | ((uint32_t)hdr[1] << 8)
+                             | ((uint32_t)hdr[2] << 16)
+                             | ((uint32_t)hdr[3] << 24);
         if (payload_len > sizeof(s_rx_buf)) {
-            ESP_LOGE(TAG, "frame too large (%u bytes), dropping", payload_len);
+            ESP_LOGE(TAG, "frame too large (%u bytes), dropping", (unsigned)payload_len);
             // Drain payload to resync. Can't selectively skip from
             // tud_vendor_read so just read into the buffer in chunks and
             // toss them.
