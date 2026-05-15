@@ -33,4 +33,4 @@ Main new features? Much easier scripting than through streamcontroller - allow a
 
 * tactile precut sticker for screen overlay?
 * figure out best way to mount haptics for best effect
-* Increase CPU, FLASH and RAM speeds to the max.  currently v2 picked slow/safe defaults
+* Increase CPU, FLASH and RAM speeds to the max.  currently the firmware picks slow/safe defaults

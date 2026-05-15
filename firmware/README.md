@@ -1,7 +1,6 @@
-# touchy-pad v2 — ESP-IDF firmware
+# touchy-pad — ESP-IDF firmware
 
-A re-implementation of [`firmware/`](../firmware) (the PlatformIO + Arduino-core
-version) using the **raw ESP-IDF toolchain**, with first-class support for
+ESP-IDF firmware with first-class support for
 multiple ESP32-S3 touch-LCD development boards.
 
 ## Supported boards
@@ -31,7 +30,7 @@ What it does today (parity with v1 Stage 10):
 ## Project layout
 
 ```
-v2/
+firmware/
 ├── CMakeLists.txt              # selects BOARD, layers sdkconfig.defaults
 ├── sdkconfig.defaults          # shared defaults (USB/USJ/LVGL/log)
 ├── README.md                   # ← this file
@@ -116,7 +115,7 @@ In every shell where you build:
 ## Build / flash
 
 ```bash
-cd v2
+cd firmware
 
 # Set the board once per checkout (writes BOARD to CMakeCache).
 idf.py -DBOARD=waveshare_s3_lcd_7b set-target esp32s3       # 7" Waveshare
@@ -129,7 +128,7 @@ idf.py -p /host/dev/ttyACM0 flash monitor
 ```
 
 After flashing, plug the **OTG** USB-C port of the board into the host
-computer. You should see VID `0x4403` / PID `0x1002` ("Touchy-Pad v2") show
+computer. You should see VID `0x4403` / PID `0x1002` ("Touchy-Pad") show
 up as a HID mouse.
 
 ### Switching boards
