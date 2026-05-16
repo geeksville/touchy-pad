@@ -6,6 +6,7 @@
 
 #include "esp_littlefs.h"
 #include "esp_log.h"
+#include "lvgl.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -58,6 +59,128 @@ static bool ensure_parents(const std::string &full)
 }
 
 // ---------------------------------------------------------------------------
+// LVGL filesystem driver (letter 'F')
+// ---------------------------------------------------------------------------
+//
+// LVGL paths like "F:screens/home.xml" are rewritten to
+// /littlefs/from_host/screens/home.xml and serviced via the POSIX VFS that
+// esp_littlefs already plugs into newlib. The driver is registered once
+// from Fs::begin(). All file/dir handles flow straight through to libc.
+
+static const char *FROM_HOST = "/littlefs/from_host/";
+
+static std::string lv_resolve(const char *path)
+{
+    if (!path) return FROM_HOST;
+    while (*path == '/') path++;  // tolerate "F:/foo" as well as "F:foo"
+    return std::string(FROM_HOST) + path;
+}
+
+static lv_fs_res_t errno_to_lv()
+{
+    switch (errno) {
+    case 0:      return LV_FS_RES_OK;
+    case ENOENT: return LV_FS_RES_NOT_EX;
+    case EACCES: return LV_FS_RES_DENIED;
+    case ENOSPC: return LV_FS_RES_FULL;
+    default:     return LV_FS_RES_FS_ERR;
+    }
+}
+
+static void *lv_open_cb(lv_fs_drv_t *, const char *path, lv_fs_mode_t mode)
+{
+    const char *m = "rb";
+    if ((mode & LV_FS_MODE_WR) && (mode & LV_FS_MODE_RD)) m = "rb+";
+    else if (mode & LV_FS_MODE_WR)                       m = "wb";
+    const std::string full = lv_resolve(path);
+    FILE *f = fopen(full.c_str(), m);
+    if (!f) {
+        ESP_LOGW(TAG, "lv_open(%s, %s) failed: %s", full.c_str(), m, strerror(errno));
+    }
+    return f;
+}
+
+static lv_fs_res_t lv_close_cb(lv_fs_drv_t *, void *f)
+{
+    return fclose((FILE *)f) == 0 ? LV_FS_RES_OK : errno_to_lv();
+}
+
+static lv_fs_res_t lv_read_cb(lv_fs_drv_t *, void *f, void *buf, uint32_t btr, uint32_t *br)
+{
+    size_t got = fread(buf, 1, btr, (FILE *)f);
+    if (br) *br = (uint32_t)got;
+    return ferror((FILE *)f) ? errno_to_lv() : LV_FS_RES_OK;
+}
+
+static lv_fs_res_t lv_write_cb(lv_fs_drv_t *, void *f, const void *buf, uint32_t btw, uint32_t *bw)
+{
+    size_t wrote = fwrite(buf, 1, btw, (FILE *)f);
+    if (bw) *bw = (uint32_t)wrote;
+    return wrote == btw ? LV_FS_RES_OK : errno_to_lv();
+}
+
+static lv_fs_res_t lv_seek_cb(lv_fs_drv_t *, void *f, uint32_t pos, lv_fs_whence_t whence)
+{
+    int w = (whence == LV_FS_SEEK_CUR) ? SEEK_CUR
+          : (whence == LV_FS_SEEK_END) ? SEEK_END
+          :                              SEEK_SET;
+    return fseek((FILE *)f, (long)pos, w) == 0 ? LV_FS_RES_OK : errno_to_lv();
+}
+
+static lv_fs_res_t lv_tell_cb(lv_fs_drv_t *, void *f, uint32_t *pos_p)
+{
+    long p = ftell((FILE *)f);
+    if (p < 0) return errno_to_lv();
+    if (pos_p) *pos_p = (uint32_t)p;
+    return LV_FS_RES_OK;
+}
+
+static void *lv_dir_open_cb(lv_fs_drv_t *, const char *path)
+{
+    const std::string full = lv_resolve(path);
+    DIR *d = opendir(full.c_str());
+    if (!d) ESP_LOGW(TAG, "lv_diropen(%s) failed: %s", full.c_str(), strerror(errno));
+    return d;
+}
+
+static lv_fs_res_t lv_dir_read_cb(lv_fs_drv_t *, void *rd, char *fn, uint32_t fn_len)
+{
+    // LVGL convention: prefix directory names with '/'.
+    while (struct dirent *ent = readdir((DIR *)rd)) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        if (ent->d_type == DT_DIR) snprintf(fn, fn_len, "/%s", ent->d_name);
+        else                       snprintf(fn, fn_len, "%s",  ent->d_name);
+        return LV_FS_RES_OK;
+    }
+    if (fn_len > 0) fn[0] = '\0';
+    return LV_FS_RES_OK;
+}
+
+static lv_fs_res_t lv_dir_close_cb(lv_fs_drv_t *, void *rd)
+{
+    return closedir((DIR *)rd) == 0 ? LV_FS_RES_OK : errno_to_lv();
+}
+
+static void register_lvgl_driver()
+{
+    static lv_fs_drv_t drv;  // must outlive the driver registration
+    lv_fs_drv_init(&drv);
+    drv.letter       = 'F';
+    drv.cache_size   = 0;
+    drv.open_cb      = lv_open_cb;
+    drv.close_cb     = lv_close_cb;
+    drv.read_cb      = lv_read_cb;
+    drv.write_cb     = lv_write_cb;
+    drv.seek_cb      = lv_seek_cb;
+    drv.tell_cb      = lv_tell_cb;
+    drv.dir_open_cb  = lv_dir_open_cb;
+    drv.dir_read_cb  = lv_dir_read_cb;
+    drv.dir_close_cb = lv_dir_close_cb;
+    lv_fs_drv_register(&drv);
+    ESP_LOGI(TAG, "registered LVGL filesystem driver 'F:' -> %s", FROM_HOST);
+}
+
+// ---------------------------------------------------------------------------
 // Fs implementation
 // ---------------------------------------------------------------------------
 
@@ -95,6 +218,10 @@ bool Fs::begin()
             ESP_LOGW(TAG, "mkdir(%s) failed: %s", d, strerror(errno));
         }
     }
+
+    // Stage 15: hook the LVGL filesystem abstraction up to /littlefs/from_host
+    // so XML loaders can use "F:..." paths without leaking the mount prefix.
+    register_lvgl_driver();
 
     _mounted = true;
     return true;

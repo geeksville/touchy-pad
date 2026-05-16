@@ -23,8 +23,11 @@
 class Fs {
 public:
     // Mount the storage partition at /littlefs, formatting on first boot
-    // and creating /prefs and /from_host if missing. Returns true on
-    // success. Subsequent calls are no-ops.
+    // and creating /prefs and /from_host if missing. Also registers an
+    // LVGL filesystem driver under identifier letter 'F' that maps
+    // `"F:path/to/foo"` to `/littlefs/from_host/path/to/foo` (stage 15),
+    // so XML/image loaders can resolve host-uploaded assets directly.
+    // Returns true on success. Subsequent calls are no-ops.
     bool begin();
 
     // Read an entire file as a UTF-8 string. Returns empty string on error.

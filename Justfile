@@ -106,6 +106,9 @@ app-build: build-proto-py
 app-run *ARGS: build-proto-py
     cd app && poetry run touchy {{ARGS}}
 
+show-screen: build-proto-py
+    cd app && poetry run touchy writefiles ../ui
+
 # ---------------------------------------------------------------------------
 # Aggregate convenience targets
 # ---------------------------------------------------------------------------

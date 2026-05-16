@@ -109,6 +109,13 @@ Include logging output for key FS operations
 ### Extend host app/AI to allow file writing
 * Add a new command line option "writefiles SRCDIR".  Which should first do a FileReset and then recursively for every file in SRCDIR do FileSave.
 
+## Stage 15: update lvgl screens automatically ✓ DONE
+
+* in FS.cpp add a lv_fs_drv implementation per https://lvgl.io/docs/open/main-modules/fs.  It should use our FS instance to read files it needs, but it should be always looking in /from_host for its files.  Improve FS as needed so this can work. Use indenfier letter "F" for this filesystem in lvgl terminology.
+* In a new file screens.cpp add a function called register_from_file(path).  It should look in the FS for a file at that path.  if the filename suffix ends with .xml call lv_xml_register_component_from_file per https://lvgl.io/docs/open/xml/integration/xml#registering-manually
+* in the FileSave handling after writing the file call register_from_file on it
+* implement ScreenLoad in the python code and the device code.  The python app cmd line will look something like "screenload SCREENNAME".  The device code will need to use lv_screen_load per https://lvgl.io/docs/open/common-widget-features/screens
+
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 
 Use lv_buttonmatrix to provide matrixes of buttons

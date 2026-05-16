@@ -6,7 +6,13 @@ dependencies:
   idf: ">=5.3"
 
   # LVGL graphics library (v9.5+).
-  lvgl/lvgl: "~9.5.0"
+  # Pinned to 9.3.x: this is the last LVGL release that still ships the
+  # runtime XML parser / loader (`src/others/xml`, `lv_xml_register_*`,
+  # `lv_xml_create_screen`). Upstream removed the XML loader in v9.4 and it
+  # is still absent in v9.5.0 — see https://github.com/lvgl/lvgl/pull/9565.
+  # touchy-pad's stage-15 design (docs/design.md) depends on that loader,
+  # so we stay on 9.3 until the loader returns or we change formats.
+  lvgl/lvgl: "~9.3.0"
 
   # Bridge between esp_lcd / esp_lcd_touch and LVGL (creates the display +
   # indev objects, runs the LVGL task, anti-tearing, etc).

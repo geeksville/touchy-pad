@@ -5,6 +5,7 @@
 #include "host_api.h"
 
 #include "fs.h"
+#include "screens.h"
 #include "touchy.pb.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
@@ -149,13 +150,25 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
                                      fs_cmd.data.bytes,
                                      fs_cmd.data.size)) {
             resp->code = touchy_ResultCode_RESULT_OK;
+            // Stage 15: keep the LVGL XML registry in sync with whatever
+            // the host just uploaded. The helper no-ops for non-xml files.
+            screens_register_from_file(fs_cmd.path);
         } else {
             resp->code = touchy_ResultCode_RESULT_IO_ERROR;
         }
         break;
     }
 
-    case touchy_Command_screen_load_tag:
+    case touchy_Command_screen_load_tag: {
+        const auto &sl = cmd->cmd.screen_load;
+        if (screens_load(sl.name)) {
+            resp->code = touchy_ResultCode_RESULT_OK;
+        } else {
+            resp->code = touchy_ResultCode_RESULT_NOT_FOUND;
+        }
+        break;
+    }
+
     case touchy_Command_screen_wake_tag:
     case touchy_Command_screen_sleep_timeout_tag:
     case touchy_Command_event_consume_tag:

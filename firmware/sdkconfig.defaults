@@ -50,6 +50,18 @@ CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_USE_PERF_MONITOR=n
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_30=y
+# Stage 15: runtime XML loader (lv_xml_register_component_from_file etc.).
+# Removed upstream in v9.4 — we pin lvgl to 9.3.x in main/idf_component.yml
+# so this is available. lv_xml_init() is called once from screens.cpp.
+CONFIG_LV_USE_XML=y
+# The XML loader unconditionally references the radial/conical gradient
+# fields under lv_grad_dsc_t.params, which only exist when the complex
+# software gradients are compiled in. Enable them here so the firmware
+# builds with LV_USE_XML=y.
+CONFIG_LV_USE_DRAW_SW_COMPLEX_GRADIENTS=y
+# Don't compile lvgl's examples — some of them reference fonts we don't
+# enable (e.g. montserrat_18), so they fail to build.
+CONFIG_LV_BUILD_EXAMPLES=n
 
 # ----- Log -----
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

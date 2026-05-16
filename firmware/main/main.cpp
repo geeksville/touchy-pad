@@ -5,6 +5,7 @@
 #include "board.h"
 #include "display.h"
 #include "fs.h"
+#include "screens.h"
 #include "touch.h"
 #include "usb_hid.h"
 #include "trackpad_widget.h"
@@ -36,6 +37,11 @@ extern "C" void app_main(void)
     board_init();
     lv_display_t *disp = display_init();
     esp_lcd_touch_handle_t tp = touch_init(disp);
+
+    // Bring up the XML loader now that LVGL is fully alive. host_api
+    // FileSave handlers call screens_register_from_file() — keep this
+    // before the dispatcher task gets a chance to run any host commands.
+    screens_init();
 
     // Build the LVGL UI under the port lock. The widget hooks itself into
     // LVGL's input events; no further driving needed from this task.
