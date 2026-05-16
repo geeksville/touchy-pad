@@ -5,6 +5,7 @@
 #include "host_api.h"
 
 #include "fs.h"
+#include "screens.h"
 #include "touchy.pb.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
@@ -134,6 +135,7 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         // Wipe everything the host previously uploaded. Device-local prefs
         // under /littlefs/prefs are intentionally preserved.
         if (Fs::instance().removeTree("from_host")) {
+            screens_clear();
             resp->code = touchy_ResultCode_RESULT_OK;
         } else {
             resp->code = touchy_ResultCode_RESULT_IO_ERROR;
@@ -148,6 +150,10 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         if (Fs::instance().writeFile(path,
                                      fs_cmd.data.bytes,
                                      fs_cmd.data.size)) {
+            // Let the screen registry pick up "screens/*.pb" uploads. The
+            // registry reads back through Fs, so the post-write hook is
+            // the right place rather than passing bytes around.
+            screens_register_from_file(fs_cmd.path);
             resp->code = touchy_ResultCode_RESULT_OK;
         } else {
             resp->code = touchy_ResultCode_RESULT_IO_ERROR;
@@ -156,6 +162,11 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
     }
 
     case touchy_Command_screen_load_tag:
+        resp->code = screens_load(cmd->cmd.screen_load.name)
+                         ? touchy_ResultCode_RESULT_OK
+                         : touchy_ResultCode_RESULT_NOT_FOUND;
+        break;
+
     case touchy_Command_screen_wake_tag:
     case touchy_Command_screen_sleep_timeout_tag:
     case touchy_Command_event_consume_tag:

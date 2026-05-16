@@ -50,13 +50,11 @@ message FileResetCmd {
 
 // Write an arbitrary file to the device filesystem. The device inspects the
 // file extension to decide how to handle the content after writing:
-//   * ".xml"  — treated as an lv_xml resource; if `path` matches the
-//               currently displayed screen it is reloaded immediately.
-//   * images  — any extension LVGL can decode (PNG, JPEG, bin) is registered
-//               with lv_xml_register_image() so it can be referenced in XML.
-//   * other   — written verbatim; no post-processing.
+//   * "screens/<name>.pb" — decoded as a `Screen` message (see below) and
+//                           cached for `ScreenLoadCmd`.
+//   * other extensions    — written verbatim; no post-processing.
 message FileSaveCmd {
-    string path = 1;      // virtual filesystem path, e.g. "screens/home.xml"
+    string path = 1;      // virtual filesystem path, e.g. "screens/home.pb"
     bytes  data = 2;      // file payload (text or binary)
 }
 
@@ -167,6 +165,138 @@ message Event {
         // A full event, delivered inline when it fits.
         LvEvent  lv          = 2;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Stage 15 — declarative screen layouts (host-uploaded, on-device rendered)
+// ---------------------------------------------------------------------------
+//
+// A `Screen` describes a single LVGL screen as a flat list of `Widget`s
+// plus an optional `Layout`. The host serialises one `Screen` per file
+// and uploads it via `FileSaveCmd` to `screens/<name>.pb`; the device
+// caches the encoded bytes and instantiates LVGL objects when
+// `ScreenLoadCmd("<name>")` arrives.
+//
+// See docs/why-not-xml.md for the rationale behind protobuf over XML.
+
+// Pixel-space placement. When the parent screen has Layout.kind == ABSOLUTE
+// (the default) all four fields are honoured; under ROW/COL/GRID, only `w`
+// and `h` are used (a zero value means "size to content").
+message Rect {
+    int32 x = 1;
+    int32 y = 2;
+    int32 w = 3;
+    int32 h = 4;
+}
+
+// Cosmetic overrides applied via lv_obj_set_style_* on the main part of the
+// widget. Zero / unset fields fall back to LVGL's default theme value.
+//
+// Colours are packed 0xRRGGBB; the top byte is ignored.
+message Style {
+    uint32 bg_color   = 1;
+    int32  radius     = 2;
+    int32  border_w   = 3;
+    int32  pad        = 4;
+    uint32 text_color = 5;
+}
+
+// Names a host-side action to fire when a widget event happens. The device
+// forwards the event over the existing event endpoint as an `LvEvent` with
+// `user_data == event` and a per-widget `extra` payload (e.g. slider value
+// as a little-endian int32). An empty `event` disables forwarding.
+message Action {
+    string event = 1;
+}
+
+// Top-level screen layout policy. `ABSOLUTE` (the default) keeps widgets
+// positioned exactly where their `Rect.x` / `Rect.y` say. `ROW` / `COL`
+// use lv_obj_set_flex_flow; `GRID` uses an even `cols`-wide grid with
+// `gap`-pixel spacing between cells.
+message Layout {
+    enum Kind {
+        ABSOLUTE = 0;
+        ROW      = 1;
+        COL      = 2;
+        GRID     = 3;
+    }
+    Kind  kind = 1;
+    int32 cols = 2;       // GRID only
+    int32 gap  = 3;       // pixels between children (ROW/COL/GRID)
+}
+
+// ----- Widget kinds -----
+//
+// Each kind carries only the attributes that need to round-trip from the
+// authoring DSL. Visual styling lives on the enclosing `Widget.style`;
+// placement on `Widget.rect`.
+
+message Button {
+    string text     = 1;
+    Action on_click = 2;
+}
+
+message Label {
+    string text      = 1;
+    // 0 = theme default. Otherwise: closest available Montserrat size
+    // compiled into the firmware (see CONFIG_LV_FONT_MONTSERRAT_* in
+    // firmware/sdkconfig.defaults).
+    int32  font_size = 2;
+}
+
+message Slider {
+    int32  min       = 1;
+    int32  max       = 2;
+    int32  value     = 3;
+    Action on_change = 4;
+}
+
+message Switch {
+    bool   on        = 1;
+    Action on_change = 2;
+}
+
+message Image {
+    // Path to a previously-uploaded image, relative to /from_host/
+    // (e.g. "img/avatar.png"). LVGL's PNG/JPG decoders must be enabled
+    // in sdkconfig for the format used.
+    string asset = 1;
+}
+
+message Arc {
+    int32 min   = 1;
+    int32 max   = 2;
+    int32 value = 3;
+}
+
+message Spacer {
+}
+
+// A single widget inside a `Screen`. `id` is an opaque host-chosen string
+// that follows the widget into events; the device stores it via
+// `lv_obj_set_user_data` and copies it into the `user_data` field of
+// every event the widget emits.
+message Widget {
+    string id    = 1;
+    Rect   rect  = 2;
+    Style  style = 3;
+    oneof kind {
+        Button button = 10;
+        Label  label  = 11;
+        Slider slider = 12;
+        Switch toggle = 13;
+        Image  image  = 14;
+        Arc    arc    = 15;
+        Spacer spacer = 16;
+    }
+}
+
+// One on-device LVGL screen. The encoded `Screen` is what lives in
+// /from_host/screens/<name>.pb.
+message Screen {
+    string name             = 1;   // must match the filename stem
+    Layout layout           = 2;
+    repeated Widget widgets = 3;
 }
 
 // ---------------------------------------------------------------------------

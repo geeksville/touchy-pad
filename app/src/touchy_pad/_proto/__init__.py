@@ -9,22 +9,35 @@ PyPI without protoc.
 from __future__ import annotations
 
 from .touchy_pb2 import (  # noqa: F401  (re-exported)
+    Action,
+    Arc,
+    Button,
     Command,
     Event,
     EventConsumeCmd,
     EventConsumeResponse,
     FileResetCmd,
     FileSaveCmd,
+    Image,
+    Label,
+    Layout,
     LvEvent,
+    Rect,
     Response,
     ResultCode,
+    Screen,
     ScreenLoadCmd,
     ScreenSleepTimeoutCmd,
     ScreenWakeCmd,
+    Slider,
+    Spacer,
     StreamEventsCmd,
+    Style,
+    Switch,
     SysRebootBootloaderCmd,
     SysVersionGetCmd,
     SysVersionResponse,
+    Widget,
 )
 
 # Convenience aliases so callers can write `_proto.RESULT_OK` without poking

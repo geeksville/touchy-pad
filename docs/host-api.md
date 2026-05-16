@@ -17,21 +17,28 @@ Note: the event endpoint max packet size is quite small so possibly we'll just h
 
 ### Command messages
 
-Files (XML layouts, images, fonts, or any other resource) are managed via
-a single generic pair of commands. The device inspects the file extension
-after writing to decide how to post-process it (reload the active screen
-for `.xml`, register with `lv_xml_register_image()` for known image
-formats, etc.):
+Files (screen layouts, images, fonts, or any other resource) are managed
+via a single generic pair of commands. The device inspects the file
+extension after writing to decide how to post-process it:
 
-* File_Reset - Discard all files on the device filesystem
-* File_Save(path, data) - Write a file at `path`; `data` is raw bytes (text or binary).
-  Examples: `File_Save("screens/home.xml", xml_string)`, `File_Save("img/avatar.png", png_bytes)`
-* Screen_Load(screen_name) - Set the currently displayed screen
-* Screen_Wake - Turn backlight on
-* Screen_Sleep_Timeout(msec) - Auto sleep after x ms of non-use
-* Event_Consume - Pop an event from the device event queue (returns the event message or empty)
-* Sys_Reboot_Bootloader - Reboot into bootloader (for firmware update)
-* Sys_Version_Get - Get the protocol and firmware version info 
+* `screens/*.pb` — decoded as a `touchy.Screen` protobuf (see
+  [Stage 15](../docs/why-not-xml.md)) and cached for `Screen_Load`.
+* anything else — written verbatim; reachable via the LVGL `F:` drive
+  letter so image/font loaders can resolve it on demand.
+
+Commands:
+
+* `File_Reset` — Discard all files on the device filesystem (also clears
+  the in-memory screen registry).
+* `File_Save(path, data)` — Write `data` (raw bytes — text or binary) at
+  `path`. Examples: `File_Save("screens/home.pb", screen_proto)`,
+  `File_Save("img/avatar.png", png_bytes)`.
+* `Screen_Load(screen_name)` — Activate a previously-uploaded screen.
+* `Screen_Wake` — Turn backlight on.
+* `Screen_Sleep_Timeout(msec)` — Auto sleep after `msec` of inactivity.
+* `Event_Consume` — Pop an event from the device event queue.
+* `Sys_Reboot_Bootloader` — Reboot into bootloader (firmware update).
+* `Sys_Version_Get` — Get the protocol and firmware version info.
 
 ### Command responses
 
@@ -40,29 +47,20 @@ formats, etc.):
 
 ### Event endpoint messages
 
-* Event_LV - A wrapped version of an LVGL event.
-FIXME, possibly instead just forward a lightly wrapped version of lv_event_type.  The host PC can populate event_cb nodes with a custom user_data so that they can then map the received lv_event_t/trigger/user_data and handle it as they wish (for any needed host side handling).  They would specify callback as "host_handled_event_cb".
+* `Event_LV` — A lightly-wrapped LVGL event. The firmware populates
+  `LvEvent.user_data` with the host-assigned widget id (and, where
+  relevant, the `Action.event` string from the layout), so the host can
+  route incoming events back to its application-level callbacks without
+  the device needing to know about them. `LvEvent.code` mirrors
+  `lv_event_code_t`; `extra` carries any per-event payload (e.g. a slider
+  value).
 
-```xml
-<view>
-    <lv_button width="200" height="100">
-        <event_cb callback="host_handled_cb" trigger="clicked" user_data="someuniqueid-assigned-by-host"/>
-        <lv_label text="Hello"/>
-    </lv_button>
-</view>
-```
+The Stage-15 host-side DSL in [`touchy_pad.screens`](../app/src/touchy_pad/screens.py)
+is the supported way to author layouts; see
+[`docs/why-not-xml.md`](why-not-xml.md) for why we don't use XML.
 
-* If the host wants device side HID-event macros, that could possibly be done by just doing something like:
-```xml
-<view>
-    <lv_button width="200" height="100">
-        <event_cb callback="event_macro_cb" trigger="clicked" user_data="somebase64-string-of-event-codes"/>
-        <lv_label text="Hello"/>
-    </lv_button>
-</view>
-```
-
-See https://lvgl.io/docs/open/xml/ui_elements/events, https://lvgl.io/docs/open/common-widget-features/events#fields-of-lv_event_t and https://lvgl.io/docs/open/api/core/lv_event_h for more info
+See https://lvgl.io/docs/open/common-widget-features/events#fields-of-lv_event_t
+and https://lvgl.io/docs/open/api/core/lv_event_h for more info.
 
 ## USB descriptor layout
 

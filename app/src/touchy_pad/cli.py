@@ -118,6 +118,98 @@ def events() -> None:
             pass
 
 
+# ---------------------------------------------------------------------------
+# Screens — protobuf-encoded layouts (see touchy_pad.screens)
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def screens() -> None:
+    """Author and upload declarative screen layouts."""
+
+
+@screens.command("push")
+@click.argument(
+    "script",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--load",
+    "load_name",
+    metavar="NAME",
+    help="After pushing, immediately switch to this screen.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Compile the script and report what would be uploaded; "
+         "do not talk to a device.",
+)
+def screens_push(script: Path, load_name: str | None, dry_run: bool) -> None:
+    """Compile SCRIPT (a Python file using touchy_pad.screens) and upload
+    every Screen it defines to the device as screens/<name>.pb.
+    """
+    # Imported lazily so `touchy --help` doesn't pull protobuf in unless
+    # the user actually invokes the screens subgroup.
+    from .screens import _collect_from_script
+
+    found = _collect_from_script(script)
+    if not found:
+        click.echo(f"warning: {script} defined no Screen objects", err=True)
+        return
+
+    if dry_run:
+        for s in found:
+            data = s.to_bytes()
+            click.echo(f"would upload screens/{s.name}.pb ({len(data)} bytes, "
+                       f"{len(s.widgets)} widgets)")
+        if load_name:
+            click.echo(f"would load screen {load_name!r}")
+        return
+
+    with _client() as c:
+        for s in found:
+            data = s.to_bytes()
+            c.file_save(f"screens/{s.name}.pb", data)
+            click.echo(f"sent screens/{s.name}.pb ({len(data)} bytes)")
+        if load_name:
+            c.screen_load(load_name)
+            click.echo(f"loaded screen {load_name!r}")
+
+
+@screens.command("demo")
+@click.option(
+    "--name",
+    default="demo",
+    show_default=True,
+    help="Screen name to register on the device.",
+)
+@click.option(
+    "--no-load",
+    is_flag=True,
+    help="Upload the screen but do not switch to it.",
+)
+def screens_demo(name: str, no_load: bool) -> None:
+    """Upload a 4-widget sample screen and switch to it.
+
+    Smoke test for the stage-15 layout pipeline: builds a screen with a
+    label, button, slider, and switch via the Python DSL, sends it as
+    ``screens/<name>.pb``, and (unless ``--no-load``) calls
+    ``screen-load`` to activate it.
+    """
+    from .screens import build_demo_screen
+
+    s = build_demo_screen(name)
+    data = s.to_bytes()
+    with _client() as c:
+        c.file_save(f"screens/{s.name}.pb", data)
+        click.echo(f"sent screens/{s.name}.pb ({len(data)} bytes, "
+                   f"{len(s.widgets)} widgets)")
+        if not no_load:
+            c.screen_load(s.name)
+            click.echo(f"loaded screen {s.name!r}")
+
+
 @cli.command("reboot-bootloader")
 def reboot_bootloader() -> None:
     """Reboot the device into its USB DFU bootloader."""

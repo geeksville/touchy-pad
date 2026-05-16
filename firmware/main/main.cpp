@@ -5,6 +5,7 @@
 #include "board.h"
 #include "display.h"
 #include "fs.h"
+#include "screens.h"
 #include "touch.h"
 #include "usb_hid.h"
 #include "trackpad_widget.h"
@@ -29,6 +30,10 @@ extern "C" void app_main(void)
     // Mount the on-device filesystem (stage 14). host_api command handlers
     // expect /littlefs/from_host to exist by the time they run.
     Fs::instance().begin();
+
+    // Initialise the host-uploaded screen registry (stage 15). Idempotent;
+    // safe to call before LVGL is up because no LVGL APIs are touched yet.
+    screens_init();
 
     // Give enough time for user to open a debug serial port to our board
     vTaskDelay(pdMS_TO_TICKS(5000));

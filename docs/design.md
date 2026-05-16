@@ -109,6 +109,25 @@ Include logging output for key FS operations
 ### Extend host app/AI to allow file writing
 * Add a new command line option "writefiles SRCDIR".  Which should first do a FileReset and then recursively for every file in SRCDIR do FileSave.
 
+## Stage 15: support host driven screen creation/management — DONE
+
+Implemented per [this plan](why-not-xml.md): the host serialises a
+`touchy.Screen` protobuf per layout, uploads it with `FileSave` to
+`screens/<name>.pb`, and switches to it with `ScreenLoad`. The firmware
+walks the decoded message and instantiates the corresponding LVGL widgets
+directly via its C API — no XML, no `lv_xml`, no `lui-xml` port required.
+
+* Schema: `proto/touchy.proto` (`Screen`, `Widget`, `Layout`, `Style`,
+  `Rect`, `Action`, plus widget kinds).
+* Host DSL: [`touchy_pad.screens`](../app/src/touchy_pad/screens.py)
+  (`Screen`, `button(...)`, `label(...)`, `slider(...)`, `toggle(...)`,
+  `image(...)`, `arc(...)`, `spacer(...)`, layout helpers
+  `absolute()` / `row()` / `col()` / `grid(cols, gap)`).
+* CLI: `touchy screens push SCRIPT [--load NAME]` runs the Python file,
+  collects every `Screen` instance created, uploads them, and optionally
+  switches to one.
+* Firmware: [`firmware/main/screens.cpp`](../firmware/main/screens.cpp).
+
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 
 Use lv_buttonmatrix to provide matrixes of buttons

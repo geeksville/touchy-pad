@@ -22,3 +22,21 @@ touchy.SysVersionResponse.firmware_version_str  max_size:32
 # unique identifier; extra is a per-event scratch buffer.
 touchy.LvEvent.user_data               max_size:32
 touchy.LvEvent.extra                   max_size:32
+
+# Stage 15 — declarative screen layouts.
+#
+# `Widget.id` and `Action.event` are passed back to the host as the
+# `user_data` of any forwarded LvEvent, so they share that field's 32-byte
+# budget. Other text fields are sized generously enough for typical
+# button-grid / synth-strip layouts.
+touchy.Action.event                    max_size:32
+touchy.Button.text                     max_size:64
+touchy.Label.text                      max_size:128
+touchy.Image.asset                     max_size:64
+touchy.Widget.id                       max_size:32
+touchy.Screen.name                     max_size:32
+
+# A single screen holds at most this many widgets. Bumping this grows the
+# decoded `Screen` struct linearly (~256 bytes per widget); the encoded
+# .pb files stay small (variable-length).
+touchy.Screen.widgets                  max_count:64
