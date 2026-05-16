@@ -128,6 +128,20 @@ directly via its C API — no XML, no `lv_xml`, no `lui-xml` port required.
   switches to one.
 * Firmware: [`firmware/main/screens.cpp`](../firmware/main/screens.cpp).
 
+## Stage 16: Button behaviors
+
+Let screen elements have optional Actions which can be attached to things like button-press or control-changed (for checkbox or slider).  For any widget that supports Actions (on-press, on-changed) keep an array of Actions.
+
+Variants of actions:
+
+* ActionMacro: (handled entirely device side) An array of USB HID event codes are in the protobuf, send them one after the other with a small (10ms?) delay.  Used to simulate arbitrary key press sequences when a button press occurs.
+* ActionHost: Contains a uint32 code that is sent to the python side for handling (along with any other relevant extras (control-value?)).  Host side python library assigns those codes so that it can find and run the corresponding correct host-side python handler function (which will be provided by the API client)
+(other action types might be added in the future)
+
+## Stage 17: Touchpad widget cleanup
+
+* Move our existing touchpad widget proof of concept device code into a python accessible/protobuf configured Touchpad widget.  Any user touches inside that widget will be used to send mouse/touchpad HID events to the host.
+
 ## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
 
 Use lv_buttonmatrix to provide matrixes of buttons
