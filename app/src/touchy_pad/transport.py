@@ -197,12 +197,6 @@ def _install_host_dev_fallback() -> None:
 
         self.handle = _lb._libusb_device_handle()
         self.devid = dev.devid
-        # Detach kernel drivers from every plausible interface number on
-        # this device's fd, claiming each one for us. Has to happen on
-        # the fd we hand to libusb (claims are per-fd), and must happen
-        # before libusb starts driving the device.
-        for ifnum in range(8):
-            _usbfs_disconnect_claim(fd, ifnum)
         rv = lib.libusb_wrap_sys_device(None, fd, ctypes.byref(self.handle))
         if rv < 0:
             os.close(fd)
@@ -210,7 +204,9 @@ def _install_host_dev_fallback() -> None:
             # familiar error type.
             raise _lb.USBError(_lb._strerror(rv), rv, _lb._libusb_errno.get(rv))
         # libusb has taken ownership of fd — it'll be closed by libusb_close
-        # on dispose. Stash it for introspection only.
+        # on dispose. Stash it so the patched claim_interface below can
+        # issue the per-interface USBDEVFS_DISCONNECT_CLAIM on the same fd
+        # libusb is using for I/O.
         self._touchy_host_fd = fd  # type: ignore[attr-defined]
 
     _lb._DeviceHandle.__init__ = _patched_init
@@ -226,14 +222,23 @@ def _install_host_dev_fallback() -> None:
     _orig_release = _lb._LibUSB.release_interface
 
     def _patched_claim(self_be, dev_handle, intf):  # noqa: ANN001
+        # On wrapped sys-device handles, do the per-interface usbfs
+        # DISCONNECT_CLAIM ourselves *only* for the interface pyusb is
+        # actually claiming (the vendor interface). Doing this in a
+        # blanket loop at handle-open time would also detach the kernel
+        # driver from the HID mouse/keyboard interfaces, leaving the host
+        # without working USB mouse input for the lifetime of the CLI.
+        fd = getattr(dev_handle, "_touchy_host_fd", None)
+        if fd is not None:
+            _usbfs_disconnect_claim(fd, intf)
         try:
             _orig_claim(self_be, dev_handle, intf)
         except _lb.USBError as exc:
             if getattr(exc, "errno", None) != _LIBUSB_ERROR_NOT_FOUND:
                 raise
-            if not hasattr(dev_handle, "_touchy_host_fd"):
+            if fd is None:
                 raise
-            # Already claimed via usbfs ioctl; nothing to do.
+            # Already claimed via usbfs ioctl above; nothing to do.
 
     def _patched_release(self_be, dev_handle, intf):  # noqa: ANN001
         try:
@@ -243,6 +248,23 @@ def _install_host_dev_fallback() -> None:
                 raise
             if not hasattr(dev_handle, "_touchy_host_fd"):
                 raise
+            # libusb's release_interface failed because it never
+            # successfully claimed via libusb_claim_interface (we did
+            # the usbfs ioctl ourselves). Issue the matching usbfs
+            # RELEASEINTERFACE so the kernel reattaches usbhid /
+            # cdc_acm / etc. when the CLI exits.
+            import fcntl
+            _USBDEVFS_RELEASEINTERFACE = (
+                (1 << 30) | (4 << 16) | (ord("U") << 8) | 16
+            )
+            try:
+                fcntl.ioctl(
+                    dev_handle._touchy_host_fd,
+                    _USBDEVFS_RELEASEINTERFACE,
+                    intf.to_bytes(4, "little"),
+                )
+            except OSError:
+                pass
 
     _lb._LibUSB.claim_interface = _patched_claim
     _lb._LibUSB.release_interface = _patched_release
