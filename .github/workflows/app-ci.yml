@@ -30,14 +30,14 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Read firmware version
         working-directory: ${{ github.workspace }}
         run: echo "FW_VERSION=$(sed -n '1p' VERSION)" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -48,10 +48,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Cache ESP-IDF toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.espressif
@@ -101,7 +101,7 @@ jobs:
              "${FIRMWARE_BOARD}-${FW_VERSION}.bin"
 
       - name: Upload firmware binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ env.FIRMWARE_BOARD }}-${{ env.FW_VERSION }}
           path: ${{ github.workspace }}/${{ env.FIRMWARE_BOARD }}-${{ env.FW_VERSION }}.bin
@@ -120,7 +120,7 @@ jobs:
         run: poetry build
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: touchy-pad-dist
           path: app/dist/*
