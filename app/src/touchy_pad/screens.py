@@ -494,8 +494,8 @@ def build_demo_screen(name: str = "demo") -> Screen:
       mirrors the device's most recent log message — e.g. each
       recognised trackpad gesture.
     """
-    from . import macros as m
     from . import hid_keys as k
+    from . import macros as m
 
     s = Screen(name, layout=grid(cols=4, rows=6, gap=8))
 

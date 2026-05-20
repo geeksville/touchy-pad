@@ -6,12 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from touchy_pad import _proto
-from touchy_pad import hid_keys, macros
+from touchy_pad import _proto, hid_keys, macros
 from touchy_pad.screens import (
     Screen,
     _collect_from_script,
-    action,
     arc,
     button,
     checkbox,

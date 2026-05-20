@@ -97,15 +97,15 @@ _ASCII_TO_KEY: dict[str, tuple[int, int]] = {
     ".": (KEY_DOT, 0),
     "/": (KEY_SLASH, 0),
 }
-for _c, _k in zip("abcdefghijklmnopqrstuvwxyz", range(KEY_A, KEY_A + 26)):
+for _c, _k in zip("abcdefghijklmnopqrstuvwxyz", range(KEY_A, KEY_A + 26), strict=False):
     _ASCII_TO_KEY[_c] = (_k, 0)
     _ASCII_TO_KEY[_c.upper()] = (_k, MOD_LSHIFT)
 for _c, _k in zip("1234567890", [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5,
-                                  KEY_6, KEY_7, KEY_8, KEY_9, KEY_0]):
+                                  KEY_6, KEY_7, KEY_8, KEY_9, KEY_0], strict=False):
     _ASCII_TO_KEY[_c] = (_k, 0)
 # Shifted-number row (US layout).
 for _c, _k in zip("!@#$%^&*()", [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5,
-                                  KEY_6, KEY_7, KEY_8, KEY_9, KEY_0]):
+                                  KEY_6, KEY_7, KEY_8, KEY_9, KEY_0], strict=False):
     _ASCII_TO_KEY[_c] = (_k, MOD_LSHIFT)
 for _c, _shifted in [("_", "-"), ("+", "="), ("{", "["), ("}", "]"),
                       ("|", "\\"), (":", ";"), ('"', "'"), ("~", "`"),
