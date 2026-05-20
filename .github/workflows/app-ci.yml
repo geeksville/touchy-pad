@@ -20,6 +20,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      IDF_VERSION: "v6.0.1"
     defaults:
       run:
         working-directory: app
@@ -44,7 +46,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.espressif
-          key: ${{ runner.os }}-espressif-eim-v6.0.1
+          key: ${{ runner.os }}-espressif-eim-${{ env.IDF_VERSION }}
 
       - name: Install Python tooling for proto generation
         run: pip install grpcio-tools nanopb
@@ -57,7 +59,7 @@ jobs:
 
       - name: Install ESP-IDF toolchain
         run: |
-          if [ ! -f "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" ]; then
+          if [ ! -f "$HOME/.espressif/tools/activate_idf_${IDF_VERSION}.sh" ]; then
             eim install
           fi
 
@@ -70,7 +72,7 @@ jobs:
       - name: Configure firmware build directory
         working-directory: ${{ github.workspace }}
         run: |
-          source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh"
+          source "$HOME/.espressif/tools/activate_idf_${IDF_VERSION}.sh"
           idf.py -C firmware -DBOARD=waveshare_s3_lcd_7b set-target esp32s3
 
       - name: Build firmware
@@ -78,7 +80,7 @@ jobs:
         env:
           SYS_PYTHON: python3
         run: |
-          source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh"
+          source "$HOME/.espressif/tools/activate_idf_${IDF_VERSION}.sh"
           just firmware build
 
       - name: Install dependencies
