@@ -3,18 +3,23 @@
   "layout": {
     "kind": "GRID",
     "cols": 1,
-    "rows": 1,
+    "rows": 8,
     "gap": 8
   },
   "widgets": [
     {
       "id": "msg",
-      "cell": {"col": 0, "row": 0},
+      "cell": {"col": 0, "row": 0, "colSpan": 1, "rowSpan": 1},
       "style": {"textColor": 16777215},
       "label": {
-        "text": "No screens configured.\nPlease configure with the Touchy-Pad app.",
+        "text": "No screens configured. Please configure with the Touchy-Pad app.",
         "fontSize": 20
       }
+    },
+    {
+      "id": "pad",
+      "cell": {"col": 0, "row": 1, "colSpan": 1, "rowSpan": 7},
+      "trackpad": {}
     }
   ]
 }

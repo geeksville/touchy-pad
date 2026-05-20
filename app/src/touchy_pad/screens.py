@@ -497,10 +497,10 @@ def build_demo_screen(name: str = "demo") -> Screen:
     from . import macros as m
     from . import hid_keys as k
 
-    s = Screen(name, layout=grid(cols=2, rows=6, gap=8))
+    s = Screen(name, layout=grid(cols=4, rows=6, gap=8))
 
     # ── left column: stacked control widgets ───────────────────────────
-    s += cell(label("title", text="Touchy-Pad demo", font_size=24,
+    s += cell(label("title", text="Demo", font_size=12,
                     style=style(text_color=0xFFFFFF)),
               col=0, row=0)
     s += cell(button("hello", text="Type 'hi'",
@@ -519,10 +519,10 @@ def build_demo_screen(name: str = "demo") -> Screen:
               col=0, row=4)
 
     # ── right column: multitouch trackpad spans rows 0..4 ──────────────
-    s += cell(trackpad("pad"), col=1, row=0, row_span=5)
+    s += cell(trackpad("pad"), col=1, row=0, row_span=5, col_span=3)
 
     # ── bottom strip: log readout spans both columns ───────────────────
-    s += cell(log_line("log"), col=0, row=5, col_span=2)
+    s += cell(log_line("log"), col=0, row=5, col_span=4)
     return s
 
 

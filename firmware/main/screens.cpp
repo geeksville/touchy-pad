@@ -328,15 +328,21 @@ void apply_rect(lv_obj_t *obj, const touchy_Widget &w, bool absolute_layout)
 }
 
 // Place a widget inside a GRID-layout parent. The grid manager owns size
-// and position, so we only forward the cell spec from the protobuf
-// (defaulting to col 0 / row 0 / span 1x1) and ask LVGL to stretch the
-// widget across its assigned track(s).
+// and position, so we only forward the cell spec from the protobuf and ask
+// LVGL to stretch the widget across its assigned track(s).
+//
+// Proto3 zero-default handling: in a proto3 binary the wire encoding for a
+// scalar field whose value equals its default is omitted entirely. That
+// means col=0, row=0, col_span=0, row_span=0 are all indistinguishable from
+// "field not present". We therefore treat each value as its proto-comment
+// specifies: col/row default to track 0 (top-left), col_span/row_span
+// default to 1 (single track). Negative values are also clamped.
 void apply_grid_cell(lv_obj_t *obj, const touchy_Widget &w)
 {
     int32_t col = 0, row = 0, col_span = 1, row_span = 1;
     if (w.has_cell) {
-        col      = w.cell.col;
-        row      = w.cell.row;
+        col      = w.cell.col      > 0 ? w.cell.col      : 0;
+        row      = w.cell.row      > 0 ? w.cell.row      : 0;
         col_span = w.cell.col_span > 0 ? w.cell.col_span : 1;
         row_span = w.cell.row_span > 0 ? w.cell.row_span : 1;
     }
@@ -361,6 +367,10 @@ void apply_layout(lv_obj_t *scr, const touchy_Layout &layout)
         // fractional units; `rows` does the same vertically when > 0,
         // otherwise we use a single content-sized row so the original
         // (pre-stage-18) GRID behaviour is preserved.
+        //
+        // Proto3 zero-default: `cols=0` is treated as "use 1 column".
+        // `rows=0` deliberately means "content-sized single row" per the
+        // proto comment; use rows ≥ 1 to get FR-sized rows.
         //
         // The descriptor arrays must outlive the call to
         // lv_obj_set_grid_dsc_array — LVGL only stores the pointer.

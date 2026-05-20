@@ -180,23 +180,19 @@ def screens_push(script: Path, load_name: str | None, dry_run: bool) -> None:
 
 @screens.command("demo")
 @click.option(
-    "--name",
-    default="demo",
-    show_default=True,
-    help="Screen name to register on the device.",
-)
-@click.option(
-    "--no-load",
-    is_flag=True,
-    help="Upload the screen but do not switch to it.",
-)
-@click.option(
     "--listen",
     is_flag=True,
     help="After uploading, stream host events from the demo screen until "
          "Ctrl-C. Registers handlers for the demo's host action codes.",
 )
-def screens_demo(name: str, no_load: bool, listen: bool) -> None:
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Print the screen definition as protobuf JSON to stdout; "
+         "do not talk to the device.",
+)
+def screens_demo(listen: bool, as_json: bool) -> None:
     """Upload a sample screen exercising stage-16 actions.
 
     The screen contains:
@@ -210,15 +206,20 @@ def screens_demo(name: str, no_load: bool, listen: bool) -> None:
     """
     from .screens import build_demo_screen
 
-    s = build_demo_screen(name)
+    s = build_demo_screen("demo")
+
+    if as_json:
+        from google.protobuf import json_format
+        click.echo(json_format.MessageToJson(s.to_proto(), indent=2))
+        return
+
     data = s.to_bytes()
     with _client() as c:
         c.file_save(f"screens/{s.name}.pb", data)
         click.echo(f"sent screens/{s.name}.pb ({len(data)} bytes, "
                    f"{len(s.widgets)} widgets)")
-        if not no_load:
-            c.screen_load(s.name)
-            click.echo(f"loaded screen {s.name!r}")
+        c.screen_load(s.name)
+        click.echo(f"loaded screen {s.name!r}")
 
         if listen:
             def on_ping(evt):
