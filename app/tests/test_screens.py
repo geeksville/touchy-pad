@@ -174,13 +174,14 @@ def test_type_text_round_trip():
 
 def test_default_layout_is_absolute():
     decoded = _proto.Screen.FromString(Screen("d").to_bytes())
-    assert decoded.layout.kind == _proto.Layout.ABSOLUTE
+    assert decoded.WhichOneof("layout") == "absolute"
 
 
 def test_row_layout_helper():
     decoded = _proto.Screen.FromString(Screen("r", layout=row(gap=7)).to_bytes())
-    assert decoded.layout.kind == _proto.Layout.ROW
-    assert decoded.layout.gap == 7
+    assert decoded.WhichOneof("layout") == "flex"
+    assert decoded.flex.flow == _proto.LayoutFlex.ROW
+    assert decoded.flex.gap == 7
 
 
 def test_screen_requires_name():

@@ -32,3 +32,11 @@ repos:
         stages: [pre-push, pre-commit]
         types: [python]
         always_run: true
+
+      - id: pytest
+        name: pytest
+        language: system
+        entry: sh -c 'cd app && poetry run pytest'
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
