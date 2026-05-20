@@ -255,9 +255,7 @@ buttons or sliders.
   occupying the right half, and a `log_line` strip along the bottom
   echoing each recognised gesture.
 
-## Stage 20: Beginning of sim-keyboard supprt.  Appears on host as a USB HID keyboard device.  
-
-Use lv_buttonmatrix to provide matrixes of buttons
+## Stage 19: 
 
 ## Stage 21: Allow host PC to configure the button matrixes/screen layout
 * Use protocol buffers (nanopb?) to communicate between the host/device (over a custom USB characteristic)

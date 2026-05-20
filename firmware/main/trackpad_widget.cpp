@@ -29,6 +29,10 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent)
     lv_obj_set_style_border_width(_container, 0, 0);
     lv_obj_set_style_pad_all(_container, 0, 0);
     lv_obj_set_scrollbar_mode(_container, LV_SCROLLBAR_MODE_OFF);
+    // Disable LVGL scroll detection on the trackpad container: even tiny finger
+    // movements would otherwise trigger PRESS_LOST before we can capture a
+    // multi-finger tap count.
+    lv_obj_clear_flag(_container, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *hint = lv_label_create(_container);
     lv_label_set_text(hint, "Touch here");
@@ -41,14 +45,21 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent)
     // by lvgl_port_add_touch) reads the GT911 every refresh tick and
     // dispatches PRESSED / PRESSING / RELEASED to the object under the
     // finger. From inside those callbacks we re-query the GT911 via
-    // esp_lcd_touch_get_data to recover the *multi-finger* snapshot (LVGL
-    // itself only tracks one point). All event callbacks run on the LVGL
-    // task with the port lock already held, so log_line_post() can update
-    // sibling LogLine widgets without extra locking.
-    lv_obj_add_event_cb(_container, _eventCb,  LV_EVENT_PRESSED,  this);
-    lv_obj_add_event_cb(_container, _eventCb,  LV_EVENT_PRESSING, this);
-    lv_obj_add_event_cb(_container, _eventCb,  LV_EVENT_RELEASED, this);
-    lv_obj_add_event_cb(_container, _deleteCb, LV_EVENT_DELETE,   this);
+    // esp_lcd_touch_read_data + esp_lcd_touch_get_data to recover the
+    // *multi-finger* snapshot (LVGL itself only tracks one point). The
+    // explicit read_data() call ensures the freshest hardware state even
+    // when several GT911 interrupts coalesce into a single LVGL task
+    // wakeup. All event callbacks run on the LVGL task with the port lock
+    // already held, so log_line_post() can update sibling LogLine widgets
+    // without extra locking.
+    lv_obj_add_event_cb(_container, _eventCb,  LV_EVENT_PRESSED,    this);
+    lv_obj_add_event_cb(_container, _eventCb,  LV_EVENT_PRESSING,   this);
+    lv_obj_add_event_cb(_container, _eventCb,  LV_EVENT_RELEASED,   this);
+    // PRESS_LOST fires when LVGL decides to redirect a press (e.g. to a
+    // scroll container parent). Treat it like RELEASED so a multi-finger
+    // tap is still counted even if the container's press is stolen.
+    lv_obj_add_event_cb(_container, _eventCb,  LV_EVENT_PRESS_LOST, this);
+    lv_obj_add_event_cb(_container, _deleteCb, LV_EVENT_DELETE,     this);
 }
 
 void TrackpadWidget::_eventCb(lv_event_t *e)
@@ -63,9 +74,15 @@ void TrackpadWidget::_deleteCb(lv_event_t *e)
 
 void TrackpadWidget::_process()
 {
-    // LVGL has already issued esp_lcd_touch_read_data() this tick via its
-    // indev driver, so get_data returns the freshest multi-finger snapshot
-    // without a redundant I2C round-trip.
+    // Always pull a fresh hardware snapshot so we don't miss intermediate
+    // multitouch states that the LVGL indev may have coalesced.  The LVGL
+    // port's lvgl_port_touchpad_read() was called just before this callback
+    // fired, but multiple GT911 interrupts (finger-1-down, finger-2-down,
+    // lift) can coalesce into a single LVGL task wakeup, leaving the cached
+    // data stale.  The extra I2C round-trip is cheap relative to the gesture
+    // latency budget.
+    if (_touch) esp_lcd_touch_read_data(_touch);
+
     esp_lcd_touch_point_data_t pts[MAX_FINGERS] = {};
     uint8_t count = 0;
     bool pressed = _touch
