@@ -17,6 +17,7 @@ Possibly no need for the full stream-controller app, just go straight from per a
 ## Documentation
 
 * Current [design documents](docs/README.md).
+* [Developer setup](docs/development.md) — new-machine setup, `just` recipes, git hooks.
 * Current rough [TODO list](TODO.md).
 
 ## Possible hardware 

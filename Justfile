@@ -6,6 +6,18 @@
 default:
     @just --list
 
+# ---------------------------------------------------------------------------
+# Developer setup
+# ---------------------------------------------------------------------------
+
+# Set up a fresh clone: install Python deps and register git hooks.
+# Run once after cloning; safe to re-run at any time.
+init:
+    cd app && poetry install
+    cd app && poetry run pre-commit install
+    cd app && poetry run pre-commit install --hook-type pre-push
+    @echo "✓ Dev environment ready. Run 'just build-proto' to generate bindings."
+
 # Where generated proto outputs land.
 #  - Python output is dropped directly into the host package so `poetry build`
 #    picks it up automatically.

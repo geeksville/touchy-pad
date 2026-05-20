@@ -1,0 +1,33 @@
+# pre-commit hook configuration.
+#
+# Install once per clone:
+#   cd app && poetry install
+#   poetry run pre-commit install          # installs pre-commit hook
+#   poetry run pre-commit install --hook-type pre-push   # installs pre-push hook
+#
+# Run manually against all files:
+#   poetry run pre-commit run --all-files
+#
+# The pre-push hook runs `ruff check` (matching `just app-check`) so that
+# pushes are blocked while lint errors exist.
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff lint
+        language: system
+        entry: sh -c 'cd app && poetry run ruff check src tests'
+        pass_filenames: false
+        stages: [pre-push, pre-commit]
+        types: [python]
+        always_run: true
+
+      - id: ruff-format-check
+        name: ruff format (check only)
+        language: system
+        entry: sh -c 'cd app && poetry run ruff format --check src tests'
+        pass_filenames: false
+        stages: [pre-push]
+        types: [python]
+        always_run: true

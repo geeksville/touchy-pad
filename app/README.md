@@ -44,21 +44,5 @@ with TouchyClient.open() as client:
 
 ## Development
 
-This project lives under [`app/`](.) inside the touchy-pad monorepo and is
-built with [Poetry](https://python-poetry.org/), orchestrated by
-[just](https://just.systems/) recipes at the repo root.
-
-```sh
-# from repo root
-just app-install     # poetry install
-just app-test        # regenerate proto, then poetry run pytest
-just app-lint        # ruff check
-just app-build       # build wheel + sdist into app/dist/
-just app-run -- version   # poetry run touchy version
-```
-
-The generated protobuf bindings (`touchy_pb2.py`) are **not** checked in;
-every `app-*` recipe depends on `build-proto-py`, which regenerates them
-from [`../proto/touchy.proto`](../proto/touchy.proto). Run
-`just build-proto` to regenerate both the Python and the embedded C
-bindings.
+See [docs/development.md](../docs/development.md) for full setup instructions
+(dev container or manual), day-to-day `just` recipes, and git hook details.

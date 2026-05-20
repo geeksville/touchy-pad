@@ -68,7 +68,7 @@ def absolute() -> _proto.LayoutAbsolute:
 
 
 def flex(
-    flow: "_proto.LayoutFlex.Flow" = _proto.LayoutFlex.ROW,
+    flow: _proto.LayoutFlex.Flow = _proto.LayoutFlex.ROW,
     gap: int = 0,
 ) -> _proto.LayoutFlex:
     """LVGL flex layout.
