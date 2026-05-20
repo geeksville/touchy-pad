@@ -83,8 +83,8 @@ jobs:
         env:
           SYS_PYTHON: python3
         run: |
-          source "$HOME/esp/esp-idf/export.sh"
           just build-proto-c
+          source "$HOME/esp/esp-idf/export.sh"
           idf.py -C firmware set-target esp32s3
           idf.py -C firmware -DBOARD="${FIRMWARE_BOARD}" reconfigure
           just firmware-build
