@@ -2,7 +2,7 @@
 name = "touchy-pad"
 # Kept in sync with the repo-root VERSION file by `just bump-version`.
 # Do not edit manually — run `just bump-version` to release a new version.
-version = "0.1.0"
+version = "0.1.1"
 description = "Host library and CLI for the Touchy-Pad USB multitouch device."
 authors = ["Touchy-Pad contributors"]
 license = "Apache-2.0"
