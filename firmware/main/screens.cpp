@@ -14,6 +14,7 @@
 #include "fs.h"
 #include "host_api.h"
 #include "macros.h"
+#include "protobuf.h"
 #include "touchy.pb.h"
 #include "widgets.pb.h"
 
@@ -27,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <new>
 #include <string>
 #include <vector>
@@ -337,29 +339,28 @@ void apply_layout(lv_obj_t *scr, const touchy_Layout &layout)
 // Decoder helpers
 // ---------------------------------------------------------------------------
 
-bool decode_screen(const std::vector<uint8_t> &bytes, touchy_Screen *out)
-{
-    *out = touchy_Screen_init_default;
-    pb_istream_t s = pb_istream_from_buffer(bytes.data(), bytes.size());
-    if (!pb_decode(&s, touchy_Screen_fields, out)) {
-        ESP_LOGE(TAG, "pb_decode failed: %s", PB_GET_ERROR(&s));
-        return false;
-    }
-    return true;
-}
+// Heap-allocate the Screen wrapper so we don't blow the LVGL task's stack;
+// also because we hand ownership across the lock boundary.
+using ScreenMsg = PbMessage<touchy_Screen>;
 
-// Heap-allocate the Screen struct so we don't blow the LVGL task's stack.
-struct ScreenHolder {
-    touchy_Screen *msg;
-    ScreenHolder()  { msg = new (std::nothrow) touchy_Screen(); }
-    ~ScreenHolder() { delete msg; }
-    touchy_Screen *release() { auto *p = msg; msg = nullptr; return p; }
-};
+std::unique_ptr<ScreenMsg> decode_screen(const std::vector<uint8_t> &bytes)
+{
+    auto msg = std::unique_ptr<ScreenMsg>(new (std::nothrow)
+                                          ScreenMsg(touchy_Screen_fields));
+    if (!msg) return nullptr;
+    if (!msg->decode(bytes.data(), bytes.size())) {
+        ESP_LOGE(TAG, "pb_decode failed");
+        return nullptr;
+    }
+    return msg;
+}
 
 // Ownership of the currently-displayed decoded Screen. ActionSlots inside
 // `widget_event_cb` hold pointers into this struct, so we keep it alive
-// until the next ScreenLoad replaces it.
-touchy_Screen *g_active_screen = nullptr;
+// until the next ScreenLoad replaces it. The PbMessage destructor walks
+// the message via pb_release(), freeing every heap-allocated widget /
+// action / step array along the way.
+std::unique_ptr<ScreenMsg> g_active_screen;
 
 }  // namespace
 
@@ -421,15 +422,12 @@ bool screens_load(const char *name)
         return false;
     }
 
-    ScreenHolder holder;
-    if (!holder.msg) {
+    auto holder = decode_screen(it->second);
+    if (!holder) {
         ESP_LOGE(TAG, "out of memory decoding screen '%s'", name);
         return false;
     }
-    if (!decode_screen(it->second, holder.msg)) {
-        return false;
-    }
-    const touchy_Screen &S = *holder.msg;
+    const touchy_Screen &S = **holder;
 
     lvgl_port_lock(0);
 
@@ -470,9 +468,8 @@ bool screens_load(const char *name)
     // Replace the previously-active decoded Screen *after* loading the
     // new LVGL screen, so its widgets' delete-callbacks (which still
     // dereference the old action arrays) fire before the old struct is
-    // freed.
-    delete g_active_screen;
-    g_active_screen = holder.release();
+    // freed by the unique_ptr reset.
+    g_active_screen = std::move(holder);
     lvgl_port_unlock();
 
     ESP_LOGI(TAG, "loaded screen '%s' (%u widgets)",

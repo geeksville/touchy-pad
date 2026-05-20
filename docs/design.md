@@ -176,9 +176,47 @@ Other notable changes:
   (`button`, `slider`, `checkbox`); `--listen` registers handlers and
   prints incoming events live.
 
-## Stage 17: nanopb cleanup
+## Stage 17: nanopb cleanup — DONE
 
 Make a new protobuf.cpp/h which provides a C++ class wrapper for the generated nanopb c code.  Use the more advanced nanopb API options for dynamic memory allocation (using new/delete or malloc/free) so that screens/widgets/lists of actions can be **much** smaller normally.  Much better than all the arbitrary ints in touchy.options.  Use your judgement - for simple fields it is (very rarely) okay to just use a fixed length array.
+
+Implemented in [`firmware/main/protobuf.h`](../firmware/main/protobuf.h) — a
+header-only `PbMessage<T>` RAII wrapper that owns a nanopb-generated
+struct, calls `pb_release()` in its destructor, and exposes `decode()` /
+`encode()` / `clone_into()` helpers. `PB_ENABLE_MALLOC=1` was already
+defined on the nanopb component, so flipping the right fields to
+`FT_POINTER` in `proto/widgets.options` and `proto/touchy.options` was
+enough to switch them to heap allocation.
+
+What moved to `FT_POINTER`:
+
+* every `repeated` widget/action/macro field
+  (`Screen.widgets`, `Button.on_click`, `Slider.on_change`,
+  `Switch.on_change`, `Checkbox.on_change`, `ActionMacro.steps`)
+* `FileSaveCmd.data` (the 32 KB upload payload that previously sat in
+  `.bss` inside `touchy_Command`).
+
+What stayed `FT_STATIC`:
+
+* All widget text fields (`Button.text`, `Label.text`, …): tiny, accessed
+  on every LVGL builder, and a `NULL` deref check would just add noise.
+* `LvEvent.user_data` / `LvEvent.extra`: copied by value through the
+  FreeRTOS event queue.
+* `SysVersionResponse.firmware_version_str`, `FileSaveCmd.path`,
+  `ScreenLoadCmd.name`: small bounded strings used in hot paths.
+
+Consumer-side changes:
+
+* [`host_api.cpp`](../firmware/main/host_api.cpp) now stack-allocates
+  `PbMessage<touchy_Command>` / `PbMessage<touchy_Response>` per RX
+  frame; the 32 KB FileSave buffer is heap-only.
+* [`screens.cpp`](../firmware/main/screens.cpp) holds the active screen
+  in a `std::unique_ptr<PbMessage<touchy_Screen>>`; reloads free the
+  prior screen (and every nested widget / action / step array)
+  automatically.
+* [`macros.cpp`](../firmware/main/macros.cpp) deep-copies queued macros
+  via nanopb encode + decode into a fresh `PbMessage<touchy_ActionMacro>`,
+  because shallow struct copies no longer carry their `steps[]` array.
 
 ## Stage 18: Touchpad widget cleanup
 

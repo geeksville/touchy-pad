@@ -12,10 +12,11 @@
 touchy.FileSaveCmd.path                max_size:64
 touchy.ScreenLoadCmd.name              max_size:64
 
-# Generic file payload. Sized to hold the largest expected upload (a ~32 KB
-# PNG/JPEG or binary LVGL resource). Larger files should be split
-# client-side or use a future chunked-upload command.
-touchy.FileSaveCmd.data                max_size:32768
+# Generic file payload. Allocated dynamically (FT_POINTER) so we don't
+# burn a 32 KB .bss slot on every device just to cover the worst-case
+# upload. After Stage 17 the rx buffer is sized by the on-wire frame,
+# not the decoded struct.
+touchy.FileSaveCmd.data                type:FT_POINTER
 
 # Version string (semver or git short hash).
 touchy.SysVersionResponse.firmware_version_str  max_size:32

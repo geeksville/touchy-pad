@@ -4,12 +4,14 @@
 
 #include "macros.h"
 
+#include "protobuf.h"
 #include "usb_hid.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "pb_encode.h"
 
 #include <cstring>
 #include <new>
@@ -21,11 +23,21 @@ static const char *TAG = "macros";
 #define MACRO_DEFAULT_STEP_DELAY_MS  10
 
 // Up to this many pending macros may be queued before we start dropping.
-// Each queue slot owns a heap-allocated touchy_ActionMacro copy
-// (~260 bytes), so this is cheap.
+// Each queue slot owns a heap-allocated PbMessage<touchy_ActionMacro>
+// (the message wrapper itself is small; the steps array sits behind a
+// pb_realloc'd pointer post-Stage 17), so this is cheap.
 #define MACRO_QUEUE_DEPTH  4
 
+// Scratch buffer used by `macros_run` to deep-copy a queued macro via
+// nanopb encode + decode. Sized for the worst-case 16-step macro at the
+// largest possible per-step payload (MouseMove with 3 varints plus tags
+// is < 16 bytes; KeyEvent likewise; plus a few bytes of oneof framing).
+// 512 bytes is ~5x the realistic high-water mark.
+#define MACRO_CLONE_SCRATCH  512
+
 namespace {
+
+using MacroMsg = PbMessage<touchy_ActionMacro>;
 
 QueueHandle_t s_queue;
 TaskHandle_t  s_task;
@@ -97,14 +109,15 @@ uint32_t run_step(const touchy_MacroStep &step, uint32_t sticky_delay_ms)
 void runner_task(void *)
 {
     ESP_LOGI(TAG, "macro runner started");
-    touchy_ActionMacro *m = nullptr;
+    MacroMsg *m = nullptr;
     for (;;) {
         if (xQueueReceive(s_queue, &m, portMAX_DELAY) != pdTRUE) continue;
         if (!m) continue;
 
+        const touchy_ActionMacro &payload = **m;
         uint32_t sticky = MACRO_DEFAULT_STEP_DELAY_MS;
-        for (pb_size_t i = 0; i < m->steps_count; i++) {
-            sticky = run_step(m->steps[i], sticky);
+        for (pb_size_t i = 0; i < payload.steps_count; i++) {
+            sticky = run_step(payload.steps[i], sticky);
             vTaskDelay(pdMS_TO_TICKS(sticky));
         }
         delete m;
@@ -117,7 +130,7 @@ void runner_task(void *)
 extern "C" void macros_init(void)
 {
     if (s_task) return;
-    s_queue = xQueueCreate(MACRO_QUEUE_DEPTH, sizeof(touchy_ActionMacro *));
+    s_queue = xQueueCreate(MACRO_QUEUE_DEPTH, sizeof(MacroMsg *));
     // 4 KB stack is generous; runner only does small HID writes and delays.
     xTaskCreatePinnedToCore(runner_task, "macros", 4 * 1024,
                             nullptr, tskIDLE_PRIORITY + 2, &s_task, 1);
@@ -126,10 +139,28 @@ extern "C" void macros_init(void)
 extern "C" bool macros_run(const touchy_ActionMacro *macro)
 {
     if (!s_queue || !macro || macro->steps_count == 0) return false;
-    auto *copy = new (std::nothrow) touchy_ActionMacro(*macro);  // POD struct
+
+    // Deep-copy `macro` into a fresh PbMessage. With FT_POINTER on
+    // ActionMacro.steps, the input macro's `steps` pointer is owned by
+    // the active touchy_Screen; queuing a shallow copy would race screen
+    // reloads. nanopb has no in-memory deep-copy primitive, so we round-
+    // trip through encode/decode using a stack scratch buffer.
+    uint8_t scratch[MACRO_CLONE_SCRATCH];
+    pb_ostream_t out = pb_ostream_from_buffer(scratch, sizeof(scratch));
+    if (!pb_encode(&out, touchy_ActionMacro_fields, macro)) {
+        ESP_LOGE(TAG, "macro encode failed (%u steps, scratch=%u)",
+                 (unsigned)macro->steps_count, (unsigned)sizeof(scratch));
+        return false;
+    }
+
+    auto *copy = new (std::nothrow) MacroMsg(touchy_ActionMacro_fields);
     if (!copy) {
-        ESP_LOGE(TAG, "out of memory copying macro (%u steps)",
-                 (unsigned)macro->steps_count);
+        ESP_LOGE(TAG, "out of memory wrapping macro");
+        return false;
+    }
+    if (!copy->decode(scratch, out.bytes_written)) {
+        ESP_LOGE(TAG, "macro re-decode failed");
+        delete copy;
         return false;
     }
     if (xQueueSend(s_queue, &copy, 0) != pdTRUE) {

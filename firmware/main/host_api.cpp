@@ -5,6 +5,7 @@
 #include "host_api.h"
 
 #include "fs.h"
+#include "protobuf.h"
 #include "screens.h"
 #include "touchy.pb.h"
 #include "usb_hid.h"
@@ -32,9 +33,11 @@ static const char *TAG = "host_api";
 //     of EventConsumeCmd (no dedicated interrupt-IN mailbox endpoint).
 #define TOUCHY_PROTOCOL_VERSION  2
 
-// Largest serialised Command we accept. Bounded by the nanopb option sizes
-// in proto/touchy.options (ImageSaveCmd.data is the dominant contributor at
-// 32 KB). Add a small overhead for tags/lengths.
+// Largest serialised Command we accept. The decoded `touchy_Command`
+// no longer reserves the FileSaveCmd payload statically (Stage 17 moved
+// `FileSaveCmd.data` to FT_POINTER), so this cap now bounds only the
+// on-wire frame length. 32 KB matches the original FileSave budget plus
+// a small overhead for nanopb tags and the surrounding Command oneof.
 #define HOST_API_RX_MAX  (32 * 1024 + 256)
 #define HOST_API_TX_MAX  (4  * 1024)
 
@@ -179,12 +182,15 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
 
     case touchy_Command_file_save_tag: {
         const auto &fs_cmd = cmd->cmd.file_save;
+        // FileSaveCmd.data is FT_POINTER post-Stage 17, so a missing
+        // payload decodes to a null `pb_bytes_array_t *`. Treat that as
+        // a zero-length write rather than dereferencing null.
+        const uint8_t *bytes = fs_cmd.data ? fs_cmd.data->bytes : nullptr;
+        size_t         nbytes = fs_cmd.data ? fs_cmd.data->size  : 0;
         // Host paths land under /littlefs/from_host/<path> so they can't
         // collide with on-device preferences or other future namespaces.
         std::string path = std::string("from_host/") + fs_cmd.path;
-        if (Fs::instance().writeFile(path,
-                                     fs_cmd.data.bytes,
-                                     fs_cmd.data.size)) {
+        if (Fs::instance().writeFile(path, bytes, nbytes)) {
             // Let the screen registry pick up "screens/*.pb" uploads. The
             // registry reads back through Fs, so the post-write hook is
             // the right place rather than passing bytes around.
@@ -269,37 +275,35 @@ static void host_api_task(void *)
         }
         if (!vendor_read_exact(s_rx_buf, payload_len)) continue;
 
-        // Decode. `touchy_Command` embeds a 32 KB FileSaveCmd byte buffer
-        // inline, so we keep it in .bss instead of on the dispatcher task's
-        // 8 KB stack to avoid blowing the stack on every file upload. Same
-        // for the response struct (which embeds SysVersionResponse strings
-        // — small today, but cheap to keep static for symmetry).
-        static touchy_Command cmd;
-        static touchy_Response resp;
-        cmd  = touchy_Command_init_zero;
-        resp = touchy_Response_init_zero;
+        // Stage 17: PbMessage owns any heap-allocated FT_POINTER fields
+        // (currently just `FileSaveCmd.data`) and calls pb_release() in
+        // its destructor at the bottom of the loop. The structs
+        // themselves remain on the dispatcher task's stack — they're
+        // small now (~few hundred bytes) since the file payload no
+        // longer lives inline.
+        PbMessage<touchy_Command>  cmd(touchy_Command_fields);
+        PbMessage<touchy_Response> resp(touchy_Response_fields);
 
-        pb_istream_t in = pb_istream_from_buffer(s_rx_buf, payload_len);
-        if (!pb_decode(&in, touchy_Command_fields, &cmd)) {
-            ESP_LOGE(TAG, "pb_decode failed: %s", PB_GET_ERROR(&in));
-            resp.code = touchy_ResultCode_RESULT_INVALID_ARG;
-            pb_ostream_t out = pb_ostream_from_buffer(s_tx_buf, sizeof(s_tx_buf));
-            if (pb_encode(&out, touchy_Response_fields, &resp)) {
-                vendor_write_frame(s_tx_buf, out.bytes_written);
+        if (!cmd.decode(s_rx_buf, payload_len)) {
+            ESP_LOGE(TAG, "pb_decode failed");
+            resp->code = touchy_ResultCode_RESULT_INVALID_ARG;
+            std::size_t n = 0;
+            if (resp.encode(s_tx_buf, sizeof(s_tx_buf), &n)) {
+                vendor_write_frame(s_tx_buf, n);
             }
             continue;
         }
 
         // Dispatch.
-        dispatch(&cmd, &resp);
+        dispatch(cmd.get(), resp.get());
 
         // Encode + send.
-        pb_ostream_t out = pb_ostream_from_buffer(s_tx_buf, sizeof(s_tx_buf));
-        if (!pb_encode(&out, touchy_Response_fields, &resp)) {
-            ESP_LOGE(TAG, "pb_encode failed: %s", PB_GET_ERROR(&out));
+        std::size_t n = 0;
+        if (!resp.encode(s_tx_buf, sizeof(s_tx_buf), &n)) {
+            ESP_LOGE(TAG, "pb_encode failed");
             continue;
         }
-        if (!vendor_write_frame(s_tx_buf, out.bytes_written)) {
+        if (!vendor_write_frame(s_tx_buf, n)) {
             ESP_LOGW(TAG, "vendor_write_frame failed (host gone?)");
         }
     }
