@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - "app/**"
+      - "firmware/**"
       - "proto/**"
+      - "Justfile"
       - ".github/workflows/app-ci.yml"
   pull_request:
     paths:
       - "app/**"
+      - "firmware/**"
       - "proto/**"
+      - "Justfile"
       - ".github/workflows/app-ci.yml"
 
 jobs:
@@ -26,6 +30,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install Poetry
         run: |
@@ -35,17 +40,46 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Install libusb (runtime dependency of pyusb)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
+      - name: Cache ESP-IDF toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.espressif
+          key: ${{ runner.os }}-espressif-eim-v6.0.1
 
       - name: Install Python tooling for proto generation
         run: pip install grpcio-tools nanopb
+
+      - name: Install libusb and ESP-IDF installer
+        run: |
+          echo "deb [trusted=yes] https://dl.espressif.com/dl/eim/apt/ stable main" | sudo tee /etc/apt/sources.list.d/espressif.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libusb-1.0-0 eim-cli
+
+      - name: Install ESP-IDF toolchain
+        run: |
+          if [ ! -f "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" ]; then
+            eim install
+          fi
 
       - name: Generate proto bindings
         working-directory: ${{ github.workspace }}
         env:
           SYS_PYTHON: python3
         run: just build-proto-py
+
+      - name: Configure firmware build directory
+        working-directory: ${{ github.workspace }}
+        run: |
+          source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh"
+          idf.py -C firmware -DBOARD=waveshare_s3_lcd_7b set-target esp32s3
+
+      - name: Build firmware
+        working-directory: ${{ github.workspace }}
+        env:
+          SYS_PYTHON: python3
+        run: |
+          source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh"
+          just firmware build
 
       - name: Install dependencies
         run: poetry install --no-interaction

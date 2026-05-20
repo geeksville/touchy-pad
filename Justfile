@@ -146,6 +146,15 @@ app-run *ARGS: build-proto-py
 # Firmware (firmware/) — ESP-IDF CMake build.
 # ---------------------------------------------------------------------------
 
+# Namespace-style entrypoint so CI can call `just firmware build`.
+firmware action:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{action}}" in
+        build) just firmware-build ;;
+        *) echo "error: unknown firmware action '{{action}}' (expected: build)" >&2; exit 1 ;;
+    esac
+
 # Build the firmware. Regenerates C proto bindings first so the firmware
 # always compiles against the latest schema.
 firmware-build: build-proto-c build-default-screen
@@ -206,4 +215,3 @@ clean:
     rm -rf {{c_proto_dst}}
     rm -f firmware/main/default_screen_pb.h
     rm -rf app/dist app/build app/src/*.egg-info
-
