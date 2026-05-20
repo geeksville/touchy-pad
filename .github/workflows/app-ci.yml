@@ -62,9 +62,6 @@ jobs:
           mkdir -p "$HOME/esp"
           if [ ! -d "$HOME/esp/esp-idf/.git" ]; then
             git clone --branch "${IDF_VERSION}" --single-branch https://github.com/espressif/esp-idf.git "$HOME/esp/esp-idf"
-          else
-            git -C "$HOME/esp/esp-idf" fetch --force --depth 1 origin "${IDF_VERSION}"
-            git -C "$HOME/esp/esp-idf" checkout --force FETCH_HEAD
           fi
           cd "$HOME/esp/esp-idf"
           ./install.sh esp32s3
