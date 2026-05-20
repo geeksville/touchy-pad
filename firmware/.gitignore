@@ -12,6 +12,9 @@ dependencies.lock
 .cache/
 .idf_/
 
+# Generated nanopb C bindings (rebuilt by `just build-proto-c`).
+main/proto/
+
 # Editor / OS
 .DS_Store
 *.swp

@@ -5,11 +5,11 @@ __pycache__/
 *.so
 
 # Generated protobuf bindings (rebuilt by `just build-proto`).
-# Source of truth is proto/touchy.proto.
+# Source of truth is proto/touchy.proto and proto/widgets.proto.
 app/src/touchy_pad/_proto/touchy_pb2.py
 app/src/touchy_pad/_proto/touchy_pb2.pyi
-proto/touchy.pb.c
-proto/touchy.pb.h
+app/src/touchy_pad/_proto/widgets_pb2.py
+app/src/touchy_pad/_proto/widgets_pb2.pyi
 firmware/main/default_screen_pb.h
 
 # Packaging / build artifacts

@@ -9,10 +9,10 @@ default:
 # Where generated proto outputs land.
 #  - Python output is dropped directly into the host package so `poetry build`
 #    picks it up automatically.
-#  - C output is dropped next to touchy.proto so the firmware's CMake glue
-#    can find it via a fixed relative path. Both are gitignored.
+#  - C output goes into firmware/main/proto/ so it lives inside the component
+#    tree; CMake finds it via a local relative path. Both are gitignored.
 py_proto_dst := "app/src/touchy_pad/_proto"
-c_proto_dst  := "proto"
+c_proto_dst  := "firmware/main/proto"
 
 # The system Python (NOT the ESP-IDF venv). The ESP-IDF activate script
 # overrides `python3` on PATH inside this devcontainer, but the host-side
@@ -88,8 +88,9 @@ build-proto-c:
     fi
     # nanopb's generator wants to run from a directory that contains the
     # .proto file so its --proto_path defaults line up.
-    cd {{c_proto_dst}} && {{sys_python}} -m nanopb.generator.nanopb_generator \
-        --output-dir=. \
+    mkdir -p {{c_proto_dst}}
+    cd proto && {{sys_python}} -m nanopb.generator.nanopb_generator \
+        --output-dir=../{{c_proto_dst}} \
         touchy.proto widgets.proto
     echo "wrote {{c_touchy_out}} {{c_widgets_out}}"
 
@@ -201,6 +202,8 @@ test: app-lint app-test
 # `just build-proto*` invocation.
 clean:
     rm -f {{py_proto_dst}}/touchy_pb2.py {{py_proto_dst}}/touchy_pb2.pyi
-    rm -f {{c_proto_dst}}/touchy.pb.c {{c_proto_dst}}/touchy.pb.h
+    rm -f {{py_proto_dst}}/widgets_pb2.py {{py_proto_dst}}/widgets_pb2.pyi
+    rm -rf {{c_proto_dst}}
+    rm -f firmware/main/default_screen_pb.h
     rm -rf app/dist app/build app/src/*.egg-info
 
