@@ -45,23 +45,25 @@ jobs:
       - name: Cache ESP-IDF toolchain
         uses: actions/cache@v4
         with:
-          path: ~/.espressif
-          key: ${{ runner.os }}-espressif-eim-${{ env.IDF_VERSION }}
+          path: |
+            ~/.espressif
+            ~/esp/esp-idf
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
 
       - name: Install Python tooling for proto generation
         run: pip install grpcio-tools nanopb
 
-      - name: Install libusb and ESP-IDF installer
-        run: |
-          echo "deb [trusted=yes] https://dl.espressif.com/dl/eim/apt/ stable main" | sudo tee /etc/apt/sources.list.d/espressif.list
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libusb-1.0-0 eim-cli
+      - name: Install libusb
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
 
       - name: Install ESP-IDF toolchain
         run: |
-          if [ ! -f "$HOME/.espressif/tools/activate_idf_${IDF_VERSION}.sh" ]; then
-            eim install
+          mkdir -p "$HOME/esp"
+          if [ ! -d "$HOME/esp/esp-idf/.git" ]; then
+            git clone --branch "${IDF_VERSION}" --single-branch https://github.com/espressif/esp-idf.git "$HOME/esp/esp-idf"
           fi
+          cd "$HOME/esp/esp-idf"
+          ./install.sh esp32s3
 
       - name: Generate proto bindings
         working-directory: ${{ github.workspace }}
@@ -72,7 +74,7 @@ jobs:
       - name: Configure firmware build directory
         working-directory: ${{ github.workspace }}
         run: |
-          source "$HOME/.espressif/tools/activate_idf_${IDF_VERSION}.sh"
+          source "$HOME/esp/esp-idf/export.sh"
           idf.py -C firmware -DBOARD=waveshare_s3_lcd_7b set-target esp32s3
 
       - name: Build firmware
@@ -80,7 +82,7 @@ jobs:
         env:
           SYS_PYTHON: python3
         run: |
-          source "$HOME/.espressif/tools/activate_idf_${IDF_VERSION}.sh"
+          source "$HOME/esp/esp-idf/export.sh"
           just firmware build
 
       - name: Install dependencies
