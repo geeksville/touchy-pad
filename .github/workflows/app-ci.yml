@@ -5,17 +5,25 @@ on:
     branches: [main]
     paths:
       - "app/**"
+      - "firmware/**"
       - "proto/**"
+      - "Justfile"
       - ".github/workflows/app-ci.yml"
   pull_request:
     paths:
       - "app/**"
+      - "firmware/**"
       - "proto/**"
+      - "Justfile"
       - ".github/workflows/app-ci.yml"
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      IDF_VERSION: "v6.0.1"
+      # Match firmware/CMakeLists.txt default BOARD for deterministic CI builds.
+      FIRMWARE_BOARD: "jc4827w543"
     defaults:
       run:
         working-directory: app
@@ -26,6 +34,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install Poetry
         run: |
@@ -35,17 +44,49 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Install libusb (runtime dependency of pyusb)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
+      - name: Cache ESP-IDF toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.espressif
+            ~/esp/esp-idf
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
 
       - name: Install Python tooling for proto generation
         run: pip install grpcio-tools nanopb
+
+      - name: Install libusb
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
+
+      - name: Install ESP-IDF toolchain
+        run: |
+          mkdir -p "$HOME/esp"
+          # If cache restore produced an incomplete checkout, discard and reclone.
+          if [ -d "$HOME/esp/esp-idf" ] && [ ! -f "$HOME/esp/esp-idf/export.sh" ]; then
+            rm -rf "$HOME/esp/esp-idf"
+          fi
+          if [ ! -d "$HOME/esp/esp-idf/.git" ]; then
+            git clone --branch "${IDF_VERSION}" --single-branch https://github.com/espressif/esp-idf.git "$HOME/esp/esp-idf"
+          fi
+          cd "$HOME/esp/esp-idf"
+          ./install.sh esp32s3
+          [ -f "$HOME/esp/esp-idf/export.sh" ] || { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
 
       - name: Generate proto bindings
         working-directory: ${{ github.workspace }}
         env:
           SYS_PYTHON: python3
         run: just build-proto-py
+
+      - name: Configure and build firmware
+        working-directory: ${{ github.workspace }}
+        run: |
+          export SYS_PYTHON="$(command -v python3)"
+          just build-proto-c
+          source "$HOME/esp/esp-idf/export.sh"
+          idf.py -C firmware set-target esp32s3
+          idf.py -C firmware -DBOARD="${FIRMWARE_BOARD}" reconfigure
+          just firmware-build
 
       - name: Install dependencies
         run: poetry install --no-interaction

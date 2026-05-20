@@ -206,4 +206,3 @@ clean:
     rm -rf {{c_proto_dst}}
     rm -f firmware/main/default_screen_pb.h
     rm -rf app/dist app/build app/src/*.egg-info
-
