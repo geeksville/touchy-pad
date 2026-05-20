@@ -119,8 +119,7 @@ def events() -> None:
                     state_str = ""
                 click.echo(
                     f"event code={evt.code} host_code=0x{evt.host_code:x} "
-                    f"widget={evt.user_data!r}"
-                    + (f" {state_str}" if state_str else "")
+                    f"widget={evt.user_data!r}" + (f" {state_str}" if state_str else "")
                 )
         except KeyboardInterrupt:
             pass
@@ -150,8 +149,7 @@ def screens() -> None:
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Compile the script and report what would be uploaded; "
-         "do not talk to a device.",
+    help="Compile the script and report what would be uploaded; " "do not talk to a device.",
 )
 def screens_push(script: Path, load_name: str | None, dry_run: bool) -> None:
     """Compile SCRIPT (a Python file using touchy_pad.screens) and upload
@@ -169,8 +167,10 @@ def screens_push(script: Path, load_name: str | None, dry_run: bool) -> None:
     if dry_run:
         for s in found:
             data = s.to_bytes()
-            click.echo(f"would upload screens/{s.name}.pb ({len(data)} bytes, "
-                       f"{len(s.widgets)} widgets)")
+            click.echo(
+                f"would upload screens/{s.name}.pb ({len(data)} bytes, "
+                f"{len(s.widgets)} widgets)"
+            )
         if load_name:
             click.echo(f"would load screen {load_name!r}")
         return
@@ -190,14 +190,13 @@ def screens_push(script: Path, load_name: str | None, dry_run: bool) -> None:
     "--listen",
     is_flag=True,
     help="After uploading, stream host events from the demo screen until "
-         "Ctrl-C. Registers handlers for the demo's host action codes.",
+    "Ctrl-C. Registers handlers for the demo's host action codes.",
 )
 @click.option(
     "--json",
     "as_json",
     is_flag=True,
-    help="Print the screen definition as protobuf JSON to stdout; "
-         "do not talk to the device.",
+    help="Print the screen definition as protobuf JSON to stdout; " "do not talk to the device.",
 )
 def screens_demo(listen: bool, as_json: bool) -> None:
     """Upload a sample screen exercising stage-16 actions.
@@ -217,18 +216,19 @@ def screens_demo(listen: bool, as_json: bool) -> None:
 
     if as_json:
         from google.protobuf import json_format
+
         click.echo(json_format.MessageToJson(s.to_proto(), indent=2))
         return
 
     data = s.to_bytes()
     with _client() as c:
         c.file_save(f"screens/{s.name}.pb", data)
-        click.echo(f"sent screens/{s.name}.pb ({len(data)} bytes, "
-                   f"{len(s.widgets)} widgets)")
+        click.echo(f"sent screens/{s.name}.pb ({len(data)} bytes, " f"{len(s.widgets)} widgets)")
         c.screen_load(s.name)
         click.echo(f"loaded screen {s.name!r}")
 
         if listen:
+
             def on_ping(evt):
                 click.echo(f"[ping]   widget={evt.user_data!r}")
 

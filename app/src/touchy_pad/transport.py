@@ -72,9 +72,7 @@ class Transport(ABC):
 
 def _pack(payload: bytes) -> bytes:
     if len(payload) > _MAX_FRAME:
-        raise TransportError(
-            f"payload exceeds {_MAX_FRAME}-byte cap: {len(payload)} bytes"
-        )
+        raise TransportError(f"payload exceeds {_MAX_FRAME}-byte cap: {len(payload)} bytes")
     return _LEN_STRUCT.pack(len(payload)) + payload
 
 
@@ -102,7 +100,7 @@ def _unpack(buf: bytes) -> bytes:
 # pyusb's bulk_read/bulk_write paths are concerned.
 _HOST_DEV_USB_ROOT = "/host/dev/bus/usb"
 _LIBUSB_ERROR_NO_DEVICE = 19  # pyusb maps LIBUSB_ERROR_NO_DEVICE → errno 19
-_LIBUSB_ERROR_NOT_FOUND = 2   # pyusb maps LIBUSB_ERROR_NOT_FOUND → errno 2
+_LIBUSB_ERROR_NOT_FOUND = 2  # pyusb maps LIBUSB_ERROR_NOT_FOUND → errno 2
 
 # Linux usbfs ioctl numbers. Computed at module import time from the
 # kernel ABI in <linux/usbdevice_fs.h>. We use these to detach kernel
@@ -136,7 +134,6 @@ def _usbfs_disconnect_claim(fd: int, ifnum: int) -> None:
         fcntl.ioctl(fd, _USBDEVFS_DISCONNECT_CLAIM, bytes(buf))
     except OSError:
         pass
-
 
 
 def _install_host_dev_fallback() -> None:
@@ -187,9 +184,7 @@ def _install_host_dev_fallback() -> None:
         try:
             fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
         except FileNotFoundError as e:
-            raise TransportError(
-                f"device node not found under {_HOST_DEV_USB_ROOT}: {path}"
-            ) from e
+            raise TransportError(f"device node not found under {_HOST_DEV_USB_ROOT}: {path}") from e
         except PermissionError as e:
             raise TransportError(
                 f"permission denied opening {path}; check udev rules / group"
@@ -254,9 +249,8 @@ def _install_host_dev_fallback() -> None:
             # RELEASEINTERFACE so the kernel reattaches usbhid /
             # cdc_acm / etc. when the CLI exits.
             import fcntl
-            _USBDEVFS_RELEASEINTERFACE = (
-                (1 << 30) | (4 << 16) | (ord("U") << 8) | 16
-            )
+
+            _USBDEVFS_RELEASEINTERFACE = (1 << 30) | (4 << 16) | (ord("U") << 8) | 16
             try:
                 fcntl.ioctl(
                     dev_handle._touchy_host_fd,
@@ -269,7 +263,6 @@ def _install_host_dev_fallback() -> None:
     _lb._LibUSB.claim_interface = _patched_claim
     _lb._LibUSB.release_interface = _patched_release
     _lb._touchy_host_dev_patched = True
-
 
 
 class UsbTransport(Transport):
@@ -383,9 +376,7 @@ class UsbTransport(Transport):
             elif attrs == 0x02 and direction == 0x80:
                 ep_in = ep
         if ep_out is None or ep_in is None:
-            raise TransportError(
-                "Vendor interface is missing bulk OUT or bulk IN endpoint"
-            )
+            raise TransportError("Vendor interface is missing bulk OUT or bulk IN endpoint")
         self._ep_out = ep_out
         self._ep_in = ep_in
 

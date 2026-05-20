@@ -24,8 +24,8 @@ from . import _proto
 
 # Mirror the firmware-side constants so callers don't need to import
 # usb_hid.h. Bit layout matches a standard HID mouse button mask.
-HID_MOUSE_BTN_LEFT   = 0x01
-HID_MOUSE_BTN_RIGHT  = 0x02
+HID_MOUSE_BTN_LEFT = 0x01
+HID_MOUSE_BTN_RIGHT = 0x02
 HID_MOUSE_BTN_MIDDLE = 0x04
 
 
@@ -105,6 +105,7 @@ def type_text(text: str) -> list[_proto.MacroStep]:
     supported. Characters with no mapping raise ``ValueError``.
     """
     from . import hid_keys
+
     out: list[_proto.MacroStep] = []
     for ch in text:
         mapping = hid_keys.char_to_key(ch)

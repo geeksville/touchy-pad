@@ -75,9 +75,13 @@ class TouchyClient:
         _check(self._rpc(_proto.Command(screen_wake=_proto.ScreenWakeCmd())))
 
     def screen_sleep_timeout(self, timeout_ms: int) -> None:
-        _check(self._rpc(_proto.Command(
-            screen_sleep_timeout=_proto.ScreenSleepTimeoutCmd(timeout_ms=timeout_ms)
-        )))
+        _check(
+            self._rpc(
+                _proto.Command(
+                    screen_sleep_timeout=_proto.ScreenSleepTimeoutCmd(timeout_ms=timeout_ms)
+                )
+            )
+        )
 
     def file_reset(self) -> None:
         """Discard all files stored on the device filesystem."""
@@ -96,7 +100,6 @@ class TouchyClient:
 
     def screen_load(self, name: str) -> None:
         _check(self._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(name=name))))
-
 
     def event_consume(self) -> _proto.LvEvent | None:
         """Pop one pending event from the device queue, or return ``None``.

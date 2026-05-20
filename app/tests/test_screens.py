@@ -74,8 +74,7 @@ def test_all_widget_kinds_serialise():
 
     decoded = _proto.Screen.FromString(s.to_bytes())
     kinds = [w.WhichOneof("kind") for w in decoded.widgets]
-    assert kinds == ["button", "label", "slider", "toggle", "checkbox",
-                     "image", "arc", "spacer"]
+    assert kinds == ["button", "label", "slider", "toggle", "checkbox", "image", "arc", "spacer"]
     assert decoded.WhichOneof("layout") == "grid"
     assert decoded.grid.cols == 3
 
@@ -86,15 +85,15 @@ def test_style_and_rect_applied():
         "go",
         text="Go",
         rect=rect(10, 20, 100, 40),
-        style=style(bg_color=0xff8800, radius=8, text_color=0xffffff),
+        style=style(bg_color=0xFF8800, radius=8, text_color=0xFFFFFF),
     )
     decoded = _proto.Screen.FromString(s.to_bytes())
     w = decoded.widgets[0]
     assert w.rect.x == 10
     assert w.rect.w == 100
-    assert w.style.bg_color == 0xff8800
+    assert w.style.bg_color == 0xFF8800
     assert w.style.radius == 8
-    assert w.style.text_color == 0xffffff
+    assert w.style.text_color == 0xFFFFFF
 
 
 # -- Stage 16 ---------------------------------------------------------------
@@ -103,20 +102,29 @@ def test_style_and_rect_applied():
 def test_macro_action_round_trip():
     """A macro of typed steps decodes to the same step list."""
     s = Screen("m")
-    s += button("hi", on_click=macro_action([
-        macros.key_tap(hid_keys.KEY_H, hid_keys.MOD_LSHIFT),
-        macros.key_tap(hid_keys.KEY_I),
-        macros.delay(50),
-        macros.set_delay(20),
-        macros.mouse_click(),
-    ]))
+    s += button(
+        "hi",
+        on_click=macro_action(
+            [
+                macros.key_tap(hid_keys.KEY_H, hid_keys.MOD_LSHIFT),
+                macros.key_tap(hid_keys.KEY_I),
+                macros.delay(50),
+                macros.set_delay(20),
+                macros.mouse_click(),
+            ]
+        ),
+    )
     decoded = _proto.Screen.FromString(s.to_bytes())
     actions = decoded.widgets[0].button.on_click
     assert len(actions) == 1
     assert actions[0].WhichOneof("kind") == "macro"
     steps = actions[0].macro.steps
     assert [st.WhichOneof("step") for st in steps] == [
-        "key_tap", "key_tap", "delay_ms", "set_delay_ms", "mouse_click",
+        "key_tap",
+        "key_tap",
+        "delay_ms",
+        "set_delay_ms",
+        "mouse_click",
     ]
     assert steps[0].key_tap.keycode == hid_keys.KEY_H
     assert steps[0].key_tap.modifiers == hid_keys.MOD_LSHIFT
@@ -135,10 +143,13 @@ def test_int_on_click_becomes_host_action():
 
 def test_action_list_mixes_host_and_macro():
     s = Screen("mix")
-    s += button("x", on_click=[
-        host_action(7),
-        macro_action([macros.key_tap(hid_keys.KEY_A)]),
-    ])
+    s += button(
+        "x",
+        on_click=[
+            host_action(7),
+            macro_action([macros.key_tap(hid_keys.KEY_A)]),
+        ],
+    )
     decoded = _proto.Screen.FromString(s.to_bytes())
     actions = decoded.widgets[0].button.on_click
     assert len(actions) == 2

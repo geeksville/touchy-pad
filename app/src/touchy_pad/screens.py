@@ -62,6 +62,7 @@ __all__ = [
 # Layout / style / action helpers
 # ---------------------------------------------------------------------------
 
+
 def absolute() -> _proto.LayoutAbsolute:
     """Default layout: widgets are positioned by their ``Rect``."""
     return _proto.LayoutAbsolute()
@@ -244,6 +245,7 @@ def _normalise_actions(actions) -> list[_proto.Action]:
 # ---------------------------------------------------------------------------
 # Widget factories
 # ---------------------------------------------------------------------------
+
 
 def _widget(
     id: str,
@@ -463,8 +465,7 @@ class Screen:
     # -- serialisation ------------------------------------------------------
 
     def to_proto(self) -> _proto.Screen:
-        msg = _proto.Screen(name=self.name,
-                            version=_proto.Screen.Version.CURRENT)
+        msg = _proto.Screen(name=self.name, version=_proto.Screen.Version.CURRENT)
         if isinstance(self.layout, _proto.LayoutFlex):
             msg.flex.CopyFrom(self.layout)
         elif isinstance(self.layout, _proto.LayoutGrid):
@@ -521,23 +522,28 @@ def build_demo_screen(name: str = "demo") -> Screen:
     s = Screen(name, layout=grid(cols=4, rows=6, gap=8))
 
     # ── left column: stacked control widgets ───────────────────────────
-    s += cell(label("title", text="Demo", font_size=12,
-                    style=style(text_color=0xFFFFFF)),
-              col=0, row=0)
-    s += cell(button("hello", text="Type 'hi'",
-                     on_click=macro_action([
-                         m.key_tap(k.KEY_H, k.MOD_LSHIFT),
-                         m.key_tap(k.KEY_I),
-                     ])),
-              col=0, row=1)
-    s += cell(button("ping", text="Ping host", on_click=host_action(0x100)),
-              col=0, row=2)
-    s += cell(slider("level", min=0, max=100, value=42,
-                     on_change=host_action(0x101)),
-              col=0, row=3)
-    s += cell(checkbox("enable", text="Enabled", checked=True,
-                       on_change=host_action(0x102)),
-              col=0, row=4)
+    s += cell(
+        label("title", text="Demo", font_size=12, style=style(text_color=0xFFFFFF)), col=0, row=0
+    )
+    s += cell(
+        button(
+            "hello",
+            text="Type 'hi'",
+            on_click=macro_action(
+                [
+                    m.key_tap(k.KEY_H, k.MOD_LSHIFT),
+                    m.key_tap(k.KEY_I),
+                ]
+            ),
+        ),
+        col=0,
+        row=1,
+    )
+    s += cell(button("ping", text="Ping host", on_click=host_action(0x100)), col=0, row=2)
+    s += cell(slider("level", min=0, max=100, value=42, on_change=host_action(0x101)), col=0, row=3)
+    s += cell(
+        checkbox("enable", text="Enabled", checked=True, on_change=host_action(0x102)), col=0, row=4
+    )
 
     # ── right column: multitouch trackpad spans rows 0..4 ──────────────
     s += cell(trackpad("pad"), col=1, row=0, row_span=5, col_span=3)
@@ -554,8 +560,7 @@ def _collect_from_script(path: str | Path) -> list[Screen]:
     """
     src = Path(path).read_text(encoding="utf-8")
     Screen._registry = []
-    namespace: dict[str, object] = {"__name__": "__touchy_screen_script__",
-                                    "__file__": str(path)}
+    namespace: dict[str, object] = {"__name__": "__touchy_screen_script__", "__file__": str(path)}
     code = compile(src, str(path), "exec")
     exec(code, namespace)  # noqa: S102 — user explicitly asked to run this file
     return list(Screen._registry)
