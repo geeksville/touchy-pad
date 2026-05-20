@@ -623,7 +623,7 @@ bool screens_register_from_file(const char *path)
     {
         auto check = decode_screen(std::vector<uint8_t>(raw, raw + len));
         if (!check ||
-            (*check)->version != touchy_ScreenVersion_CURRENT) {
+            (*check)->version != touchy_Screen_Version_CURRENT) {
             ESP_LOGW(TAG, "screen '%s' has wrong version (%d) — deleting",
                      stem.c_str(),
                      check ? (int)(*check)->version : -1);

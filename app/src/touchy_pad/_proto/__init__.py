@@ -45,7 +45,6 @@ from .widgets_pb2 import (  # noqa: F401  (re-exported)
     MouseMove,
     Rect,
     Screen,
-    ScreenVersion,
     Slider,
     Spacer,
     Style,

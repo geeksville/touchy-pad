@@ -464,7 +464,7 @@ class Screen:
 
     def to_proto(self) -> _proto.Screen:
         msg = _proto.Screen(name=self.name,
-                            version=_proto.ScreenVersion.CURRENT)
+                            version=_proto.Screen.Version.CURRENT)
         if isinstance(self.layout, _proto.LayoutFlex):
             msg.flex.CopyFrom(self.layout)
         elif isinstance(self.layout, _proto.LayoutGrid):
