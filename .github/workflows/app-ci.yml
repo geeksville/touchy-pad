@@ -20,23 +20,39 @@ on:
       - ".github/workflows/app-ci.yml"
 
 jobs:
-  test:
+  # ---------------------------------------------------------------------------
+  # setup: read shared metadata (firmware version) and expose it as job outputs
+  # so both build-firmware and build-app can consume a consistent value without
+  # duplicating the VERSION-parsing logic.
+  # ---------------------------------------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      fw-version: ${{ steps.read-version.outputs.fw-version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read firmware version
+        id: read-version
+        run: echo "fw-version=$(sed -n '1p' VERSION)" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # build-firmware: ESP-IDF toolchain install → proto-C generation → CMake
+  # configure → firmware build → artifact upload.
+  # Runs in parallel with build-app once setup completes.
+  # ---------------------------------------------------------------------------
+  build-firmware:
+    needs: setup
     runs-on: ubuntu-latest
     env:
       IDF_VERSION: "v6.0.1"
       # Match firmware/CMakeLists.txt default BOARD for deterministic CI builds.
       FIRMWARE_BOARD: "jc4827w543"
-    defaults:
-      run:
-        working-directory: app
+      FW_VERSION: ${{ needs.setup.outputs.fw-version }}
     steps:
       - uses: actions/checkout@v6
 
-      - name: Read firmware version
-        working-directory: ${{ github.workspace }}
-        run: echo "FW_VERSION=$(sed -n '1p' VERSION)" >> "$GITHUB_ENV"
-
-      - name: Set up shared Python/Poetry/proto tooling
+      - name: Set up shared Python/Poetry/just/proto tooling
         uses: ./.github/actions/setup-python-poetry-just-proto
 
       - name: Cache ESP-IDF toolchain
@@ -67,7 +83,8 @@ jobs:
       - name: Configure and build firmware
         working-directory: ${{ github.workspace }}
         run: |
-          export SYS_PYTHON="$(command -v python3)"
+          SYS_PYTHON="$(command -v python3)"
+          export SYS_PYTHON
           just build-proto-c
           source "$HOME/esp/esp-idf/export.sh"
           idf.py -C firmware set-target esp32s3
@@ -87,6 +104,25 @@ jobs:
           path: ${{ github.workspace }}/${{ env.FIRMWARE_BOARD }}-${{ env.FW_VERSION }}.bin
           if-no-files-found: error
 
+  # ---------------------------------------------------------------------------
+  # build-app: Python/Poetry dependency install → proto-Py generation → lint →
+  # tests → wheel/sdist package → artifact upload.
+  # Runs in parallel with build-firmware once setup completes.
+  # ---------------------------------------------------------------------------
+  build-app:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      FW_VERSION: ${{ needs.setup.outputs.fw-version }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up shared Python/Poetry/just/proto tooling
+        uses: ./.github/actions/setup-python-poetry-just-proto
+
       - name: Install dependencies
         run: poetry install --no-interaction
 
@@ -104,3 +140,19 @@ jobs:
         with:
           name: touchy-pad-dist
           path: app/dist/*
+
+  # ---------------------------------------------------------------------------
+  # finalize: download all artifacts produced by the parallel jobs and list
+  # them so the run summary shows exactly what was shipped.
+  # ---------------------------------------------------------------------------
+  finalize:
+    needs: [build-firmware, build-app]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4.3.0
+        with:
+          path: artifacts
+
+      - name: List collected artifacts
+        run: ls -lR artifacts
