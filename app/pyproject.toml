@@ -15,12 +15,11 @@ classifiers = [
     "Operating System :: MacOS",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.11",    
     "Programming Language :: Python :: 3.12",
     "Topic :: System :: Hardware :: Hardware Drivers",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     # Wire protocol bindings — generated from /proto/touchy.proto and committed
     # under src/touchy_pad/_proto/.
@@ -39,6 +38,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/geeksville/touchy-pad"
 Repository = "https://github.com/geeksville/touchy-pad"
+Issues = "https://github.com/geeksville/touchy-pad/issues"
+Documentation = "https://github.com/geeksville/touchy-pad/tree/main/docs"
+Changelog = "https://github.com/geeksville/touchy-pad/releases"
 
 [project.scripts]
 touchy = "touchy_pad.cli:main"
@@ -47,12 +49,15 @@ touchy = "touchy_pad.cli:main"
 packages = [{ include = "touchy_pad", from = "src" }]
 # Binary resources (e.g. demo PNG image) must be explicitly listed so they
 # end up in both the wheel and the sdist published to PyPI.
+# Proto-generated Python files are gitignored in the source tree but must
+# be present in distributions, so they're explicitly included here.
 include = [
     { path = "src/touchy_pad/assets/*.png", format = ["sdist", "wheel"] },
+    { path = "src/touchy_pad/_proto/*_pb2.py", format = ["sdist", "wheel"] },
 ]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.11"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8,<10"
