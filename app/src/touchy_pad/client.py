@@ -93,9 +93,25 @@ class TouchyClient:
         *path* is the virtual filesystem path (e.g. ``"screens/home.xml"`` or
         ``"img/avatar.png"``).  *data* may be ``bytes`` (for binary files such
         as images) or ``str`` (for XML layouts, encoded as UTF-8).
+
+        Image bytes (BMP / PNG / JPEG / GIF / WebP — anything Pillow can
+        decode) are transparently converted to LVGL's native ``.bin``
+        format before upload, so the firmware only needs its always-on
+        built-in image decoder. Already-converted ``.bin`` blobs and
+        non-image payloads are passed through unchanged.
         """
         if isinstance(data, str):
             data = data.encode("utf-8")
+        else:
+            data = bytes(data)
+        from .lvgl_image import looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin
+
+        if looks_like_supported_image(data):
+            data = to_lvgl_bin(data)
+            # LVGL's bin decoder selects itself by extension, so the
+            # on-device file has to be named *.bin even though the
+            # caller likely passed e.g. "images/avatar.png".
+            path = rewrite_to_bin_path(path)
         _check(self._rpc(_proto.Command(file_save=_proto.FileSaveCmd(path=path, data=data))))
 
     def screen_load(self, name: str) -> None:

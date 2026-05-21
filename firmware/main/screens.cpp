@@ -262,18 +262,34 @@ lv_obj_t *build_checkbox(lv_obj_t *parent, const touchy_Widget &w)
     return cb;
 }
 
+// Apply the contents of a `touchy.Image` (asset path + optional scale
+// and rotation) to an lv_image. The src path is heap-stringified by the
+// caller when ownership is needed beyond this call (e.g. image_button's
+// press/release src-swap); for plain images LVGL keeps the pointer it
+// was handed, so we hand it a temporary std::string's c_str() only when
+// we know LVGL will copy it. lv_image_set_src() with an `F:` filename
+// triggers a string-clone internally, so passing a stack buffer is
+// safe here.
+static void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
+{
+    if (im.asset[0] != '\0') {
+        std::string lv_path = std::string("F:/from_host/") + im.asset;
+        lv_image_set_src(img, lv_path.c_str());
+    }
+    if (im.has_scale) lv_image_set_scale(img, (uint16_t)im.scale);
+    if (im.has_rotation) lv_image_set_rotation(img, im.rotation);
+}
+
 lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
 {
     lv_obj_t *img = lv_image_create(parent);
-    if (w.kind.image.asset[0] != '\0') {
-        // The host-uploaded files live under /littlefs/from_host/; LVGL's
-        // POSIX FS bridge (CONFIG_LV_USE_FS_POSIX) exposes /littlefs as
-        // the "F:" drive, so the wire-format asset path is rebased here.
-        // BMP decoding requires CONFIG_LV_USE_BMP (enabled in sdkconfig).
-        std::string lv_path = std::string("F:/from_host/") + w.kind.image.asset;
-        ESP_LOGI(TAG, "build_image id='%s' src='%s'", w.id, lv_path.c_str());
-        lv_image_set_src(img, lv_path.c_str());
-    }
+    // The host-uploaded files live under /littlefs/from_host/; LVGL's
+    // POSIX FS bridge (CONFIG_LV_USE_FS_POSIX) exposes /littlefs as the
+    // "F:" drive, so the wire-format asset path is rebased here. The
+    // LVGL native `.bin` decoder is always built in; BMP/PNG/JPG
+    // require their respective `LV_USE_*` flag in sdkconfig.
+    ESP_LOGI(TAG, "build_image id='%s' src='%s'", w.id, w.kind.image.asset);
+    apply_image_attrs(img, w.kind.image);
     return img;
 }
 
@@ -299,12 +315,21 @@ lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
 // to the child image.
 
 // User-data for the press/release src-swap handler. `img_child` is the
-// inner lv_image owned by the button; `released`/`pressed` are heap
-// strings freed in image_button_delete_cb.
+// inner lv_image owned by the button. Each state owns a heap-allocated
+// LVGL path string (e.g. "F:/from_host/foo.bin") plus optional scale /
+// rotation overrides. Strings and the struct itself are freed in
+// image_button_state_delete_cb when the button is destroyed.
+struct ImageButtonSrc {
+    char *path;          // strdup'd; nullptr if state isn't configured
+    bool has_scale;
+    uint16_t scale;
+    bool has_rotation;
+    int32_t rotation;
+};
 struct ImageButtonState {
     lv_obj_t *img_child;
-    char *released;
-    char *pressed;
+    ImageButtonSrc released;
+    ImageButtonSrc pressed;
 };
 
 static void image_button_state_delete_cb(lv_event_t *e)
@@ -312,20 +337,35 @@ static void image_button_state_delete_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
     auto *st = static_cast<ImageButtonState *>(lv_event_get_user_data(e));
     if (!st) return;
-    free(st->released);
-    free(st->pressed);
+    free(st->released.path);
+    free(st->pressed.path);
     delete st;
+}
+
+// Apply the chosen state's src + scale + rotation to the inner image.
+// When the state has no scale/rotation override, fall back to the
+// released-state value so the press transition only changes what was
+// actually configured (and src always swaps).
+static void image_button_apply(lv_obj_t *img,
+                               const ImageButtonSrc &state,
+                               const ImageButtonSrc &fallback)
+{
+    if (state.path) lv_image_set_src(img, state.path);
+    if (state.has_scale)         lv_image_set_scale(img, state.scale);
+    else if (fallback.has_scale) lv_image_set_scale(img, fallback.scale);
+    if (state.has_rotation)         lv_image_set_rotation(img, state.rotation);
+    else if (fallback.has_rotation) lv_image_set_rotation(img, fallback.rotation);
 }
 
 static void image_button_press_release_cb(lv_event_t *e)
 {
     auto *st = static_cast<ImageButtonState *>(lv_event_get_user_data(e));
-    if (!st || !st->pressed || !st->img_child) return;
+    if (!st || !st->pressed.path || !st->img_child) return;
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
-        lv_image_set_src(st->img_child, st->pressed);
+        image_button_apply(st->img_child, st->pressed, st->released);
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-        lv_image_set_src(st->img_child, st->released);
+        image_button_apply(st->img_child, st->released, st->released);
     }
 }
 
@@ -339,31 +379,43 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
     lv_obj_center(img);
 
     const touchy_ImageButton &ib = w.kind.image_button;
-    if (ib.asset[0] != '\0') {
-        auto *st = new (std::nothrow) ImageButtonState{img, nullptr, nullptr};
-        if (!st) return btn;
-        std::string released = std::string("F:/from_host/") + ib.asset;
-        st->released = strdup(released.c_str());
-        ESP_LOGI(TAG, "build_image_button id='%s' released='%s' has_pressed=%d",
-                 w.id, released.c_str(), (int)ib.has_pressed_asset);
-        lv_image_set_src(img, st->released);
-        if (ib.has_pressed_asset && ib.pressed_asset[0] != '\0') {
-            std::string pressed = std::string("F:/from_host/") + ib.pressed_asset;
-            st->pressed = strdup(pressed.c_str());
-            // Listen on the button (which owns the press state machine);
-            // the handler updates the inner image's src.
-            lv_obj_add_event_cb(btn, image_button_press_release_cb,
-                                LV_EVENT_PRESSED, st);
-            lv_obj_add_event_cb(btn, image_button_press_release_cb,
-                                LV_EVENT_RELEASED, st);
-            lv_obj_add_event_cb(btn, image_button_press_release_cb,
-                                LV_EVENT_PRESS_LOST, st);
-        }
-        // Free `st` (and its strings) when the button is deleted; the
-        // child image is destroyed automatically by the parent.
-        lv_obj_add_event_cb(btn, image_button_state_delete_cb,
-                            LV_EVENT_DELETE, st);
+    const touchy_Image &released = ib.released;
+    if (released.asset[0] == '\0') return btn;
+
+    auto *st = new (std::nothrow) ImageButtonState{};
+    if (!st) return btn;
+    st->img_child = img;
+
+    std::string released_path = std::string("F:/from_host/") + released.asset;
+    st->released = {strdup(released_path.c_str()),
+                    released.has_scale,    (uint16_t)released.scale,
+                    released.has_rotation, released.rotation};
+    if (ib.has_pressed && ib.pressed.asset[0] != '\0') {
+        std::string pressed_path = std::string("F:/from_host/") + ib.pressed.asset;
+        st->pressed = {strdup(pressed_path.c_str()),
+                       ib.pressed.has_scale,    (uint16_t)ib.pressed.scale,
+                       ib.pressed.has_rotation, ib.pressed.rotation};
     }
+    ESP_LOGI(TAG, "build_image_button id='%s' released='%s' has_pressed=%d",
+             w.id, released_path.c_str(), (int)ib.has_pressed);
+
+    // Apply released-state attrs immediately.
+    image_button_apply(img, st->released, st->released);
+
+    if (st->pressed.path) {
+        // Listen on the button (which owns the press state machine);
+        // the handler updates the inner image's src/scale/rotation.
+        lv_obj_add_event_cb(btn, image_button_press_release_cb,
+                            LV_EVENT_PRESSED, st);
+        lv_obj_add_event_cb(btn, image_button_press_release_cb,
+                            LV_EVENT_RELEASED, st);
+        lv_obj_add_event_cb(btn, image_button_press_release_cb,
+                            LV_EVENT_PRESS_LOST, st);
+    }
+    // Free `st` (and its strings) when the button is deleted; the
+    // child image is destroyed automatically by the parent.
+    lv_obj_add_event_cb(btn, image_button_state_delete_cb,
+                        LV_EVENT_DELETE, st);
     attach_actions(btn, w.id,
                    ib.on_click, ib.on_click_count,
                    LV_EVENT_CLICKED, set_value_none);

@@ -24,10 +24,10 @@ classifiers = [
     "Topic :: System :: Hardware :: Hardware Drivers",
 ]
 packages = [{ include = "touchy_pad", from = "src" }]
-# Binary resources (e.g. demo BMP image) must be explicitly listed so they
+# Binary resources (e.g. demo PNG image) must be explicitly listed so they
 # end up in both the wheel and the sdist published to PyPI.
 include = [
-    { path = "src/touchy_pad/assets/*.bmp", format = ["sdist", "wheel"] },
+    { path = "src/touchy_pad/assets/*.png", format = ["sdist", "wheel"] },
 ]
 
 [tool.poetry.dependencies]
@@ -40,6 +40,10 @@ protobuf = ">=4.25,<7"
 pyusb = "^1.2"
 # CLI framework.
 click = "^8.1"
+# Pillow handles BMP/PNG/JPEG/GIF/WebP decoding; `TouchyClient.file_save`
+# transparently converts uploaded images to LVGL's native `.bin` format
+# so the firmware only needs its always-on built-in image decoder.
+pillow = ">=10,<12"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8,<10"

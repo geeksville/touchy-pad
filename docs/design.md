@@ -312,25 +312,26 @@ is zero-copy and refuses any other pixel layout.
   `pressed_asset=None` (the default) leaves the protobuf field unset
   so the firmware skips the PRESSED-state assignment.
 * **Host image assets (`app/src/touchy_pad/images.py` +
-  `app/src/touchy_pad/assets/`):** demo BMPs are shipped as binary
-  resources inside the wheel/sdist. `make_smiley_bmp()` is a one-liner
-  that reads the pre-built `assets/smiley.bmp` via
-  `importlib.resources`, so the package has zero image-processing
-  dependencies. A runtime BMP encoder (and PNG/JPEG conversion) is
-  deferred to a later stage; for now users either ship pre-built BMPs
-  or generate them with an external tool.
+  `app/src/touchy_pad/assets/`):** demo images are shipped as binary
+  resources inside the wheel/sdist. `make_smiley_png()` is a one-liner
+  that reads the pre-built `assets/smiley.png` (RGBA, transparent
+  background) via `importlib.resources`. The host-side
+  `client.file_save` then transparently converts any common source
+  format (PNG, JPEG, BMP, GIF, WebP) to LVGL's native `.bin` container
+  before upload, so users do not ship pre-built `.bin` files.
 * **CLI (`touchy screens demo`):** uploads the smiley as
-  `images/smiley.bmp` alongside the screen `.pb`, and the demo screen
-  now includes an `image_button("smile", asset="images/smiley.bmp",
+  `images/smiley.png` alongside the screen `.pb`, and the demo screen
+  now includes an `image_button("smile", asset="images/smiley.png",
   on_click=host_action(0x103))` in row 4 of the grid. `--listen`
   registers a handler for `0x103`.
 * **Docs:** [docs/host-api.md](host-api.md) section on the file API
-  spells out the `F:/from_host/` rebase rule and the RGB565-BMP
-  requirement.
+  spells out the `F:/from_host/` rebase rule and the host-side image
+  conversion behaviour.
 
-Deferred (Stage-20 spec explicitly punts these): auto-conversion of
-PNG/JPEG sources to RGB565 BMP on the host, and PNG/JPEG decoders on
-the device (`LV_USE_PNG`, `LV_USE_LODEPNG`, etc.).
+Deferred: PNG/JPEG decoders on the device (`LV_USE_PNG`,
+`LV_USE_LODEPNG`, etc.) — no longer needed because Stage 20.3 added
+host-side conversion of arbitrary image formats to LVGL's native `.bin`
+container, which the always-on built-in decoder reads directly.
 
 ## Stage 20.1: Better style support — DONE
 
@@ -437,6 +438,53 @@ selector match. Wire-format bump: `Screen.Version.CURRENT` is now `5`.
   and `Screen.Version.CURRENT == 5`.
 * **Docs:** [docs/ui.md](ui.md) gains a "Transitions" subsection and
   the smiley example is rewritten to the new pattern.
+
+## Stage 20.3: Image scale/rotation + transparent host conversion — DONE
+
+Two pieces landed together because they share the same wire-format
+bump and overlap heavily on `screens.cpp`:
+
+* **Scale & rotation in the DSL/wire format.** `Image` grew
+  `optional uint32 scale` (LVGL units, 256 = 100%) and
+  `optional int32 rotation` (tenths of a degree). The Python helpers
+  accept human-friendly values: `scale=2.0` means 200%, `rotation=90`
+  means 90°. Internally the DSL multiplies both by 256 / 10
+  respectively before serialising. The firmware calls
+  `lv_image_set_scale` / `lv_image_set_rotation` only when the
+  corresponding `has_*` flag is set, so unscaled / unrotated assets
+  cost nothing on the wire.
+
+* **`ImageButton` refactored to embed `Image`.** The widget previously
+  carried its own `asset` + `pressed_asset` strings. It now embeds
+  `Image released = 1;` plus `optional Image pressed = 2;`, sharing
+  scale/rotation with plain images and removing duplicated fields.
+  The DSL accepts `pressed_scale` / `pressed_rotation` independently
+  of `pressed_asset` — supplying any one of them auto-fills `pressed`
+  using the released bitmap as the fallback source. Firmware tracks
+  per-state values in an `ImageButtonState` cookie and applies them on
+  `LV_EVENT_PRESSED` / `RELEASED` / `PRESS_LOST`. `Screen.Version.CURRENT`
+  bumped to `6`; old `.pb` files auto-evict.
+
+* **Transparent host-side image conversion.** `TouchyClient.file_save`
+  detects BMP / PNG / JPEG / GIF / WebP magic bytes and converts the
+  payload to LVGL's native `.bin` container (RGB565A8) before sending
+  it to the device. The converter lives in
+  `app/src/touchy_pad/lvgl_image.py` and depends on Pillow (added to
+  `app/pyproject.toml` as a runtime dep). API users can keep storing
+  files at intuitive paths like `images/foo.png`; the bytes on flash
+  will be LVGL `.bin` payload but the firmware's always-on bin decoder
+  reads them directly, so no extra config is needed. Already-converted
+  `.bin` blobs and non-image data pass through unchanged.
+
+* **Tests:** `app/tests/test_lvgl_image.py` covers magic detection,
+  pass-through of existing `.bin` headers, and the RGB565A8 layout
+  (header + RGB565 plane + A8 plane). `test_screens.py` updated to
+  assert `Screen.Version.CURRENT == 6`.
+
+* **Docs:** [docs/host-api.md](host-api.md) explains that BMP/PNG/JPEG
+  are auto-converted on the host so API users don't need to think
+  about LVGL's bin format. The device-side PNG/JPEG decoder note in
+  Stage 20 is now marked unnecessary.
 
 ## Stage 21: Allow host PC to configure the button matrixes/screen layout
 * Use protocol buffers (nanopb?) to communicate between the host/device (over a custom USB characteristic)

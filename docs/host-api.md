@@ -30,14 +30,28 @@ extension after writing to decide how to post-process it:
 * anything else — written verbatim; reachable via the LVGL `F:` drive
   letter so image/font loaders can resolve it on demand. The firmware
   enables `CONFIG_LV_USE_FS_POSIX` with `LV_FS_POSIX_PATH=/littlefs`,
-  so a host-uploaded `images/smiley.bmp` lands at
-  `/littlefs/from_host/images/smiley.bmp` on disk and resolves to
-  `F:/from_host/images/smiley.bmp` from LVGL. `Image` / `ImageButton`
-  widgets store the part after `F:/from_host/` (e.g.
-  `"images/smiley.bmp"`) in their `asset` field; the firmware prepends
-  the prefix when handing the path to LVGL. Images must be RGB565
-  BMPs (BI_BITFIELDS, masks `0xF800 / 0x07E0 / 0x001F`) because
-  `CONFIG_LV_USE_BMP` is the only image decoder enabled today.
+  so a host-uploaded `images/smiley.png` is converted by the host to
+  LVGL `.bin` and lands at `/littlefs/from_host/images/smiley.bin` on
+  disk, resolving to `F:/from_host/images/smiley.bin` from LVGL.
+  `Image` / `ImageButton` widgets store the part after `F:/from_host/`
+  (e.g. `"images/smiley.png"`) in their `asset` field; the host-side
+  DSL rewrites the extension to `.bin` at serialise time so the
+  firmware can prepend the prefix and hand the path straight to LVGL.
+
+  Image format: on the wire and on disk the firmware only understands
+  LVGL's native `.bin` container (a 12-byte header + raw pixel planes —
+  RGB565A8 by default). Hosts do **not** need to know this. The Python
+  package (`touchy_pad.client.TouchyClient.file_save`) auto-detects any
+  Pillow-readable image (BMP, PNG, JPEG, GIF, WebP) by its magic bytes,
+  converts it to LVGL `.bin`, **and rewrites the destination path's
+  extension to `.bin`** before transmitting. So
+  `file_save("images/foo.png", png_bytes)` actually writes to
+  `from_host/images/foo.bin` on flash, and the `Image` DSL applies the
+  same `.png → .bin` rewrite to the asset field — keeping host source
+  paths and on-flash names consistent. Already-converted `.bin` blobs
+  and non-image data pass through unchanged. Other host-language
+  bindings can either reuse the same on-the-fly conversion or upload
+  pre-built `.bin` files directly.
 
 Commands:
 

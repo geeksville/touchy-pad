@@ -19,7 +19,28 @@ NOTE: much of this section is now out-of-date because I suspect we'll just be ab
 * All other screen components are screen specific and provided based on the (xml?) sent by the host.  Most commonly it will include a large rectangular TouchpadWidget and possibly some number of app specific Widgets.  
 
 ## Image representation
-Images sent from host are always in LVGL BIN format.  Converted on the host.  Some sort of compression will be supported, possibly https://lvgl.io/docs/open/libs/image_support/lz4?
+On the wire and on the device filesystem, images are stored in LVGL's
+native `.bin` format (12-byte header + pixel planes; RGB565A8 by
+default, so transparency is supported). The Python host package
+(`touchy_pad.client.TouchyClient.file_save`) auto-converts any
+Pillow-readable input — BMP, PNG, JPEG, GIF, WebP — to that format
+before upload, so callers can pass arbitrary image bytes:
+
+```python
+client.file_save("images/avatar.png", open("avatar.png", "rb").read())
+client.file_save("images/icon.bmp",   make_smiley_bmp())
+```
+
+Both end up as LVGL `.bin` payload on flash. Already-converted `.bin`
+blobs and non-image data pass through unchanged. `Image` /
+`ImageButton` widgets reference these files by their on-disk path
+(e.g. `asset="images/avatar.png"`) regardless of the original source
+format. `Image` / `ImageButton` also accept `scale` (1.0 = 100 %) and
+`rotation` (degrees) for runtime transforms; `ImageButton` additionally
+takes `pressed_asset` / `pressed_scale` / `pressed_rotation` for a
+distinct pressed-state look. Compression
+(e.g. [LVGL LZ4](https://lvgl.io/docs/open/libs/image_support/lz4)) is
+not yet wired up.
 
 ## Widgets
 * Button - Client can set a normal and pressed image.  If no pressed image is provided, device will default to just invert the button while pressed.  Might also send a series of HID events (to allow macro playback)
@@ -87,7 +108,7 @@ from touchy_pad.screens import (
 
 image_button(
     "smile",
-    asset="images/smiley.bmp",
+    asset="images/smiley.png",
     on_click=host_action(0x103),
     style=[
         # Default-state style binds the transition; LVGL uses it for

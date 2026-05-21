@@ -144,12 +144,18 @@ def test_style_list_round_trip():
     assert styles_[1].for_state == STATE_PRESSED
 
 
-def test_screen_version_is_five():
-    """Stage 20.2 wire-format bump: Screen.Version.CURRENT == 5."""
+def test_screen_version_is_six():
+    """Stage 20.3 wire-format bump: Screen.Version.CURRENT == 6.
+
+    Bumped when ``ImageButton`` was refactored to embed an ``Image``
+    submessage (so it could share ``scale`` / ``rotation`` with plain
+    ``Image`` widgets) and ``pressed_asset`` was promoted to a full
+    ``pressed`` ``Image``.
+    """
     s = Screen("v")
     decoded = _proto.Screen.FromString(s.to_bytes())
     assert decoded.version == _proto.Screen.Version.CURRENT
-    assert int(_proto.Screen.Version.CURRENT) == 5
+    assert int(_proto.Screen.Version.CURRENT) == 6
 
 
 # -- Stage 20.2: optional Style fields + Transition -------------------------

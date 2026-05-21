@@ -206,13 +206,15 @@ def screens_demo(listen: bool, as_json: bool) -> None:
         over USB HID (no host involvement);
       * a "ping" button, slider and checkbox wired to host actions
         (codes 0x100 / 0x101 / 0x102);
-      * a 16x16 BMP image button (Stage 20) wired to host action 0x103.
-        Its asset is auto-uploaded to /from_host/images/smiley.bmp.
+      * a 16x16 PNG image button (Stage 20) wired to host action 0x103.
+        Its asset is auto-uploaded to /from_host/images/smiley.png; the
+        host transparently converts the PNG to LVGL's native .bin
+        format before sending it.
 
     With ``--listen`` the CLI registers Python handlers for the host
     action codes and prints the incoming events.
     """
-    from .images import make_smiley_bmp
+    from .images import make_smiley_png
     from .screens import build_demo_screen
 
     s = build_demo_screen("demo")
@@ -223,11 +225,11 @@ def screens_demo(listen: bool, as_json: bool) -> None:
         click.echo(json_format.MessageToJson(s.to_proto(), indent=2))
         return
 
-    smiley = make_smiley_bmp()
+    smiley = make_smiley_png()
     data = s.to_bytes()
     with _client() as c:
-        c.file_save("images/smiley.bmp", smiley)
-        click.echo(f"sent images/smiley.bmp ({len(smiley)} bytes)")
+        c.file_save("images/smiley.png", smiley)
+        click.echo(f"sent images/smiley.png ({len(smiley)} bytes source)")
         c.file_save(f"screens/{s.name}.pb", data)
         click.echo(f"sent screens/{s.name}.pb ({len(data)} bytes, " f"{len(s.widgets)} widgets)")
         c.screen_load(s.name)

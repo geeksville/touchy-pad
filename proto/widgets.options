@@ -18,8 +18,6 @@ touchy.Button.text                     max_size:64
 touchy.Label.text                      max_size:128
 touchy.Checkbox.text                   max_size:64
 touchy.Image.asset                     max_size:64
-touchy.ImageButton.asset               max_size:64
-touchy.ImageButton.pressed_asset       max_size:64
 touchy.Widget.id                       max_size:32
 touchy.Screen.name                     max_size:32
 

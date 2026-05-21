@@ -42,6 +42,28 @@ with TouchyClient.open() as client:
         print(event)
 ```
 
+### Uploading images
+
+`TouchyClient.file_save` accepts any Pillow-readable image (BMP, PNG,
+JPEG, GIF, WebP) and transparently converts it to LVGL's native `.bin`
+format before uploading, so the firmware (which only ships LVGL's
+built-in bin decoder) can render it without extra config:
+
+```python
+with open("avatar.png", "rb") as f:
+    client.file_save("images/avatar.png", f.read())  # auto-converted
+
+# Already-converted `.bin` payload, or any non-image bytes, pass
+# through unchanged.
+client.file_save("screens/home.pb", screen.to_bytes())
+```
+
+Refer to the asset by its upload path (`asset="images/avatar.png"`)
+when constructing `image(...)` / `image_button(...)` widgets — both
+support `scale=` and `rotation=` for runtime transforms, and
+`image_button` also takes `pressed_asset` / `pressed_scale` /
+`pressed_rotation` for a distinct pressed-state look.
+
 ## Development
 
 See [docs/development.md](../docs/development.md) for full setup instructions

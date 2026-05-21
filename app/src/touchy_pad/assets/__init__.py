@@ -2,6 +2,7 @@
 
 Currently houses:
 
-* ``smiley.bmp`` — 16×16 RGB565 demo image uploaded by
-  ``touchy screens demo`` (see :func:`touchy_pad.images.make_smiley_bmp`).
+* ``smiley.png`` — 16×16 RGBA demo image (transparent background)
+  uploaded by ``touchy screens demo`` (see
+  :func:`touchy_pad.images.make_smiley_png`).
 """

@@ -334,7 +334,7 @@ def transition(
 
         image_button(
             "smile",
-            asset="images/smiley.bmp",
+            asset="images/smiley.png",
             style=[
                 style(transition=transition(
                     props=[PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA],
@@ -563,10 +563,19 @@ def image(
     asset: str,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    scale: int | float | None = None,
+    rotation: int | float | None = None,
 ) -> _proto.Widget:
-    """Display a previously-uploaded image asset (``/from_host/<asset>``)."""
+    """Display a previously-uploaded image asset (``/from_host/<asset>``).
+
+    ``scale`` is a multiplier (``1.0`` / ``1`` / ``256`` all mean 100%):
+    floats are interpreted as a multiplier (``0.5`` = 50%, ``2.0`` =
+    200%), ints ``> 16`` are taken as raw LVGL units (256 = 100%) and
+    ints ``<= 16`` as a multiplier. ``rotation`` is in degrees (floats
+    or ints); fractional degrees are honoured down to 0.1°.
+    """
     w = _widget(id, rect=rect, style=style)
-    w.image.asset = asset
+    _fill_image(w.image, asset, scale, rotation)
     return w
 
 
@@ -577,22 +586,86 @@ def image_button(
     on_click=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    scale: int | float | None = None,
+    rotation: int | float | None = None,
+    pressed_scale: int | float | None = None,
+    pressed_rotation: int | float | None = None,
 ) -> _proto.Widget:
     """Clickable image button backed by uploaded assets.
 
-    ``asset`` is the always-shown (released) image, resolved as
-    ``/from_host/<asset>``. ``pressed_asset`` is optional: pass ``None``
-    (the default) to leave LVGL's PRESSED state unset; LVGL then renders
-    the released image while pressed.
-
-    ``on_click`` accepts the same shapes as :func:`button`'s ``on_click``.
+    The released-state image is described by an embedded ``Image`` (so
+    it accepts the same ``asset`` / ``scale`` / ``rotation`` knobs as
+    :func:`image`). ``pressed_asset`` is optional: pass ``None`` (the
+    default) to leave LVGL's PRESSED state unset; LVGL then renders the
+    released image while pressed. ``pressed_scale`` / ``pressed_rotation``
+    let the press-state image have its own transform — they default to
+    the released-state values when omitted but a ``pressed_asset`` is
+    provided. ``on_click`` accepts the same shapes as :func:`button`'s
+    ``on_click``.
     """
     w = _widget(id, rect=rect, style=style)
-    w.image_button.asset = asset
-    if pressed_asset is not None:
-        w.image_button.pressed_asset = pressed_asset
+    _fill_image(w.image_button.released, asset, scale, rotation)
+    # If the caller asked for a press-state visual change (different
+    # asset, scale, or rotation) populate the embedded `pressed` Image.
+    # Falling back to the released asset/scale/rotation lets a caller
+    # change just one field without re-specifying the bitmap.
+    has_press_override = (
+        pressed_asset is not None or pressed_scale is not None or pressed_rotation is not None
+    )
+    if has_press_override:
+        _fill_image(
+            w.image_button.pressed,
+            pressed_asset if pressed_asset is not None else asset,
+            pressed_scale if pressed_scale is not None else scale,
+            pressed_rotation if pressed_rotation is not None else rotation,
+        )
     w.image_button.on_click.extend(_normalise_actions(on_click))
     return w
+
+
+def _fill_image(
+    msg: _proto.Image,
+    asset: str,
+    scale: int | float | None,
+    rotation: int | float | None,
+) -> None:
+    """Populate a ``touchy.Image`` submessage from DSL kwargs."""
+    # Match the host-side conversion done by ``TouchyClient.file_save``:
+    # any BMP/PNG/JPEG/GIF/WebP gets converted to LVGL ``.bin`` and
+    # renamed accordingly, so the asset path stored in the screen has
+    # to track that rename or LVGL won't find the file on flash.
+    from .lvgl_image import rewrite_to_bin_path
+
+    msg.asset = rewrite_to_bin_path(asset)
+    if scale is not None:
+        msg.scale = _encode_scale(scale)
+    if rotation is not None:
+        msg.rotation = _encode_rotation(rotation)
+
+
+def _encode_scale(value: int | float) -> int:
+    """Encode a user-friendly scale value as LVGL's 1/256-unit integer.
+
+    ``float`` → multiplier (``1.0`` = 100%). Small ints (``<= 16``) are
+    also treated as a multiplier so ``scale=2`` means 200%; larger ints
+    pass through verbatim (``256`` = 100%).
+    """
+    if isinstance(value, float):
+        units = round(value * 256)
+    elif isinstance(value, int):
+        units = value * 256 if value <= 16 else value
+    else:
+        raise TypeError(f"scale must be int or float, got {type(value).__name__}")
+    if units < 0 or units > 0xFFFF:
+        raise ValueError(f"scale out of range (0..65535 in 1/256 units): {units}")
+    return units
+
+
+def _encode_rotation(value: int | float) -> int:
+    """Encode rotation in degrees (any sign) as LVGL's tenths-of-degree int."""
+    if not isinstance(value, int | float):
+        raise TypeError(f"rotation must be int or float, got {type(value).__name__}")
+    return int(round(float(value) * 10))
 
 
 def arc(
@@ -752,8 +825,9 @@ def build_demo_screen(name: str = "demo") -> Screen:
         - slider        → host action 0x101 (extra carries int32 LE).
         - checkbox      → host action 0x102 (extra is 1 byte).
         - smiley image-button (Stage 20) → host action 0x103. The asset
-          lives at ``/from_host/images/smiley.bmp`` and is uploaded by
-          the ``touchy screens demo`` command alongside this screen.
+          lives at ``/from_host/images/smiley.png`` (auto-converted to
+          LVGL's native .bin format on upload) and is uploaded by the
+          ``touchy screens demo`` command alongside this screen.
     * Right column (rows 0-3, ``row_span=4``): the :func:`trackpad`
       surface for USB HID mouse output.
     * Bottom strip (row 5, ``col_span=2``): a :func:`log_line` that
@@ -816,8 +890,12 @@ def build_demo_screen(name: str = "demo") -> Screen:
     s += cell(
         image_button(
             "smile",
-            asset="images/smiley.bmp",
+            asset="images/smiley.png",
             on_click=host_action(0x103),
+            # NOTE: leave scale unset for now — LVGL's RGB565A8 transform
+            # path produces garbled output on the device. Once the scaler
+            # bug is fixed we can re-enable scale=2.0 / pressed_scale=2.5
+            # to demonstrate scale toggling.
             style=[
                 style(
                     transition=transition(

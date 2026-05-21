@@ -32,7 +32,7 @@ extern "C" void app_main(void)
     usb_hid_init();
 
     // Give enough time for user to open a debug serial port to our board
-    //vTaskDelay(pdMS_TO_TICKS(5000));
+    vTaskDelay(pdMS_TO_TICKS(5000));
 
     // Mount the on-device filesystem (stage 14). host_api command handlers
     // expect /littlefs/from_host to exist by the time they run.

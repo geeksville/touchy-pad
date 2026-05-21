@@ -343,18 +343,31 @@ message Checkbox {
 
 message Image {
     // Path to a previously-uploaded image, relative to /from_host/
-    // (e.g. "img/avatar.png"). LVGL's PNG/JPG decoders must be enabled
-    // in sdkconfig for the format used.
+    // (e.g. "img/avatar.png"). The firmware always supports its native
+    // LVGL `.bin` format; other decoders (BMP/PNG/JPG) require the
+    // matching `LV_USE_*` flag in sdkconfig.
     string asset = 1;
+    // Scale factor in 1/256 units (256 = 100%, 512 = 2x, 128 = 50%).
+    // Mapped to `lv_image_set_scale`. When unset, the image is rendered
+    // at its native size.
+    optional uint32 scale = 2;
+    // Rotation in tenths of a degree, clockwise (1800 = 180°).
+    // Mapped to `lv_image_set_rotation`. When unset, no rotation is
+    // applied (LVGL default).
+    optional int32 rotation = 3;
 }
 
 // Clickable image. Like `Button` (with `on_click` actions) but renders an
-// image asset instead of a styled text label. `pressed_asset` is
-// optional: omit it to leave the LVGL PRESSED state unset (LVGL will
-// render the released image while pressed).
+// image asset instead of a styled text label. The released-state image
+// is described by an embedded `Image` (so it accepts `asset` / `scale`
+// / `rotation`). `pressed` is an optional `Image` shown while the
+// button is held — omit it to leave the LVGL PRESSED state unset (LVGL
+// then renders the released image while pressed). `pressed` can carry
+// its own `scale` / `rotation` so e.g. a button can shrink slightly on
+// press.
 message ImageButton {
-    string asset                   = 1;   // /from_host/<asset>, required
-    optional string pressed_asset  = 2;   // /from_host/<asset>, optional
+    Image released                 = 1;   // required — at minimum `asset`
+    optional Image pressed         = 2;   // optional press-state image
     repeated Action on_click       = 3;   // see widgets.options for cap
 }
 
@@ -433,7 +446,7 @@ message Screen {
     // from the device filesystem so the host re-uploads a fresh copy.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default — any file without a version field
-        CURRENT         = 5;   // current wire format
+        CURRENT         = 6;   // current wire format
     }
 
     // Must equal `CURRENT`; the firmware deletes and ignores files that
