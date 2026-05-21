@@ -100,6 +100,7 @@ def _unpack(buf: bytes) -> bytes:
 # pyusb's bulk_read/bulk_write paths are concerned.
 _HOST_DEV_USB_ROOT = "/host/dev/bus/usb"
 _LIBUSB_ERROR_NO_DEVICE = 19  # pyusb maps LIBUSB_ERROR_NO_DEVICE → errno 19
+_LIBUSB_ERROR_ACCESS = 13  # pyusb maps LIBUSB_ERROR_ACCESS    → errno 13
 _LIBUSB_ERROR_NOT_FOUND = 2  # pyusb maps LIBUSB_ERROR_NOT_FOUND → errno 2
 
 # Linux usbfs ioctl numbers. Computed at module import time from the
@@ -173,7 +174,10 @@ def _install_host_dev_fallback() -> None:
             _orig_init(self, dev)
             return
         except _lb.USBError as exc:
-            if getattr(exc, "errno", None) != _LIBUSB_ERROR_NO_DEVICE:
+            if getattr(exc, "errno", None) not in (
+                _LIBUSB_ERROR_NO_DEVICE,
+                _LIBUSB_ERROR_ACCESS,
+            ):
                 raise
             if not os.path.isdir(_HOST_DEV_USB_ROOT):
                 raise

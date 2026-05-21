@@ -1016,11 +1016,10 @@ def build_demo_screens() -> list[Screen]:
     def header(screen: Screen) -> None:
         """Add the shared ``[Prev | FPS | Next]`` strip to row 0."""
         screen += cell(button("prev", text="< Prev", on_click=prev_screen_action()), col=0, row=0)
-        screen += cell(fps("fps"), col=1, row=0)
-        screen += cell(button("next", text="Next >", on_click=next_screen_action()), col=2, row=0)
+        screen += cell(button("next", text="Next >", on_click=next_screen_action()), col=3, row=0)
 
     # ── home: trackpad-only ───────────────────────────────────────────
-    home = Screen("home", layout=grid(cols=3, rows=8, gap=8))
+    home = Screen("home", layout=grid(cols=4, rows=8, gap=8))
     header(home)
     home += cell(
         trackpad(
@@ -1047,14 +1046,14 @@ def build_demo_screens() -> list[Screen]:
         ),
         col=0,
         row=1,
-        col_span=3,
+        col_span=4,
         row_span=7,
     )
 
     # ── test: widget showcase + log line ──────────────────────────────
     # Same 3-col grid for header continuity; 8 rows so each widget gets
     # its own track and the log line still has full width at the bottom.
-    test = Screen("test", layout=grid(cols=3, rows=8, gap=8))
+    test = Screen("test", layout=grid(cols=4, rows=8, gap=8))
     header(test)
 
     # Type-"hi" macro button on the left (mirrors the smiley's transition
@@ -1100,6 +1099,7 @@ def build_demo_screens() -> list[Screen]:
         col=2,
         row=1,
     )
+    test += cell(fps("fps"), col=3, row=1)
     test += cell(
         slider("level", min=0, max=100, value=42, on_change=host_action(0x101)),
         col=0,
@@ -1144,7 +1144,7 @@ def build_demo_screens() -> list[Screen]:
 
     # Log strip spans the bottom 4 rows so multi-line wrapped messages
     # stay readable.
-    test += cell(log_line("log"), col=0, row=4, col_span=3, row_span=4)
+    test += cell(log_line("log"), col=0, row=4, col_span=4, row_span=4)
 
     return [home, test]
 
