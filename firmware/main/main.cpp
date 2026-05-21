@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // touchy-pad v2 entry point — ESP-IDF / FreeRTOS port.
 

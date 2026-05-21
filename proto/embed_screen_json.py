@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compile a touchy.Screen JSON description into an embedded C header.
 
 Called from the Justfile to turn ``proto/default_screen.json`` into
@@ -51,7 +51,7 @@ def main() -> int:
     # reinterpret_cast<const uint8_t*>(...) — the cast is a one-liner
     # at the consumer and we avoid pulling <cstdint> into the header.
     lines = [
-        "// SPDX-License-Identifier: Apache-2.0",
+        "// SPDX-License-Identifier: GPL-3.0-or-later",
         "//",
         f"// Generated from {args.input.name} by proto/embed_screen_json.py.",
         "// Do not edit by hand; re-run `just build-default-screen`.",

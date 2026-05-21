@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Pin map for the JC4827W543 "4.3-inch ESP32-S3 board".
 //   - MCU:     ESP32-S3 with 8 MB OPI PSRAM, 4 MB QSPI flash

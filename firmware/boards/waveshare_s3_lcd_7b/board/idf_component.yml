@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Board-specific deps for Waveshare ESP32-S3-Touch-LCD-7B.
 dependencies:
   # GT911 capacitive multi-touch driver (esp_lcd_touch wrapper).

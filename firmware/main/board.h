@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Common board API consumed by main.cpp. Implementations live per-board
 // under boards/<board>/board.cpp. See README.md for the multi-board layout.

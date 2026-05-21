@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ESP-IDF top-level project file for touchy-pad v2.
 #
 # This project supports multiple hardware targets that share the same app

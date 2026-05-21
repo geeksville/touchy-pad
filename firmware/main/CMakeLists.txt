@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # `main` is board-agnostic: it pulls in the app logic only. The currently
 # selected board provides a `board` component (under boards/<board>/) that

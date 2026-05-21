@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Board bring-up for the JC4827W543. This board has no IO-expander, so the
 // only thing we set up here is the shared I2C bus that the GT911 touch

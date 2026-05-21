@@ -60,3 +60,8 @@ https://registry.platformio.org/libraries/arduino-libraries/Mouse
 
 Also this gamepad lib
 https://github.com/lemmingDev/ESP32-BLE-Gamepad
+
+## License
+
+Copyright © 2026 Kevin Hester.
+Licensed under the [GNU General Public License v3.0 or later](LICENSE).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Stage 17 — RAII C++ wrapper around generated nanopb message structs.
 //

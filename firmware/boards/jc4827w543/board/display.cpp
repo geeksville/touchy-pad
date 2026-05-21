@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // LVGL display bring-up for the JC4827W543 board:
 //   1. Pull backlight GPIO high.

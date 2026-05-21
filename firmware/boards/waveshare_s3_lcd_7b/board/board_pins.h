@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Pin map and panel timing for the Waveshare ESP32-S3-Touch-LCD-7B.
 //

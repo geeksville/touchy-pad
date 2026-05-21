@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // NV3041A 480x272 QSPI driver — see nv3041a.h for protocol notes.
 

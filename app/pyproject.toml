@@ -5,7 +5,7 @@ name = "touchy-pad"
 version = "0.1.1"
 description = "Host library and CLI for the Touchy-Pad USB multitouch device."
 authors = [{ name = "Touchy-Pad contributors" }]
-license = "Apache-2.0"
+license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["touchpad", "usb", "esp32", "lvgl", "hid"]
 classifiers = [

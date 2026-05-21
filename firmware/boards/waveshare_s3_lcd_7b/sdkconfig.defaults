@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Board-specific Kconfig defaults for Waveshare ESP32-S3-Touch-LCD-7B
 # (ESP32-S3-N16R8: 16 MB QIO flash, 8 MB octal PSRAM).
 

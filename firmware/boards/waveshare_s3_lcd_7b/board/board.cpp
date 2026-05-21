@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "board.h"          // public API (main/board.h)
 #include "board_pins.h"     // private pin map
