@@ -41,6 +41,7 @@ from .widgets_pb2 import (  # noqa: F401  (re-exported)
     LayoutFlex,
     LayoutGrid,
     LogLine,
+    LvState,
     MacroStep,
     MouseMove,
     Rect,

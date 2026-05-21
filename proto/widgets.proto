@@ -35,8 +35,67 @@ message Rect {
     int32 h = 4;
 }
 
-// Cosmetic overrides applied via lv_obj_set_style_* on the main part of the
-// widget. Zero / unset fields fall back to LVGL's default theme value.
+// LVGL style selector bits. A `Style.for_state` value is the bitwise OR
+// of any combination of these constants, and is passed verbatim to
+// `lv_obj_add_style(obj, st, selector)` on the device.
+//
+// The enum is a flattened union of two distinct LVGL concepts:
+//
+//   * STATE_* bits (0x0000..0x00FF, plus the user-state bits LVGL
+//     reserves at 0x1000..0x8000) describe widget state — PRESSED,
+//     FOCUSED, DISABLED, etc. Multiple state bits can be OR'd together to
+//     describe complex states (e.g. PRESSED | FOCUSED).
+//   * PART_* bits (0x010000..0x0F0000) pick which sub-part of a composite
+//     widget the style targets (the slider knob, the scrollbar, ...).
+//     They are not states, but LVGL packs them into the same
+//     `lv_style_selector_t` so they can be OR'd onto a state mask in the
+//     same `for_state` field.
+//
+// `STATE_DEFAULT == 0` and `PART_MAIN == 0`, so leaving `for_state` unset
+// (proto3 zero) means "apply to the main part in the default state" —
+// the most common case.
+//
+// See https://lvgl.io/docs/open/common-widget-features/styles/overview
+// for the full state-precedence and part-selection rules.
+enum LvState {
+    option allow_alias = true;
+    // ---- states (lv_state_t) ----
+    LV_STATE_DEFAULT   = 0x0000;
+    LV_STATE_CHECKED   = 0x0001;
+    LV_STATE_FOCUSED   = 0x0002;
+    LV_STATE_FOCUS_KEY = 0x0004;
+    LV_STATE_EDITED    = 0x0008;
+    LV_STATE_HOVERED   = 0x0010;
+    LV_STATE_PRESSED   = 0x0020;
+    LV_STATE_SCROLLED  = 0x0040;
+    LV_STATE_DISABLED  = 0x0080;
+    // User states (custom) intentionally omitted — add when needed.
+    // ---- parts (lv_part_t) ----
+    LV_PART_MAIN       = 0x000000;
+    LV_PART_SCROLLBAR  = 0x010000;
+    LV_PART_INDICATOR  = 0x020000;
+    LV_PART_KNOB       = 0x030000;
+    LV_PART_SELECTED   = 0x040000;
+    LV_PART_ITEMS      = 0x050000;
+    LV_PART_CURSOR     = 0x060000;
+    LV_PART_ANY        = 0x0F0000;
+}
+
+// Cosmetic overrides applied to a widget via an `lv_style_t` instance
+// and `lv_obj_add_style(obj, st, for_state)`. Treat one `Style` message
+// as ≈ one `lv_style_t`: each populated scalar maps to one
+// `lv_style_set_<prop>()` call; fields left at their proto3 default
+// (zero) are skipped and inherit the theme's value.
+//
+// `for_state` is the `lv_style_selector_t` selector passed to
+// `lv_obj_add_style`. It is the OR of any `LvState` (state + part) bits;
+// leaving it unset targets PART_MAIN / STATE_DEFAULT (selector = 0).
+//
+// Stack multiple `Style` messages on a single `Widget.styles` to attach
+// different properties to different states / parts (e.g. one Style for
+// the default look, another with `for_state = LV_STATE_PRESSED` to
+// change the background while pressed). Later entries win on ties;
+// state precedence still applies as documented by LVGL.
 //
 // Colours are packed 0xRRGGBB; the top byte is ignored.
 message Style {
@@ -45,6 +104,8 @@ message Style {
     int32  border_w   = 3;
     int32  pad        = 4;
     uint32 text_color = 5;
+    // Bitwise OR of `LvState` values; 0 = PART_MAIN | STATE_DEFAULT.
+    uint32 for_state  = 6;
 }
 
 // Single device-side keystroke step inside an `ActionMacro`.
@@ -260,7 +321,10 @@ message LogLine {
 // every event the widget emits.
 message Widget {
     string id    = 1;
-    Style  style = 3;
+    // Visual styling: zero or more `Style` messages, each tagged with the
+    // state / part selector it targets via `Style.for_state`. Stacked in
+    // order via `lv_obj_add_style`; see the `Style` doc-comment.
+    repeated Style styles = 3;
     bool centered = 5;
     // Placement: set `rect` for absolute/flex layouts, `cell` for GRID.
     oneof layout {
@@ -296,7 +360,7 @@ message Screen {
     // from the device filesystem so the host re-uploads a fresh copy.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default — any file without a version field
-        CURRENT         = 3;   // current wire format
+        CURRENT         = 4;   // current wire format
     }
 
     // Must equal `CURRENT`; the firmware deletes and ignores files that

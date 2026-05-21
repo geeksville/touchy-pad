@@ -56,7 +56,50 @@ __all__ = [
     "trackpad",
     "log_line",
     "build_demo_screen",
+    # LvState / LvPart selector bits (see widgets.proto:LvState).
+    "STATE_DEFAULT",
+    "STATE_CHECKED",
+    "STATE_FOCUSED",
+    "STATE_FOCUS_KEY",
+    "STATE_EDITED",
+    "STATE_HOVERED",
+    "STATE_PRESSED",
+    "STATE_SCROLLED",
+    "STATE_DISABLED",
+    "PART_MAIN",
+    "PART_SCROLLBAR",
+    "PART_INDICATOR",
+    "PART_KNOB",
+    "PART_SELECTED",
+    "PART_ITEMS",
+    "PART_CURSOR",
+    "PART_ANY",
 ]
+
+
+# ---------------------------------------------------------------------------
+# LVGL style selector bits (LvState + LvPart, see widgets.proto)
+# ---------------------------------------------------------------------------
+#
+# Pass these (OR'd together) as `for_state=` to :func:`style` to target a
+# specific state and/or sub-part. Default (0) = main part, default state.
+STATE_DEFAULT = _proto.LvState.LV_STATE_DEFAULT
+STATE_CHECKED = _proto.LvState.LV_STATE_CHECKED
+STATE_FOCUSED = _proto.LvState.LV_STATE_FOCUSED
+STATE_FOCUS_KEY = _proto.LvState.LV_STATE_FOCUS_KEY
+STATE_EDITED = _proto.LvState.LV_STATE_EDITED
+STATE_HOVERED = _proto.LvState.LV_STATE_HOVERED
+STATE_PRESSED = _proto.LvState.LV_STATE_PRESSED
+STATE_SCROLLED = _proto.LvState.LV_STATE_SCROLLED
+STATE_DISABLED = _proto.LvState.LV_STATE_DISABLED
+PART_MAIN = _proto.LvState.LV_PART_MAIN
+PART_SCROLLBAR = _proto.LvState.LV_PART_SCROLLBAR
+PART_INDICATOR = _proto.LvState.LV_PART_INDICATOR
+PART_KNOB = _proto.LvState.LV_PART_KNOB
+PART_SELECTED = _proto.LvState.LV_PART_SELECTED
+PART_ITEMS = _proto.LvState.LV_PART_ITEMS
+PART_CURSOR = _proto.LvState.LV_PART_CURSOR
+PART_ANY = _proto.LvState.LV_PART_ANY
 
 
 # ---------------------------------------------------------------------------
@@ -146,11 +189,23 @@ def style(
     border_w: int | None = None,
     pad: int | None = None,
     text_color: int | None = None,
+    for_state: int = 0,
 ) -> _proto.Style:
     """Cosmetic overrides; unset fields fall back to theme defaults.
 
     Colours are packed ``0xRRGGBB`` integers. Pass ``None`` to leave a
     property untouched.
+
+    ``for_state`` is the LVGL style selector — a bitwise OR of
+    ``STATE_*`` and/or ``PART_*`` constants (see
+    :class:`_proto.LvState`). The default (0) targets the main part in
+    the default state. Example::
+
+        style(bg_color=0x1E90FF, for_state=STATE_PRESSED)
+
+    attaches a blue background that LVGL only applies while the widget
+    is being pressed. Stack several ``Style`` instances on a widget by
+    passing a list as the factory's ``style=`` argument.
     """
     s = _proto.Style()
     if bg_color is not None:
@@ -163,6 +218,8 @@ def style(
         s.pad = pad
     if text_color is not None:
         s.text_color = text_color
+    if for_state:
+        s.for_state = for_state
     return s
 
 
@@ -248,17 +305,32 @@ def _normalise_actions(actions) -> list[_proto.Action]:
 # ---------------------------------------------------------------------------
 
 
+def _normalise_styles(
+    style: _proto.Style | Iterable[_proto.Style] | None,
+) -> list[_proto.Style]:
+    """Coerce a widget factory's ``style=`` argument to a flat list.
+
+    Accepts ``None``, a single :class:`_proto.Style`, or any iterable of
+    them. The returned list is what callers pass to
+    ``Widget.styles.extend``.
+    """
+    if style is None:
+        return []
+    if isinstance(style, _proto.Style):
+        return [style]
+    return list(style)
+
+
 def _widget(
     id: str,
     *,
     rect: _proto.Rect | None,
-    style: _proto.Style | None,
+    style: _proto.Style | Iterable[_proto.Style] | None,
 ) -> _proto.Widget:
     w = _proto.Widget(id=id)
     if rect is not None:
         w.rect.CopyFrom(rect)
-    if style is not None:
-        w.style.CopyFrom(style)
+    w.styles.extend(_normalise_styles(style))
     return w
 
 
@@ -267,7 +339,7 @@ def button(
     text: str = "",
     on_click=None,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """A clickable button with an optional text label.
 
@@ -286,7 +358,7 @@ def label(
     text: str = "",
     font_size: int = 0,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """Static text. ``font_size = 0`` uses the theme default."""
     w = _widget(id, rect=rect, style=style)
@@ -302,7 +374,7 @@ def slider(
     value: int = 0,
     on_change=None,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """A linear slider over ``[min, max]``."""
     w = _widget(id, rect=rect, style=style)
@@ -318,7 +390,7 @@ def toggle(
     on: bool = False,
     on_change=None,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """An on/off switch."""
     w = _widget(id, rect=rect, style=style)
@@ -333,7 +405,7 @@ def checkbox(
     checked: bool = False,
     on_change=None,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """A labelled tickbox."""
     w = _widget(id, rect=rect, style=style)
@@ -347,7 +419,7 @@ def image(
     id: str,
     asset: str,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """Display a previously-uploaded image asset (``/from_host/<asset>``)."""
     w = _widget(id, rect=rect, style=style)
@@ -361,7 +433,7 @@ def image_button(
     pressed_asset: str | None = None,
     on_click=None,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """Clickable image button backed by uploaded assets.
 
@@ -386,7 +458,7 @@ def arc(
     max: int = 100,
     value: int = 0,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """A circular arc indicator."""
     w = _widget(id, rect=rect, style=style)
@@ -399,7 +471,7 @@ def arc(
 def spacer(
     id: str = "",
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """Invisible placeholder. Useful for padding inside flex/grid layouts."""
     w = _widget(id, rect=rect, style=style)
@@ -410,7 +482,7 @@ def spacer(
 def trackpad(
     id: str,
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """Multitouch trackpad surface (device-side HID mouse).
 
@@ -428,7 +500,7 @@ def trackpad(
 def log_line(
     id: str = "log",
     rect: _proto.Rect | None = None,
-    style: _proto.Style | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """One-line readout of the most recent device log message.
 
@@ -575,8 +647,16 @@ def build_demo_screen(name: str = "demo") -> Screen:
     s += cell(trackpad("pad"), col=1, row=0, row_span=5, col_span=3)
 
     # ── Stage 20 smiley image-button: row 4, left column ───────────────
+    # The pressed-state style demonstrates Stage 20.1's selector-aware
+    # styling: a Dodger-blue background appears under the image only
+    # while the user is actively pressing it.
     s += cell(
-        image_button("smile", asset="images/smiley.bmp", on_click=host_action(0x103)),
+        image_button(
+            "smile",
+            asset="images/smiley.bmp",
+            on_click=host_action(0x103),
+            style=[style(bg_color=0x1E90FF, for_state=STATE_PRESSED)],
+        ),
         col=0,
         row=4,
     )

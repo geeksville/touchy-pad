@@ -332,6 +332,58 @@ Deferred (Stage-20 spec explicitly punts these): auto-conversion of
 PNG/JPEG sources to RGB565 BMP on the host, and PNG/JPEG decoders on
 the device (`LV_USE_PNG`, `LV_USE_LODEPNG`, etc.).
 
+## Stage 20.1: Better style support — DONE
+
+Replace `apply_style()`'s inline `lv_obj_set_style_*` calls with proper
+`lv_style_t` instances applied through `lv_obj_add_style`, so widgets
+can carry different styles for different states / parts (e.g. a button
+that turns blue while pressed). Wire-format bump: `Screen.Version.CURRENT`
+is now `4`.
+
+* **Proto** ([proto/widgets.proto](../proto/widgets.proto)):
+  - New `LvState` enum flattens LVGL's state bits (0x0001..0x0080) and
+    part bits (0x010000..0x0F0000) into a single namespace, matching the
+    bit layout LVGL uses in `lv_style_selector_t` so they can be OR'd
+    together in one field. (See LVGL's
+    [styles overview](https://lvgl.io/docs/open/common-widget-features/styles/overview)
+    for the source of truth on bit values and cascade rules.)
+  - `Style` gains `uint32 for_state = 6;` — the OR'd selector. The
+    proto3 default (0) means `LV_PART_MAIN | LV_STATE_DEFAULT`, i.e.
+    the most common case is free.
+  - `Widget.style` (singular) becomes `repeated Style styles = 3;` —
+    stack as many `Style`s on one widget as you need, each with its own
+    `for_state`. Tag 3 is reused; this is a wire-incompatible change.
+* **Firmware** ([firmware/main/screens.cpp](../firmware/main/screens.cpp)):
+  - `build_lv_style()` builds one heap-allocated `lv_style_t` per proto
+    `Style`. Each populated scalar maps to exactly one
+    `lv_style_set_<prop>` call (zero / unset = inherit theme).
+  - `apply_styles()` loops the widget's `styles[]`, calls
+    `lv_obj_add_style(obj, st, (lv_style_selector_t)s.for_state)`, and
+    stashes the pointers in a `WidgetStyles` struct.
+  - A `LV_EVENT_DELETE` callback (`widget_styles_delete_cb`) calls
+    `lv_style_reset` + `delete` for each style when the widget is
+    destroyed — same lifetime pattern already used for `ImageButton`'s
+    path strings.
+* **Host DSL** ([app/src/touchy_pad/screens.py](../app/src/touchy_pad/screens.py)):
+  - Module-level `STATE_*` and `PART_*` constants re-export the
+    `LvState` enum values for convenient OR'ing.
+  - `style()` gains a `for_state=` kwarg.
+  - Every widget factory's `style=` argument now accepts a single
+    `Style`, an iterable of them, or `None` (single-Style stays
+    backwards-compatible with stage-15 code).
+* **Demo** (`build_demo_screen`): the smiley `image_button` now carries
+  `style=[style(bg_color=0x1E90FF, for_state=STATE_PRESSED)]`, so a
+  Dodger-blue background flashes under the smiley while it's pressed —
+  a visible round-trip of state-targeted styling all the way from
+  Python through protobuf to LVGL on the device.
+* **Tests** ([app/tests/test_screens.py](../app/tests/test_screens.py)):
+  for_state round-trip (state alone and state|part OR), single-`Style`
+  auto-wrapping, list-of-`Style` ordering, and
+  `Screen.Version.CURRENT == 4`.
+* **Docs:** [docs/ui.md](ui.md) has a new "Styles" section walking
+  through the Style ↔ `lv_style_t` mapping, selector composition and
+  cascade rules, plus the smiley pressed-state example.
+
 ## Stage 21: Allow host PC to configure the button matrixes/screen layout
 * Use protocol buffers (nanopb?) to communicate between the host/device (over a custom USB characteristic)
 * Provide a simple python library to allow host applications to easily configure the button matrixes/screen layout

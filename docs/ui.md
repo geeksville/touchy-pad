@@ -33,6 +33,74 @@ Images sent from host are always in LVGL BIN format.  Converted on the host.  So
 
 FIXME Perhaps the gesture stuff I've been hand coding could be do instead with https://lvgl.io/docs/open/examples/others/gestures?
 
+## Styles
+
+Each `Widget` carries a `repeated Style styles` field. Treat one
+`Style` message as ≈ one `lv_style_t` instance on the device: every
+populated scalar (`bg_color`, `radius`, `border_w`, `pad`,
+`text_color`) maps to exactly one `lv_style_set_<prop>` call inside
+`build_lv_style()` in [firmware/main/screens.cpp](../firmware/main/screens.cpp);
+fields left at their proto3 default (zero) are skipped and inherit the
+theme.
+
+Each `Style` also carries a `for_state` selector — the OR of any
+`LvState` bits (state + part). The firmware passes it verbatim to
+`lv_obj_add_style(obj, st, (lv_style_selector_t)for_state)`. Both
+`LV_STATE_DEFAULT` and `LV_PART_MAIN` are 0, so leaving `for_state`
+unset targets the main part in the default state — the common case.
+
+`LvState` is a flat enum union of two LVGL concepts that share the
+selector bit-field:
+
+| Bits | Kind | Examples |
+|---|---|---|
+| `0x0001..0x0080` | states (`lv_state_t`) | `LV_STATE_PRESSED`, `LV_STATE_CHECKED`, `LV_STATE_DISABLED` |
+| `0x010000..0x0F0000` | parts (`lv_part_t`) | `LV_PART_KNOB`, `LV_PART_INDICATOR`, `LV_PART_SCROLLBAR` |
+
+The host DSL re-exports them as `STATE_*` / `PART_*` constants from
+[`touchy_pad.screens`](../app/src/touchy_pad/screens.py).
+
+### Cascade rules
+
+Stack as many `Style`s on a widget as you need; the firmware adds them
+in array order via `lv_obj_add_style`. Where two attached styles set
+the same property under the same selector, the **later-added** entry
+wins. Where their selectors differ but both match the current widget
+state, LVGL's normal state-precedence rules apply — see the
+[LVGL styles overview](https://lvgl.io/docs/open/common-widget-features/styles/overview).
+
+### Example: pressed-state highlight
+
+The smiley image-button in `build_demo_screen` shows the pattern
+end-to-end:
+
+```python
+from touchy_pad.screens import image_button, host_action, style, STATE_PRESSED
+
+image_button(
+    "smile",
+    asset="images/smiley.bmp",
+    on_click=host_action(0x103),
+    style=[style(bg_color=0x1E90FF, for_state=STATE_PRESSED)],
+)
+```
+
+A Dodger-blue background only paints under the smiley while the user
+is actively pressing it; on release LVGL drops back to the
+default-state look (no background, theme defaults).
+
+### Lifetime
+
+`lv_obj_add_style` keeps a *pointer* to each `lv_style_t`, so the
+firmware can't stack-allocate styles inside the build loop. They live
+on the heap, owned by a `WidgetStyles` struct that the build loop
+attaches to the widget via an `LV_EVENT_DELETE` callback
+(`widget_styles_delete_cb`). When the widget is destroyed — typically
+by `lv_obj_clean()` on screen switch — the callback calls
+`lv_style_reset` + `delete` on each entry. Authors of new widget
+factories don't need to wire any of this up: it's done once in
+`apply_styles()`.
+
 ## Special events
 Some event codes are special and handled locally entirely within the device.
 

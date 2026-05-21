@@ -25,6 +25,7 @@ touchy.Screen.name                     max_size:32
 
 # ----- dynamic repeated fields (allocated via pb_realloc at decode time) -----
 touchy.Screen.widgets                  type:FT_POINTER
+touchy.Widget.styles                   type:FT_POINTER
 touchy.Button.on_click                 type:FT_POINTER
 touchy.Slider.on_change                type:FT_POINTER
 touchy.Switch.on_change                type:FT_POINTER

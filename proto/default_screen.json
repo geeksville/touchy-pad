@@ -10,7 +10,7 @@
     {
       "id": "msg",
       "cell": {"col": 0, "row": 0, "colSpan": 1, "rowSpan": 1},
-      "style": {"textColor": 16777215},
+      "styles": [{"textColor": 16777215}],
       "label": {
         "text": "Please do initial setup with Touchy-Pad app.",
         "fontSize": 20,

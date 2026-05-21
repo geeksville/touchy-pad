@@ -30,7 +30,7 @@ message Screen {
 message Widget {
   string  id    = 1;        // stable handle used by host_api events
   Rect    rect  = 2;        // x,y,w,h in pixels (or grid cells if Layout set)
-  Style   style = 3;        // optional: bg color, radius, border, padding
+  repeated Style styles = 3;// zero or more lv_style_t instances
   oneof kind {
     Button   button   = 10;
     Label    label    = 11;
@@ -54,7 +54,7 @@ message Spacer { }
 
 message Rect  { int32 x = 1; int32 y = 2; int32 w = 3; int32 h = 4; }
 message Style { uint32 bg_color = 1; int32 radius = 2; int32 border = 3;
-                int32 pad = 4; uint32 text_color = 5; }
+                int32 pad = 4; uint32 text_color = 5; uint32 for_state = 6; }
 message Action { string event = 1; }       // sent back to host via host_api
 
 message Layout {

@@ -8,6 +8,8 @@ import pytest
 
 from touchy_pad import _proto, hid_keys, macros
 from touchy_pad.screens import (
+    PART_KNOB,
+    STATE_PRESSED,
     Screen,
     _collect_from_script,
     arc,
@@ -91,9 +93,56 @@ def test_style_and_rect_applied():
     w = decoded.widgets[0]
     assert w.rect.x == 10
     assert w.rect.w == 100
-    assert w.style.bg_color == 0xFF8800
-    assert w.style.radius == 8
-    assert w.style.text_color == 0xFFFFFF
+    # Single Style is auto-wrapped into the repeated `styles` field.
+    assert len(w.styles) == 1
+    assert w.styles[0].bg_color == 0xFF8800
+    assert w.styles[0].radius == 8
+    assert w.styles[0].text_color == 0xFFFFFF
+    assert w.styles[0].for_state == 0
+
+
+def test_style_for_state_round_trip():
+    """`for_state` is preserved verbatim through the proto round-trip."""
+    s = Screen("x")
+    s += button(
+        "go",
+        style=style(bg_color=0x1E90FF, for_state=STATE_PRESSED),
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    assert decoded.widgets[0].styles[0].for_state == STATE_PRESSED
+    # OR'ing state + part composes a valid selector.
+    selector = STATE_PRESSED | PART_KNOB
+    s2 = Screen("y")
+    s2 += button("g2", style=style(bg_color=1, for_state=selector))
+    decoded2 = _proto.Screen.FromString(s2.to_bytes())
+    assert decoded2.widgets[0].styles[0].for_state == selector
+
+
+def test_style_list_round_trip():
+    """A list of Styles round-trips in order; each entry keeps its selector."""
+    s = Screen("x")
+    s += button(
+        "go",
+        style=[
+            style(bg_color=0x101010),
+            style(bg_color=0x1E90FF, for_state=STATE_PRESSED),
+        ],
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    styles_ = decoded.widgets[0].styles
+    assert len(styles_) == 2
+    assert styles_[0].bg_color == 0x101010
+    assert styles_[0].for_state == 0
+    assert styles_[1].bg_color == 0x1E90FF
+    assert styles_[1].for_state == STATE_PRESSED
+
+
+def test_screen_version_is_four():
+    """Stage 20.1 wire-format bump: Screen.Version.CURRENT == 4."""
+    s = Screen("v")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    assert decoded.version == _proto.Screen.Version.CURRENT
+    assert int(_proto.Screen.Version.CURRENT) == 4
 
 
 # -- Stage 16 ---------------------------------------------------------------

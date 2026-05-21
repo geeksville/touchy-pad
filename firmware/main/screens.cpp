@@ -363,23 +363,70 @@ lv_obj_t *build_log(lv_obj_t *parent, const touchy_Widget &)
 // Style / placement application
 // ---------------------------------------------------------------------------
 
-void apply_style(lv_obj_t *obj, const touchy_Widget &w)
+// Heap-allocated `lv_style_t` instances owned by a widget for its lifetime.
+// LVGL keeps a pointer to each style added via `lv_obj_add_style` and reads
+// from it on every redraw, so we cannot stack-allocate them inside the
+// build loop. Freed via an LV_EVENT_DELETE callback below.
+struct WidgetStyles {
+    std::vector<lv_style_t *> styles;
+};
+
+void widget_styles_delete_cb(lv_event_t *e)
 {
-    ESP_LOGI(TAG, "apply_style id='%s' has_style=%d", w.id, (int)w.has_style);
-    if (!w.has_style) return;
-    const auto &s = w.style;
-    ESP_LOGI(TAG, "  bg_color=0x%06lx text_color=0x%06lx radius=%ld border_w=%ld pad=%ld",
-             (unsigned long)s.bg_color, (unsigned long)s.text_color,
-             (long)s.radius, (long)s.border_w, (long)s.pad);
-    if (s.bg_color != 0) {
-        lv_obj_set_style_bg_color(obj, color_from_u32(s.bg_color), 0);
-        lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+    auto *ws = static_cast<WidgetStyles *>(lv_event_get_user_data(e));
+    if (!ws) return;
+    for (lv_style_t *st : ws->styles) {
+        lv_style_reset(st);
+        delete st;
     }
-    if (s.radius > 0)     lv_obj_set_style_radius(obj, s.radius, 0);
-    if (s.border_w > 0)   lv_obj_set_style_border_width(obj, s.border_w, 0);
-    if (s.pad > 0)        lv_obj_set_style_pad_all(obj, s.pad, 0);
+    delete ws;
+}
+
+// Build one `lv_style_t` from a `touchy_Style` message. Each populated
+// scalar contributes one `lv_style_set_<prop>` call; zero / unset fields
+// inherit the theme. Returns a heap-allocated style — caller takes
+// ownership and is responsible for `lv_style_reset` + `delete`.
+lv_style_t *build_lv_style(const touchy_Style &s)
+{
+    auto *st = new (std::nothrow) lv_style_t;
+    if (!st) return nullptr;
+    lv_style_init(st);
+    if (s.bg_color != 0) {
+        lv_style_set_bg_color(st, color_from_u32(s.bg_color));
+        lv_style_set_bg_opa(st, LV_OPA_COVER);
+    }
+    if (s.radius > 0)   lv_style_set_radius(st, s.radius);
+    if (s.border_w > 0) lv_style_set_border_width(st, s.border_w);
+    if (s.pad > 0)      lv_style_set_pad_all(st, s.pad);
     if (s.text_color != 0)
-        lv_obj_set_style_text_color(obj, color_from_u32(s.text_color), 0);
+        lv_style_set_text_color(st, color_from_u32(s.text_color));
+    return st;
+}
+
+void apply_styles(lv_obj_t *obj, const touchy_Widget &w)
+{
+    ESP_LOGI(TAG, "apply_styles id='%s' count=%u", w.id, (unsigned)w.styles_count);
+    if (w.styles_count == 0 || w.styles == nullptr) return;
+    auto *ws = new (std::nothrow) WidgetStyles{};
+    if (!ws) return;
+    for (pb_size_t i = 0; i < w.styles_count; ++i) {
+        const touchy_Style &s = w.styles[i];
+        lv_style_t *st = build_lv_style(s);
+        if (!st) continue;
+        ws->styles.push_back(st);
+        ESP_LOGI(TAG, "  [%u] for_state=0x%08lx bg=0x%06lx text=0x%06lx "
+                      "radius=%ld border=%ld pad=%ld",
+                 (unsigned)i, (unsigned long)s.for_state,
+                 (unsigned long)s.bg_color, (unsigned long)s.text_color,
+                 (long)s.radius, (long)s.border_w, (long)s.pad);
+        lv_obj_add_style(obj, st, (lv_style_selector_t)s.for_state);
+    }
+    if (ws->styles.empty()) {
+        delete ws;
+        return;
+    }
+    lv_obj_add_event_cb(obj, widget_styles_delete_cb, LV_EVENT_DELETE, ws);
 }
 
 void apply_rect(lv_obj_t *obj, const touchy_Widget &w, bool absolute_layout)
@@ -579,7 +626,7 @@ bool load_decoded(std::unique_ptr<ScreenMsg> holder, const char *log_name)
             continue;
         }
         if (!obj) continue;
-        apply_style(obj, w);
+        apply_styles(obj, w);
         if (grid_layout) {
             // Grid manager owns size/position; we only place the cell.
             apply_grid_cell(obj, w);
