@@ -32,7 +32,7 @@ dependencies = [
     # Pillow handles BMP/PNG/JPEG/GIF/WebP decoding; `TouchyClient.file_save`
     # transparently converts uploaded images to LVGL's native `.bin` format
     # so the firmware only needs its always-on built-in image decoder.
-    "pillow>=10,<12",
+    "pillow>=12.2.0,<13",
 ]
 
 [project.urls]
