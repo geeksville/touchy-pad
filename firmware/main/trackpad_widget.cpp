@@ -18,8 +18,9 @@ static uint32_t millis()
     return static_cast<uint32_t>(esp_timer_get_time() / 1000);
 }
 
-TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent)
-    : _touch(touch)
+TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
+                               bool scroll_invert_y, bool scroll_invert_x)
+    : _touch(touch), _scroll_invert_y(scroll_invert_y), _scroll_invert_x(scroll_invert_x)
 {
     // The widget *is* the LVGL container; caller sizes/styles it via the
     // host DSL's Rect / Style. Defaults are kept lean (no padding,
@@ -160,12 +161,15 @@ void TrackpadWidget::_process()
             }
             if (_scroll_axis_h) {
                 // HID AC Pan: positive = scroll right. Fingers moving
-                // right should pan content right.
-                _scroll_accum_h += dx * SCROLL_SCALE;
+                // right should pan content right; invert flips that.
+                float sign = _scroll_invert_x ? -1.0f : 1.0f;
+                _scroll_accum_h += sign * dx * SCROLL_SCALE;
             } else {
                 // HID Wheel: positive = scroll up. Fingers moving down
                 // should scroll content down → negative wheel ticks.
-                _scroll_accum_v += -dy * SCROLL_SCALE;
+                // Invert gives macOS "natural scrolling" (fingers-down = up).
+                float sign = _scroll_invert_y ? 1.0f : -1.0f;
+                _scroll_accum_v += sign * dy * SCROLL_SCALE;
             }
             auto emit = [](float &accum) -> int8_t {
                 int v = static_cast<int>(accum);

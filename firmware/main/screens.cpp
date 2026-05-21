@@ -442,12 +442,15 @@ lv_obj_t *build_spacer(lv_obj_t *parent, const touchy_Widget &)
     return o;
 }
 
-lv_obj_t *build_trackpad(lv_obj_t *parent, const touchy_Widget &)
+lv_obj_t *build_trackpad(lv_obj_t *parent, const touchy_Widget &w)
 {
     // Lifetime: the heap-allocated TrackpadWidget deletes itself on its
     // container's LV_EVENT_DELETE (registered in the constructor), so we
     // can fire-and-forget here.
-    auto *tp = new (std::nothrow) TrackpadWidget(s_touch_handle, parent);
+    const touchy_Trackpad &tp_pb = w.kind.trackpad;
+    auto *tp = new (std::nothrow) TrackpadWidget(
+        s_touch_handle, parent,
+        tp_pb.scroll_invert_y, tp_pb.scroll_invert_x);
     return tp ? tp->obj() : nullptr;
 }
 

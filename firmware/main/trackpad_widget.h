@@ -40,7 +40,12 @@ public:
     // `touch` may be nullptr: the widget still draws and reacts to LVGL
     // press events, but multi-finger taps degrade to single-finger taps
     // because the LVGL indev only carries one point.
-    TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent);
+    //
+    // `scroll_invert_y` / `scroll_invert_x` flip the two-finger scroll
+    // direction for vertical / horizontal axes respectively. Set true for
+    // macOS "natural scrolling" feel.
+    TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
+                   bool scroll_invert_y = false, bool scroll_invert_x = false);
 
     // The LVGL container — pass back to `apply_rect` / `apply_style`.
     lv_obj_t *obj() const { return _container; }
@@ -68,6 +73,10 @@ private:
     bool  _scroll_axis_h      = false;
     float _scroll_accum_v     = 0.0f;
     float _scroll_accum_h     = 0.0f;
+
+    // Inversion flags set at construction from the proto Trackpad message.
+    bool _scroll_invert_y = false;
+    bool _scroll_invert_x = false;
 
     // LVGL event entry points. `_process()` is the shared state machine,
     // dispatched from PRESSED / PRESSING / RELEASED. `_deleteCb` frees
