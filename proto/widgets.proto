@@ -213,13 +213,13 @@ message LayoutGrid {
 }
 
 // Grid placement for a widget whose parent uses Layout.kind == GRID.
-// `col_span` / `row_span` default to 1 when zero. Widgets without a
+// `col_span` / `row_span` default to 1 when absent. Widgets without a
 // `GridCell` land in (col=0, row=0) with span 1x1.
 message GridCell {
-    uint32 col      = 1;
-    uint32 row      = 2;
-    uint32 col_span = 3;
-    uint32 row_span = 4;
+    uint32 col               = 1;
+    uint32 row               = 2;
+    optional uint32 col_span = 3;   // absent → 1
+    optional uint32 row_span = 4;   // absent → 1
 }
 
 // ----- Widget kinds -----

@@ -173,8 +173,10 @@ def cell(
         raise ValueError("grid cell spans must be >= 1")
     widget.cell.col = col
     widget.cell.row = row
-    widget.cell.col_span = col_span
-    widget.cell.row_span = row_span
+    if col_span != 1:
+        widget.cell.col_span = col_span
+    if row_span != 1:
+        widget.cell.row_span = row_span
     return widget
 
 

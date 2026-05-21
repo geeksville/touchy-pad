@@ -455,10 +455,10 @@ void apply_grid_cell(lv_obj_t *obj, const touchy_Widget &w)
 {
     int32_t col = 0, row = 0, col_span = 1, row_span = 1;
     if (w.which_layout == touchy_Widget_cell_tag) {
-        col      = w.layout.cell.col      > 0 ? w.layout.cell.col      : 0;
-        row      = w.layout.cell.row      > 0 ? w.layout.cell.row      : 0;
-        col_span = w.layout.cell.col_span > 0 ? w.layout.cell.col_span : 1;
-        row_span = w.layout.cell.row_span > 0 ? w.layout.cell.row_span : 1;
+        col      = w.layout.cell.col > 0 ? w.layout.cell.col : 0;
+        row      = w.layout.cell.row > 0 ? w.layout.cell.row : 0;
+        col_span = w.layout.cell.has_col_span ? w.layout.cell.col_span : 1;
+        row_span = w.layout.cell.has_row_span ? w.layout.cell.row_span : 1;
     }
     ESP_LOGI(TAG, "apply_grid_cell id='%s' col=%ld row=%ld col_span=%ld row_span=%ld",
              w.id, (long)col, (long)row, (long)col_span, (long)row_span);
