@@ -50,13 +50,19 @@ CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_USE_PERF_MONITOR=n
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_30=y
-# Stage 20: LVGL POSIX filesystem bridge + BMP decoder so host-uploaded
-# image assets in /littlefs/from_host/ can back Image / ImageButton widgets.
+# Stage 20: LVGL POSIX filesystem bridge so host-uploaded image assets
+# in /littlefs/from_host/ can back Image / ImageButton widgets.
 # 'F' (ASCII 70) is the drive letter; paths look like F:/from_host/<asset>.
 CONFIG_LV_USE_FS_POSIX=y
 CONFIG_LV_FS_POSIX_LETTER=70
 CONFIG_LV_FS_POSIX_PATH="/littlefs"
-CONFIG_LV_USE_BMP=y
+# Native LVGL .bin decoder: the host converts BMP/PNG/JPEG/GIF/WebP to
+# this container before upload (see touchy_pad.lvgl_image.to_lvgl_bin).
+# RAM_LOAD=y is REQUIRED for scale/rotation: the SW transform path
+# indexes into the full decoded image, but with RAM_LOAD=n the bin
+# decoder only feeds line-by-line via get_area_cb, so transforming an
+# image renders garbage (random pixels from adjacent file data).
+CONFIG_LV_BIN_DECODER_RAM_LOAD=y
 
 # ----- Log -----
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

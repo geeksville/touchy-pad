@@ -892,10 +892,8 @@ def build_demo_screen(name: str = "demo") -> Screen:
             "smile",
             asset="images/smiley.png",
             on_click=host_action(0x103),
-            # NOTE: leave scale unset for now — LVGL's RGB565A8 transform
-            # path produces garbled output on the device. Once the scaler
-            # bug is fixed we can re-enable scale=2.0 / pressed_scale=2.5
-            # to demonstrate scale toggling.
+            scale=2.0,  # 200% — source asset is only 16x16 px
+            pressed_scale=2.5,  # bump scale while held for visible feedback
             style=[
                 style(
                     transition=transition(
