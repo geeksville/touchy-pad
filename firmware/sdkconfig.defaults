@@ -9,7 +9,11 @@
 CONFIG_IDF_TARGET="esp32s3"
 
 # ----- CPU / FreeRTOS -----
-CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+# Try to run faster because it helps FPS and my test board was fine...
+# CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
 CONFIG_FREERTOS_HZ=1000
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
@@ -38,6 +42,11 @@ CONFIG_TINYUSB_VENDOR_COUNT=1
 # ----- LVGL (v9) -----
 # Route LVGL's stdlib bindings to libc so esp_heap_caps / newlib are used for
 # malloc/memcpy/memset/sprintf (replaces v8's LV_MEM_CUSTOM=y).
+
+# per https://lvgl.io/docs/open/integration/chip_vendors/espressif/tips_and_tricks LVGL speedups
+#CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
+#CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y
 CONFIG_LV_USE_CLIB_SPRINTF=y

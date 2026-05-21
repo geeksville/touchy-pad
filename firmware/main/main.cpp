@@ -85,7 +85,17 @@ extern "C" void app_main(void)
     //      in from proto/default_screen.json.
     // Hosts can override at any time via ScreenLoadCmd.
     const std::string &last = Prefs::instance().current_screen();
-    screens_load(last.empty() ? nullptr : last.c_str());
+    bool loaded = last.empty() ? screens_load(nullptr)
+                               : screens_load(last.c_str());
+    if (!loaded && !last.empty()) {
+        // Saved screen name is no longer registered (e.g. after a firmware
+        // upgrade that changes layout versions). Clear the stale pref and
+        // fall back to the built-in default so the display isn't left blank.
+        ESP_LOGW(TAG, "saved screen '%s' not found — resetting to default",
+                 last.c_str());
+        Prefs::instance().set_current_screen("");
+        screens_load(nullptr);
+    }
 
     ESP_LOGI(TAG, "Ready");
     // Nothing else to do here — host_api dispatches screen loads driven
