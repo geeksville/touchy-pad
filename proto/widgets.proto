@@ -473,6 +473,19 @@ message Trackpad {
     // → disabled. Typically a larger / brighter / ring-style ripple so
     // taps visibly punctuate the press.
     optional RippleAnimation tap_ripple   = 7;
+
+    // Color (0xRRGGBB) of the scroll-progress bar that animates onto
+    // the trackpad edge when a two-finger scroll begins. Unset →
+    // scrollbar animation disabled. Vertical scrolls grow a 4px-wide
+    // bar from the right edge; horizontal scrolls grow a 4px-tall bar
+    // from the bottom edge.
+    optional uint32 scrollbar_color = 8;
+
+    // Maximum hold time, in milliseconds, for a touch to still be
+    // counted as a tap (versus a drag) when all fingers are released.
+    // Default: 200 ms. Range is host-defined; very large values let
+    // long-presses still register as taps.
+    optional uint32 tap_max_ms = 9;
 }
 
 // Reusable touch-feedback ripple. Animates a circle from radius 0 →

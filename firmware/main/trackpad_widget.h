@@ -30,9 +30,17 @@ public:
     // Pixels of two-finger drag per emitted wheel unit. ~10 px/notch gives
     // a comfortable scroll rate without overshooting on quick flicks.
     static constexpr float    SCROLL_SCALE  = 0.1f;
-    static constexpr uint32_t TAP_MAX_MS    = 200;
+    // Default tap-vs-drag hold threshold (ms). Overridable per-instance
+    // via `Trackpad.tap_max_ms`.
+    static constexpr uint32_t DEFAULT_TAP_MAX_MS = 200;
     static constexpr int16_t  TAP_MAX_MOVE  = 12;
     static constexpr uint8_t  MAX_FINGERS   = 3;
+    // Scrollbar grow animation duration (ms). Hardcoded; the host only
+    // toggles the bar on/off via `Trackpad.scrollbar_color`.
+    static constexpr uint32_t SCROLLBAR_GROW_MS = 200;
+    static constexpr uint32_t SCROLLBAR_FADE_MS = 200;
+    // Visual thickness of the scrollbar (px), perpendicular to scroll axis.
+    static constexpr int16_t  SCROLLBAR_THICK = 4;
 
     // Construct the widget as a child of `parent`. The caller is
     // expected to size/style it via the usual `apply_rect` /
@@ -81,6 +89,10 @@ private:
     bool _scroll_invert_y = false;
     bool _scroll_invert_x = false;
 
+    // Per-instance tap-vs-drag hold threshold in ms, sourced from
+    // `Trackpad.tap_max_ms` (or `DEFAULT_TAP_MAX_MS` if unset).
+    uint32_t _tap_max_ms = DEFAULT_TAP_MAX_MS;
+
     // Ripple animation configs (copied from the proto Trackpad message).
     // `_has_*` mirrors the proto `has_*_ripple` flag so we can fall back
     // to "disabled" cheaply in the hot finger-down loop.
@@ -101,10 +113,24 @@ private:
     // completion callback nulls the slot (so the widget can later
     // re-target the still-running ripple to a moving finger or a new
     // color). Pass `nullptr` for fire-and-forget ripples (taps).
+    //
+    // When `is_touch` is true the ripple uses Stage-24.4 semantics:
+    // it starts at `max_radius` and shrinks to a small resting radius
+    // while staying fully visible — the parent widget is responsible
+    // for calling `_fade_out_ripple()` on finger release. When false
+    // (tap ripples), the legacy grow + fade-out + auto-delete behavior
+    // is used.
     void _spawn_ripple(int16_t cx, int16_t cy,
                        const touchy_RippleAnimation &cfg,
                        uint32_t color_rgb,
-                       lv_obj_t **back_slot = nullptr);
+                       lv_obj_t **back_slot = nullptr,
+                       bool is_touch = false);
+
+    // Start the dismissal animation for a touch ripple that has been
+    // detached from its finger slot. Fades opacity to zero over a
+    // short window and deletes the object on completion. No-op for
+    // null pointers.
+    void _fade_out_ripple(lv_obj_t *o);
 
     // Re-color a single live ripple object in place. Picks bg_color vs
     // border_color based on the stored `has_border` flag in its ctx.
@@ -117,6 +143,15 @@ private:
     // (fire-and-forget). A slot holds the LVGL object pointer while the
     // ripple animates; the opacity-completion callback nulls it again.
     lv_obj_t *_finger_ripples[MAX_FINGERS] = {};
+
+    // Scroll-progress bar overlay. Spawned on `_spawn_scrollbar` when a
+    // two-finger scroll starts and removed on lift via
+    // `_dismiss_scrollbar`. Only present when `_has_scrollbar` is true.
+    bool      _has_scrollbar    = false;
+    uint32_t  _scrollbar_color  = 0u;
+    lv_obj_t *_scrollbar        = nullptr;
+    void _spawn_scrollbar(bool horizontal);
+    void _dismiss_scrollbar();
 
     // LVGL event entry points. `_process()` is the shared state machine,
     // dispatched from PRESSED / PRESSING / RELEASED. `_deleteCb` frees

@@ -576,6 +576,36 @@ entry point under `touchy_pad.api`:
   the firmware-too-old exception path — all against an in-process
   fake transport.
 
+## Stage 24.4 better animations - DONE
+Improved the trackpad animations.
+
+* The touch ripple now starts **at** ``max_radius`` (full size) and
+  shrinks down to a small resting radius (`max(6 px, max_radius / 4)`)
+  over `duration_ms` instead of growing 0 → `max_radius`. Opacity
+  stays pinned at `start_opa` for the entire touch — the ripple is no
+  longer auto-deleted by an opacity tween.
+* While any finger is on the trackpad, the resting ripple keeps
+  following that fingertip (the existing per-frame `ctx->cx/cy`
+  update is already wired into `_process()`'s drag-to-follow block).
+  When a specific finger lifts (count drops below `_prev_count`), the
+  newly-orphaned ripples fade out via `_fade_out_ripple()` over
+  `SCROLLBAR_FADE_MS` and delete themselves on completion.
+* New `optional uint32 Trackpad.scrollbar_color = 8;` field. When
+  set, a thin progress bar (4 px thick) animates onto the active
+  scroll axis when a two-finger scroll axis-locks: horizontal scroll
+  grows a horizontal bar along the bottom edge from 0 → container
+  width; vertical scroll grows a vertical bar along the right edge
+  from 0 → container height. The bar fades and self-deletes on
+  all-fingers-lifted.
+* New `optional uint32 Trackpad.tap_max_ms = 9;` field exposes the
+  previously-hardcoded `TAP_MAX_MS` (200 ms) so very long-presses can
+  still register as taps when the host opts in.
+* The Python builder `touchy_pad.api.trackpad(..., scrollbar_color=,
+  tap_max_ms=)` plumbs both new fields through.
+
+Tap ripples retain the legacy grow + fade-out + auto-delete behavior;
+only touch ripples were re-orchestrated.
+
 ## Stage 25: Allow host PC to configure the button matrixes/screen layout
 * Use protocol buffers (nanopb?) to communicate between the host/device (over a custom USB characteristic)
 * Provide a simple python library to allow host applications to easily configure the button matrixes/screen layout

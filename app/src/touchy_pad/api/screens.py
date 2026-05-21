@@ -815,6 +815,8 @@ def trackpad(
     middle_touch_color: int | None = None,
     touch_ripple: _proto.RippleAnimation | None = None,
     tap_ripple: _proto.RippleAnimation | None = None,
+    scrollbar_color: int | None = None,
+    tap_max_ms: int | None = None,
 ) -> _proto.Widget:
     """Multitouch trackpad surface (device-side HID mouse).
 
@@ -837,6 +839,11 @@ def trackpad(
     ``right_touch_color`` / ``middle_touch_color`` (0xRRGGBB) based on
     the gesture's finger count, matching the click convention. Unset
     colors fall back to firmware defaults (cyan / orange / magenta).
+
+    ``scrollbar_color`` (0xRRGGBB), if set, enables a thin progress bar
+    that grows along the active scroll axis when a two-finger scroll
+    starts and fades out when all fingers lift. ``tap_max_ms`` overrides
+    the tap-vs-drag hold threshold (default 200 ms on-device).
     """
     w = _widget(id, rect=rect, style=style)
     tp = w.trackpad
@@ -852,6 +859,10 @@ def trackpad(
         tp.touch_ripple.CopyFrom(touch_ripple)
     if tap_ripple is not None:
         tp.tap_ripple.CopyFrom(tap_ripple)
+    if scrollbar_color is not None:
+        tp.scrollbar_color = scrollbar_color
+    if tap_max_ms is not None:
+        tp.tap_max_ms = tap_max_ms
     return w
 
 

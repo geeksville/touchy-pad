@@ -10,6 +10,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <new>
 
 static const char *TAG = "trackpad";
@@ -122,6 +123,13 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
     if (cfg.has_right_touch_color)  _color_2 = cfg.right_touch_color;
     if (cfg.has_middle_touch_color) _color_3 = cfg.middle_touch_color;
 
+    // Stage 24.4: optional scrollbar overlay and configurable tap hold.
+    if (cfg.has_scrollbar_color) {
+        _has_scrollbar   = true;
+        _scrollbar_color = cfg.scrollbar_color;
+    }
+    if (cfg.has_tap_max_ms) _tap_max_ms = cfg.tap_max_ms;
+
     // The widget *is* the LVGL container; caller sizes/styles it via the
     // host DSL's Rect / Style. Defaults are kept lean (no padding,
     // dark background) so the trackpad surface is visually unambiguous.
@@ -215,7 +223,8 @@ void TrackpadWidget::_process()
             int16_t ly = static_cast<int16_t>(pts[i].y) -
                          static_cast<int16_t>(lv_obj_get_y(_container));
             _spawn_ripple(lx, ly, _touch_ripple_cfg,
-                          _color_for_count(count), &_finger_ripples[i]);
+                          _color_for_count(count), &_finger_ripples[i],
+                          /*is_touch=*/true);
         }
     }
 
@@ -302,6 +311,14 @@ void TrackpadWidget::_process()
                 int ady = std::abs(static_cast<int>(pts[0].y) - _fingers[0].start_y);
                 _scroll_axis_h      = adx > ady;
                 _scroll_axis_locked = true;
+                // First frame after axis lock-in: spawn the optional
+                // scrollbar overlay. Bar grows from 0 to the full extent
+                // of the trackpad along the scroll axis (vertical scroll
+                // → vertical bar on the right edge, horizontal scroll →
+                // horizontal bar on the bottom edge).
+                if (_has_scrollbar && !_scrollbar) {
+                    _spawn_scrollbar(_scroll_axis_h);
+                }
             }
             if (_scroll_axis_h) {
                 // HID AC Pan: positive = scroll right. Fingers moving
@@ -336,6 +353,21 @@ void TrackpadWidget::_process()
         _fingers[1].last_y = static_cast<int16_t>(pts[1].y);
     }
 
+    // ── Fingers that lifted this frame → fade out their ripples ──────
+    // Indices in [count, _prev_count) were touching last frame but are
+    // gone this frame. Detach each ripple from its slot and start the
+    // dismissal animation so the trailing "last frame following the
+    // finger" sticks around just long enough to be seen.
+    if (count < _prev_count) {
+        for (int i = count; i < _prev_count && i < MAX_FINGERS; i++) {
+            lv_obj_t *o = _finger_ripples[i];
+            if (o) {
+                _finger_ripples[i] = nullptr;
+                _fade_out_ripple(o);
+            }
+        }
+    }
+
     // ── All fingers lifted → check for tap ───────────────────────────
     if (_prev_count > 0 && count == 0) {
         bool is_tap = true;
@@ -343,7 +375,7 @@ void TrackpadWidget::_process()
             int16_t moved = std::abs(_fingers[i].last_x - _fingers[i].start_x) +
                             std::abs(_fingers[i].last_y - _fingers[i].start_y);
             uint32_t held = now - _fingers[i].start_ms;
-            if (moved > TAP_MAX_MOVE || held > TAP_MAX_MS) {
+            if (moved > TAP_MAX_MOVE || held > _tap_max_ms) {
                 is_tap = false;
                 break;
             }
@@ -377,6 +409,9 @@ void TrackpadWidget::_process()
         _scroll_accum_v      = 0.0f;
         _scroll_accum_h      = 0.0f;
         for (int i = 0; i < MAX_FINGERS; i++) _fingers[i] = FingerState{};
+        // Take down the scrollbar (if it was up). Animation is a quick
+        // fade-out; the bar deletes itself when the opacity anim ends.
+        if (_scrollbar) _dismiss_scrollbar();
     }
 
     _prev_count = count;
@@ -407,7 +442,8 @@ uint32_t TrackpadWidget::_color_for_count(uint8_t n) const
 void TrackpadWidget::_spawn_ripple(int16_t cx, int16_t cy,
                                    const touchy_RippleAnimation &cfg,
                                    uint32_t color_rgb,
-                                   lv_obj_t **back_slot)
+                                   lv_obj_t **back_slot,
+                                   bool is_touch)
 {
     if (!_container) return;
 
@@ -418,6 +454,14 @@ void TrackpadWidget::_spawn_ripple(int16_t cx, int16_t cy,
     const uint32_t border_w    = cfg.has_border_width ? cfg.border_width : 0u;
     if (max_radius == 0 || duration_ms == 0) return;
 
+    // Stage 24.4: touch ripples shrink down to a small resting radius
+    // (instead of growing 0 → max_radius and then fading out). The
+    // resting radius is ~25 % of `max_radius`, floored at 6 px so the
+    // dot stays visible even with tiny configured radii.
+    const int32_t rest_radius = is_touch
+        ? std::max<int32_t>(6, static_cast<int32_t>(max_radius) / 4)
+        : 0;
+
     auto *ctx = new (std::nothrow) RippleCtx{cx, cy, back_slot, border_w > 0};
     if (!ctx) return;
     lv_obj_t *o = lv_obj_create(_container);
@@ -427,8 +471,11 @@ void TrackpadWidget::_spawn_ripple(int16_t cx, int16_t cy,
     // Decorations off so we don't get themed default borders/shadows.
     lv_obj_remove_style_all(o);
     lv_obj_set_user_data(o, ctx);
-    lv_obj_set_size(o, 0, 0);
-    lv_obj_set_pos(o, cx, cy);
+    // Touch ripples start visible at `max_radius`; tap ripples start at 0
+    // and grow as before.
+    const int32_t initial_r = is_touch ? static_cast<int32_t>(max_radius) : 0;
+    lv_obj_set_size(o, initial_r * 2, initial_r * 2);
+    lv_obj_set_pos(o, cx - initial_r, cy - initial_r);
     lv_obj_add_flag(o, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_clear_flag(o, static_cast<lv_obj_flag_t>(
         LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
@@ -462,15 +509,142 @@ void TrackpadWidget::_spawn_ripple(int16_t cx, int16_t cy,
     lv_anim_set_duration(&a, duration_ms);
     lv_anim_set_path_cb(&a, path);
 
-    // Size animation: 0 -> max_radius.
+    // Size animation. Touch ripples: max_radius → rest_radius (shrink).
+    // Tap ripples: 0 → max_radius (legacy grow).
     lv_anim_set_exec_cb(&a, ripple_size_cb);
-    lv_anim_set_values(&a, 0, static_cast<int32_t>(max_radius));
+    if (is_touch) {
+        lv_anim_set_values(&a, static_cast<int32_t>(max_radius), rest_radius);
+    } else {
+        lv_anim_set_values(&a, 0, static_cast<int32_t>(max_radius));
+    }
     lv_anim_start(&a);
 
-    // Opacity animation: start_opa -> 0, deletes the object on completion.
+    if (!is_touch) {
+        // Tap ripple: legacy behavior — opacity fades to 0 over the
+        // same duration and the completion callback deletes the object.
+        lv_anim_set_exec_cb(&a, ripple_opa_cb);
+        lv_anim_set_values(&a, static_cast<int32_t>(start_opa), 0);
+        lv_anim_set_completed_cb(&a, ripple_opa_completed);
+        lv_anim_start(&a);
+    }
+    // Touch ripple: no opacity animation here — it stays at start_opa,
+    // following the finger via ctx->cx/cy updates from `_process()`.
+    // `_fade_out_ripple()` will be called on finger lift to dismiss it.
+}
+
+void TrackpadWidget::_fade_out_ripple(lv_obj_t *o)
+{
+    if (!o) return;
+    auto *ctx = static_cast<RippleCtx *>(lv_obj_get_user_data(o));
+    // Clear the back_slot pointer so the completion callback doesn't try
+    // to null a slot the parent widget has already detached from.
+    if (ctx) ctx->back_slot = nullptr;
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, o);
+    lv_anim_set_duration(&a, SCROLLBAR_FADE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_set_exec_cb(&a, ripple_opa_cb);
-    lv_anim_set_values(&a, static_cast<int32_t>(start_opa), 0);
+    const lv_opa_t cur_opa = lv_obj_get_style_opa(o, LV_PART_MAIN);
+    lv_anim_set_values(&a, cur_opa, 0);
     lv_anim_set_completed_cb(&a, ripple_opa_completed);
+    lv_anim_start(&a);
+}
+
+// ---------------------------------------------------------------------------
+// Scrollbar overlay (Stage 24.4)
+// ---------------------------------------------------------------------------
+namespace {
+
+// Width / height animation exec callback for the scrollbar. Used to grow
+// the bar along the scroll axis from 0 to the container's matching
+// dimension when scrolling starts.
+void scrollbar_grow_w_cb(void *var, int32_t v)
+{
+    lv_obj_set_width(static_cast<lv_obj_t *>(var), v);
+}
+void scrollbar_grow_h_cb(void *var, int32_t v)
+{
+    lv_obj_set_height(static_cast<lv_obj_t *>(var), v);
+}
+
+// Opacity animation exec callback for the scrollbar fade-out.
+void scrollbar_opa_cb(void *var, int32_t opa)
+{
+    lv_obj_set_style_opa(static_cast<lv_obj_t *>(var),
+                         static_cast<lv_opa_t>(opa), 0);
+}
+
+// Completion callback for the fade-out: delete the object.
+void scrollbar_fade_done(lv_anim_t *a)
+{
+    lv_obj_delete(static_cast<lv_obj_t *>(a->var));
+}
+
+}  // namespace
+
+void TrackpadWidget::_spawn_scrollbar(bool horizontal)
+{
+    if (!_container || _scrollbar) return;
+    lv_obj_t *bar = lv_obj_create(_container);
+    if (!bar) return;
+    _scrollbar = bar;
+
+    lv_obj_remove_style_all(bar);
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_clear_flag(bar, static_cast<lv_obj_flag_t>(
+        LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+
+    const lv_color_t col = lv_color_make(
+        static_cast<uint8_t>(_scrollbar_color >> 16),
+        static_cast<uint8_t>(_scrollbar_color >> 8),
+        static_cast<uint8_t>(_scrollbar_color));
+    lv_obj_set_style_bg_color(bar, col, 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(bar, SCROLLBAR_THICK / 2, 0);
+    lv_obj_set_style_opa(bar, LV_OPA_COVER, 0);
+
+    const lv_coord_t cw = lv_obj_get_width(_container);
+    const lv_coord_t ch = lv_obj_get_height(_container);
+
+    // Horizontal scroll → horizontal bar pinned to the bottom edge
+    // (full width when grown, SCROLLBAR_THICK tall). Vertical scroll →
+    // vertical bar pinned to the right edge (full height when grown,
+    // SCROLLBAR_THICK wide).
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, bar);
+    lv_anim_set_duration(&a, SCROLLBAR_GROW_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    if (horizontal) {
+        lv_obj_set_size(bar, 0, SCROLLBAR_THICK);
+        lv_obj_set_pos(bar, 0, ch - SCROLLBAR_THICK);
+        lv_anim_set_exec_cb(&a, scrollbar_grow_w_cb);
+        lv_anim_set_values(&a, 0, cw);
+    } else {
+        lv_obj_set_size(bar, SCROLLBAR_THICK, 0);
+        lv_obj_set_pos(bar, cw - SCROLLBAR_THICK, 0);
+        lv_anim_set_exec_cb(&a, scrollbar_grow_h_cb);
+        lv_anim_set_values(&a, 0, ch);
+    }
+    lv_anim_start(&a);
+}
+
+void TrackpadWidget::_dismiss_scrollbar()
+{
+    lv_obj_t *bar = _scrollbar;
+    if (!bar) return;
+    _scrollbar = nullptr;
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, bar);
+    lv_anim_set_duration(&a, SCROLLBAR_FADE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_exec_cb(&a, scrollbar_opa_cb);
+    lv_anim_set_values(&a, LV_OPA_COVER, 0);
+    lv_anim_set_completed_cb(&a, scrollbar_fade_done);
     lv_anim_start(&a);
 }
 
