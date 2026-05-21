@@ -15,6 +15,9 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
         cache: pip
+        cache-dependency-path: |
+          app/pyproject.toml
+          app/poetry.lock
 
     - name: Install Poetry
       shell: bash
