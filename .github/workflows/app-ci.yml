@@ -36,19 +36,8 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: echo "FW_VERSION=$(sed -n '1p' VERSION)" >> "$GITHUB_ENV"
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install just
-        uses: extractions/setup-just@v4
+      - name: Set up shared Python/Poetry/proto tooling
+        uses: ./.github/actions/setup-python-poetry-just-proto
 
       - name: Cache ESP-IDF toolchain
         uses: actions/cache@v5
@@ -57,9 +46,6 @@ jobs:
             ~/.espressif
             ~/esp/esp-idf
           key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
-
-      - name: Install Python tooling for proto generation
-        run: pip install grpcio-tools nanopb
 
       - name: Install libusb
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
@@ -77,12 +63,6 @@ jobs:
           cd "$HOME/esp/esp-idf"
           ./install.sh esp32s3
           [ -f "$HOME/esp/esp-idf/export.sh" ] || { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
-
-      - name: Generate proto bindings
-        working-directory: ${{ github.workspace }}
-        env:
-          SYS_PYTHON: python3
-        run: just build-proto-py
 
       - name: Configure and build firmware
         working-directory: ${{ github.workspace }}

@@ -21,24 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install just
-        uses: extractions/setup-just@v4
-
-      - name: Install Python tooling for proto generation
-        run: pip install grpcio-tools nanopb
-
-      - name: Generate proto bindings
-        run: just build-proto-py
+      - name: Set up shared Python/Poetry/proto tooling
+        uses: ./.github/actions/setup-python-poetry-just-proto
 
       - name: Build package
         working-directory: app
