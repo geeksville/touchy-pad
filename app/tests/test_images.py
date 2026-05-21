@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from touchy_pad.images import make_smiley_png
+from touchy_pad.api.images import make_smiley_png
 
 
 def test_make_smiley_png_is_a_transparent_rgba_png():

@@ -610,9 +610,7 @@ message Screen {
     // The active LVGL screen (what `lv_screen_load` swaps in). Authoring
     // code that doesn't think about LVGL layers should put everything
     // here — this is where the bulk of every UI lives. Almost always a
-    // layout-widget (`Widget.kind.layout_*`) carrying its own children;
-    // a leaf widget is allowed but only useful for degenerate
-    // single-widget screens.
+    // layout-widget (`Widget.kind.layout_*`) carrying its own children.
     Widget active = 7;
 
     // Optional layers stacked above / below the active screen. Each one

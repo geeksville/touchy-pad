@@ -7,7 +7,7 @@ import struct
 
 import pytest
 
-from touchy_pad.lvgl_image import (
+from touchy_pad.api.lvgl_image import (
     LVGL_BIN_MAGIC,
     is_lvgl_bin,
     looks_like_supported_image,

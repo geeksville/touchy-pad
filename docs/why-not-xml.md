@@ -72,7 +72,7 @@ message Layout {
 The companion app gains an `app.screens` module that lets a layout be expressed in idiomatic Python and then serialised to a `.pb`:
 
 ```python
-from touchy_pad.screens import Screen, button, slider, toggle, label, grid
+from touchy_pad.api.screens import Screen, button, slider, toggle, label, grid
 
 s = Screen("synth", layout=grid(cols=4, gap=8))
 s += label("title", "Synth")

@@ -1,0 +1,32 @@
+site_name: touchy_pad.api
+site_description: Public Python API for the Touchy-Pad USB multitouch device.
+repo_url: https://github.com/geeksville/touchy-pad
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.expand
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_signature_annotations: true
+            members_order: source
+            heading_level: 2
+
+nav:
+  - Overview: index.md
+  - Device: device.md
+  - Screen DSL: screens.md
+  - Macros: macros.md
+  - Protobuf: protobuf.md
+  - Images: images.md

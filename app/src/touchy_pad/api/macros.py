@@ -20,7 +20,7 @@ it to a widget event slot.
 
 from __future__ import annotations
 
-from . import _proto
+from .. import _proto
 
 # Mirror the firmware-side constants so callers don't need to import
 # usb_hid.h. Bit layout matches a standard HID mouse button mask.

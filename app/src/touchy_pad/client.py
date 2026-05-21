@@ -104,7 +104,7 @@ class TouchyClient:
             data = data.encode("utf-8")
         else:
             data = bytes(data)
-        from .lvgl_image import looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin
+        from .api.lvgl_image import looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin
 
         if looks_like_supported_image(data):
             data = to_lvgl_bin(data)

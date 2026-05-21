@@ -135,56 +135,6 @@ def screen_load(name: str) -> None:
         c.screen_load(name)
 
 
-@screen.command("push")
-@click.argument(
-    "script",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
-@click.option(
-    "--load",
-    "load_name",
-    metavar="NAME",
-    help="After pushing, immediately switch to this screen.",
-)
-@click.option(
-    "--dry-run",
-    is_flag=True,
-    help="Compile the script and report what would be uploaded; " "do not talk to a device.",
-)
-def screens_push(script: Path, load_name: str | None, dry_run: bool) -> None:
-    """Compile SCRIPT (a Python file using touchy_pad.screens) and upload
-    every Screen it defines to the device as screens/<name>.pb.
-    """
-    # Imported lazily so `touchy --help` doesn't pull protobuf in unless
-    # the user actually invokes the screens subgroup.
-    from .screens import _collect_from_script
-
-    found = _collect_from_script(script)
-    if not found:
-        click.echo(f"warning: {script} defined no Screen objects", err=True)
-        return
-
-    if dry_run:
-        for s in found:
-            data = s.to_bytes()
-            click.echo(
-                f"would upload screens/{s.name}.pb ({len(data)} bytes, "
-                f"{len(s.widgets)} widgets)"
-            )
-        if load_name:
-            click.echo(f"would load screen {load_name!r}")
-        return
-
-    with _client() as c:
-        for s in found:
-            data = s.to_bytes()
-            c.file_save(f"screens/{s.name}.pb", data)
-            click.echo(f"sent screens/{s.name}.pb ({len(data)} bytes)")
-        if load_name:
-            c.screen_load(load_name)
-            click.echo(f"loaded screen {load_name!r}")
-
-
 @screen.command("demo")
 @click.option(
     "--listen",
@@ -218,8 +168,8 @@ def screens_demo(listen: bool, as_json: bool) -> None:
     action codes and prints incoming events (flip to the ``test``
     screen on-device with the ``Next >`` button).
     """
-    from .images import make_smiley_png
-    from .screens import build_demo_screens
+    from .api.images import make_smiley_png
+    from .api.screens import build_demo_screens
 
     screens = build_demo_screens()
 
@@ -232,16 +182,15 @@ def screens_demo(listen: bool, as_json: bool) -> None:
         return
 
     smiley = make_smiley_png()
-    with _client() as c:
-        c.file_save("images/smiley.png", smiley)
+    from .api import touchy_open
+
+    with touchy_open() as pad:
+        pad.file_save("images/smiley.png", smiley)
         click.echo(f"sent images/smiley.png ({len(smiley)} bytes source)")
         for s in screens:
-            data = s.to_bytes()
-            c.file_save(f"screens/{s.name}.pb", data)
-            click.echo(
-                f"sent screens/{s.name}.pb ({len(data)} bytes, " f"{len(s.widgets)} widgets)"
-            )
-        c.screen_load("home")
+            pad.screen_save(s)
+            click.echo(f"sent screens/{s.name}.pb ({len(s.widgets)} widgets)")
+        pad.screen_load("home")
         click.echo("loaded screen 'home'")
 
         if listen:
@@ -258,14 +207,15 @@ def screens_demo(listen: bool, as_json: bool) -> None:
             def on_smile(evt):
                 click.echo(f"[smile]  widget={evt.user_data!r}")
 
-            c.on_host_event(0x100, on_ping)
-            c.on_host_event(0x101, on_level)
-            c.on_host_event(0x102, on_enable)
-            c.on_host_event(0x103, on_smile)
+            pad.on_host_event(0x100, on_ping)
+            pad.on_host_event(0x101, on_level)
+            pad.on_host_event(0x102, on_enable)
+            pad.on_host_event(0x103, on_smile)
             click.echo("listening for host events (Ctrl-C to stop)...")
             try:
-                for _ in c.stream_events():
-                    pass
+                import threading
+
+                threading.Event().wait()
             except KeyboardInterrupt:
                 pass
 

@@ -110,7 +110,7 @@ selector bit-field:
 | `0x010000..0x0F0000` | parts (`lv_part_t`) | `LV_PART_KNOB`, `LV_PART_INDICATOR`, `LV_PART_SCROLLBAR` |
 
 The host DSL re-exports them as `STATE_*` / `PART_*` constants from
-[`touchy_pad.screens`](../app/src/touchy_pad/screens.py).
+[`touchy_pad.api.screens`](../app/src/touchy_pad/api/screens.py).
 
 ### Cascade rules
 
@@ -127,7 +127,7 @@ The smiley image-button in `build_demo_screen` shows the pattern
 end-to-end:
 
 ```python
-from touchy_pad.screens import (
+from touchy_pad.api.screens import (
     image_button, host_action, style, transition,
     STATE_PRESSED, PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA,
 )

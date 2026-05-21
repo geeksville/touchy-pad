@@ -1,0 +1,2509 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Public Python API for the Touchy-Pad USB multitouch device.">
+      
+      
+      
+      
+        <link rel="prev" href="../device/">
+      
+      
+        <link rel="next" href="../macros/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Screen DSL - touchy_pad.api</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#screen-authoring-dsl" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="touchy_pad.api" class="md-header__button md-logo" aria-label="touchy_pad.api" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            touchy_pad.api
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Screen DSL
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/geeksville/touchy-pad" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="touchy_pad.api" class="md-nav__button md-logo" aria-label="touchy_pad.api" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    touchy_pad.api
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/geeksville/touchy-pad" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../device/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Device
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Screen DSL
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Screen DSL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        screens
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="screens">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Layer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Layer.copy_into" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        copy_into
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screen
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Screen">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add_top" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add_top
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add_sys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add_sys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add_bottom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add_bottom
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        write
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.absolute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        absolute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.flex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        flex
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        row
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.col" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        col
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.grid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        grid
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.rect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.style" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        style
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.transition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        transition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.host_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        host_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.macro_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macro_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.device_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        device_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.switch_screen_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        switch_screen_action
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="switch_screen_action">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.switch_screen_action--parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.next_screen_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        next_screen_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.prev_screen_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prev_screen_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.button" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        button
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        label
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.slider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slider
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.toggle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        toggle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.checkbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        checkbox
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.image_button" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        image_button
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.arc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arc
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.spacer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        spacer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.ripple_animation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ripple_animation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.trackpad" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        trackpad
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.log_line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        log_line
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.fps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.force_render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        force_render
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.build_demo_screens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_demo_screens
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.build_demo_screen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_demo_screen
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../macros/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Macros
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../protobuf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protobuf
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Images
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        screens
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="screens">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Layer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Layer.copy_into" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        copy_into
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screen
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Screen">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add_top" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add_top
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add_sys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add_sys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.add_bottom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add_bottom
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.Screen.write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        write
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.absolute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        absolute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.flex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        flex
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        row
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.col" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        col
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.grid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        grid
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.rect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.style" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        style
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.transition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        transition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.host_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        host_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.macro_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macro_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.device_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        device_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.switch_screen_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        switch_screen_action
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="switch_screen_action">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.switch_screen_action--parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.next_screen_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        next_screen_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.prev_screen_action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prev_screen_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.button" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        button
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        label
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.slider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slider
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.toggle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        toggle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.checkbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        checkbox
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.image_button" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        image_button
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.arc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arc
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.spacer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        spacer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.ripple_animation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ripple_animation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.trackpad" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        trackpad
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.log_line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        log_line
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.fps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.force_render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        force_render
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.build_demo_screens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_demo_screens
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#touchy_pad.api.screens.build_demo_screen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_demo_screen
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="screen-authoring-dsl">Screen authoring DSL</h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="touchy_pad.api.screens" class="doc doc-heading">
+            <code>touchy_pad.api.screens</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Python DSL for authoring Touchy-Pad screen layouts.</p>
+<p>This is the host-side counterpart to the firmware's protobuf-driven screen
+renderer (see <code>docs/why-not-xml.md</code> for the design rationale).</p>
+<p>Typical usage::</p>
+<pre><code>from touchy_pad.screens import Screen, button, label, grid
+
+home = Screen("home", layout=grid(cols=4, gap=8))
+home += label("title", text="Hello, Touchy!", font_size=24)
+home += button("play", text="Play", on_click="play_pressed")
+home += button("stop", text="Stop", on_click="stop_pressed")
+
+home.write("build/screens/home.pb")
+</code></pre>
+<p>Each <code>Screen</code> instance serialises to a single <code>touchy.Screen</code> protobuf
+message; the firmware loads it via :class:<code>TouchyClient.file_save</code> followed
+by :class:<code>TouchyClient.screen_load</code>. The :command:<code>touchy screens push</code>
+CLI does both steps for a whole script at once.</p>
+<p>Every helper returns a plain <code>touchy.Widget</code> (or <code>Layout</code> / <code>Style</code> /
+<code>Rect</code>) protobuf message — there is no extra wrapping class. Callers can
+freely mix DSL helpers with hand-built protobufs.</p>
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="touchy_pad.api.screens.Layer" class="doc doc-heading">
+            <code>Layer</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+        <p>One LVGL layer's worth of widgets + layout manager.</p>
+<p>Stage 24.1 — an LVGL display has four stacked screens (bottom, the
+active screen, top, sys; see
+<code>&lt;https://lvgl.io/docs/open/main-modules/display/screen_layers&gt;</code>_).
+A :class:<code>Screen</code> carries one <code>Layer</code> per LVGL layer. Most users
+only touch the active layer (via the :class:<code>Screen</code> ctor + <code>+=</code>
+sugar); <code>Layer</code> is exposed for the rare case where a script wants
+to construct a persistent layer (<code>top</code> / <code>sys</code> / <code>bottom</code>)
+explicitly.</p>
+<p>An empty <code>Layer()</code> is the explicit "clear this layer" payload: a
+:class:<code>Screen</code> carrying <code>top=Layer()</code> will wipe whatever the
+previous screen put on <code>lv_layer_top()</code>. Omitting the kwarg
+instead leaves the previous content untouched.</p>
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="touchy_pad.api.screens.Layer.copy_into" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">copy_into</span><span class="p">(</span><span class="n">msg</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Populate a proto <code>Widget</code> as a layout-widget in place.</p>
+<p>Stage 24.2 — Layer is no longer its own proto message; each LVGL
+layer in a <code>Screen</code> is now a single <code>Widget</code> whose <code>kind</code>
+is one of <code>LayoutAbsolute</code> / <code>LayoutFlex</code> / <code>LayoutGrid</code>.
+This method fills <code>msg</code> with the appropriate layout-widget
+kind plus a <code>Layout.children</code> list built from <code>self.widgets</code>.</p>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="touchy_pad.api.screens.Screen" class="doc doc-heading">
+            <code>Screen</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+        <p>A single LVGL screen, identified by a unique <code>name</code>.</p>
+<p>Instances are also auto-registered into a module-level list so the
+<code>touchy screens push</code> CLI can discover every screen a script defines
+without requiring the script to return them explicitly.</p>
+<p>Stage 24.1 — <code>Screen</code> now exposes four LVGL layers
+(<code>&lt;https://lvgl.io/docs/open/main-modules/display/screen_layers&gt;</code>_):</p>
+<ul>
+<li><code>active</code> — the active screen LVGL swaps in via <code>lv_screen_load</code>.
+  The <code>layout=</code> / <code>widgets=</code> ctor arguments and the <code>add</code> /
+  <code>+=</code> / <code>extend</code> helpers all target this layer; authoring code
+  that doesn't care about LVGL layers should ignore the others.</li>
+<li><code>top</code>, <code>sys</code>, <code>bottom</code> — LVGL's persistent layers (top, sys,
+  bottom). They are NOT cleared when LVGL switches screens, so widgets
+  on them stay on screen until a later <code>Screen</code> explicitly replaces
+  that layer. Build them with :func:<code>add_top</code> / :func:<code>add_sys</code> /
+  :func:<code>add_bottom</code>. Pass an empty :class:<code>Layer</code> (e.g. <code>top=Layer()</code>)
+  to clear a layer when switching to this screen; omit the kwarg to
+  leave the previous screen's widgets on that layer untouched.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="touchy_pad.api.screens.Screen.add" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">add</span><span class="p">(</span><span class="n">widget</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Screen</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Append a widget to the active layer, returning <code>self</code> for chaining.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="touchy_pad.api.screens.Screen.add_top" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">add_top</span><span class="p">(</span><span class="n">widget</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Screen</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Append a widget to the <code>top</code> LVGL layer (above the active screen).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="touchy_pad.api.screens.Screen.add_sys" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">add_sys</span><span class="p">(</span><span class="n">widget</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Screen</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Append a widget to the <code>sys</code> LVGL layer (above <code>top</code>).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="touchy_pad.api.screens.Screen.add_bottom" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">add_bottom</span><span class="p">(</span><span class="n">widget</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Screen</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Append a widget to the <code>bottom</code> LVGL layer (below the active screen).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="touchy_pad.api.screens.Screen.write" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">write</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Serialise to <code>path</code>, creating parent directories as needed.</p>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.absolute" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">absolute</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">LayoutAbsolute</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Default layout: widgets are positioned by their <code>Rect</code>.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.flex" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">flex</span><span class="p">(</span><span class="n">flow</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">LayoutFlex</span><span class="o">.</span><span class="n">Flow</span> <span class="o">=</span> <span class="n">_proto</span><span class="o">.</span><span class="n">LayoutFlex</span><span class="o">.</span><span class="n">ROW</span><span class="p">,</span> <span class="n">gap</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">LayoutFlex</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>LVGL flex layout.</p>
+<p><code>flow</code> is a :class:<code>_proto.LayoutFlex.Flow</code> constant
+(e.g. <code>LayoutFlex.ROW</code>, <code>LayoutFlex.COLUMN</code>). The convenience
+aliases :func:<code>row</code> and :func:<code>col</code> cover the most common cases.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.row" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">row</span><span class="p">(</span><span class="n">gap</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">LayoutFlex</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Horizontal flex layout (LV_FLEX_FLOW_ROW).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.col" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">col</span><span class="p">(</span><span class="n">gap</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">LayoutFlex</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Vertical flex layout (LV_FLEX_FLOW_COLUMN).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.grid" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">grid</span><span class="p">(</span><span class="n">cols</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">rows</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">gap</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">LayoutGrid</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>LVGL grid layout.</p>
+<p>Divides the parent into <code>cols</code> equal-width columns (LV_GRID_FR(1)
+each). If <code>rows</code> is non-zero, also divides the parent into
+<code>rows</code> equal-height rows; otherwise a single content-sized row
+track is used (the original Stage 15 behaviour). Use :func:<code>cell</code>
+to place widgets into specific (col, row) coordinates with
+optional spans.</p>
+<p>See https://lvgl.io/docs/open/examples/layouts/grid for the
+underlying LVGL semantics.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.cell" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">cell</span><span class="p">(</span><span class="n">widget</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span><span class="p">,</span> <span class="n">col</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">row</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">col_span</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">row_span</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Place <code>widget</code> inside a grid-layout parent and return it.</p>
+<p>Only meaningful when the enclosing :class:<code>Screen</code> was created
+with a :func:<code>grid</code> layout. Span defaults to 1x1.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.rect" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">rect</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">w</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">h</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Pixel-space placement. <code>0</code> for w/h means "size to content".</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.style" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">style</span><span class="p">(</span><span class="n">bg_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">radius</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">border_w</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pad</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">text_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">for_state</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">recolor</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">recolor_opa</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">transform_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">transition</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Transition</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Cosmetic overrides; unset fields fall back to theme defaults.</p>
+<p>Colours are packed <code>0xRRGGBB</code> integers. Pass <code>None</code> to leave a
+property untouched. Every visual field is wire-level <code>optional</code>,
+so explicit zeros (<code>bg_color=0x000000</code>, <code>transform_width=0</code>)
+round-trip faithfully — they are <em>not</em> treated as "unset".</p>
+<p><code>for_state</code> is the LVGL style selector — a bitwise OR of
+<code>STATE_*</code> and/or <code>PART_*</code> constants (see
+:class:<code>_proto.LvState</code>). The default (0) targets the main part in
+the default state. Example::</p>
+<pre><code>style(bg_color=0x1E90FF, for_state=STATE_PRESSED)
+</code></pre>
+<p>Other knobs:</p>
+<ul>
+<li><code>recolor</code> (<code>0xRRGGBB</code>) and <code>recolor_opa</code> (0..255) tint
+  images / image-buttons; mirrors
+  <code>lv_style_set_image_recolor</code> / <code>_image_recolor_opa</code>.</li>
+<li><code>transform_width</code> adds (or subtracts) pixels from the widget's
+  drawn width while the style is active. Combine with
+  :func:<code>transition</code> for a smooth "grow on press" effect.</li>
+<li><code>transition</code> attaches a :class:<code>_proto.Transition</code> so LVGL
+  animates the listed properties when the style is added / removed
+  from the widget's selector match (e.g. entering / leaving
+  <code>STATE_PRESSED</code>). See :func:<code>transition</code> for the pattern.</li>
+</ul>
+<p>Stack several <code>Style</code> instances on a widget by passing a list as
+the factory's <code>style=</code> argument.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.transition" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">transition</span><span class="p">(</span><span class="n">props</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">path</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">ANIM_PATH_LINEAR</span><span class="p">,</span> <span class="n">duration_ms</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">delay_ms</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Transition</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Smoothly animate style properties when the style becomes active.</p>
+<p>Mirrors <code>lv_style_transition_dsc_t</code>. Pass the returned object as
+the <code>transition=</code> argument to :func:<code>style</code>. When the parent style
+is added or removed from a widget's selector match (e.g. entering /
+leaving <code>STATE_PRESSED</code>) LVGL interpolates every <code>prop</code> in the
+list from the previous value to the new one along <code>path</code> over
+<code>duration_ms</code>, starting after <code>delay_ms</code>.</p>
+<p>The classic "bind on the default style → covers both directions"
+pattern works: attach one transition to the default-state Style and
+LVGL uses it for both press and release. For asymmetric in/out
+timings, attach a different transition to the pressed-state Style.</p>
+<p>Example — image-button that widens by 20 px and darkens when
+pressed, both directions animated linearly over 200 ms::</p>
+<pre><code>image_button(
+    "smile",
+    asset="images/smiley.png",
+    style=[
+        style(transition=transition(
+            props=[PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA],
+            duration_ms=200,
+        )),
+        style(
+            transform_width=20,
+            recolor=0x000000,
+            recolor_opa=80,        # ≈ LV_OPA_30
+            for_state=STATE_PRESSED,
+        ),
+    ],
+)
+</code></pre>
+<p>See https://lvgl.io/docs/open/main-modules/animation for the
+underlying animation engine.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.action" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">action</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build an :class:<code>_proto.Action</code>.</p>
+<p>Two forms are supported:</p>
+<ul>
+<li><code>action(host=&lt;int&gt;)</code> — forward the event to the host as an
+  <code>LvEvent</code> carrying <code>host_code = &lt;int&gt;</code>.</li>
+<li><code>action(macro=[step, ...])</code> — a device-side macro built from
+  :mod:<code>touchy_pad.macros</code> helpers.</li>
+</ul>
+<p>A bare positional integer is treated as the host code (legacy
+convenience matching the pre-stage-16 string form).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.host_action" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">host_action</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Forward the widget event to the host with the given <code>host_code</code>.</p>
+<p>The host-side :class:<code>touchy_pad.TouchyClient</code> dispatches incoming
+<code>LvEvent</code>\s on <code>host_code</code>: register a callback with
+<code>client.on_host_event(code, callback)</code> to receive them.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.macro_action" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">macro_action</span><span class="p">(</span><span class="n">steps</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Bundle a list of :mod:<code>touchy_pad.macros</code> steps as an Action.</p>
+<p>Accepts any iterable of :class:<code>_proto.MacroStep</code> instances.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.device_action" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">device_action</span><span class="p">(</span><span class="n">device</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">ActionDevice</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Wrap a pre-built :class:<code>_proto.ActionDevice</code> as an :class:<code>Action</code>.</p>
+<p>Most callers want the higher-level :func:<code>switch_screen_action</code> /
+:func:<code>next_screen_action</code> / :func:<code>prev_screen_action</code> helpers
+instead; this exists for forward-compatibility with new
+<code>ActionDevice</code> sub-kinds the firmware may add later.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.switch_screen_action" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">switch_screen_action</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">behavior</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build an Action that swaps the active screen on-device.</p>
+<h5 id="touchy_pad.api.screens.switch_screen_action--parameters">Parameters</h5>
+<p>name:
+    Stem of the target screen (the <code>screens/&lt;stem&gt;.pb</code> filename),
+    matching the <code>name=</code> passed to :class:<code>Screen</code>. Required when
+    <code>behavior</code> is :attr:<code>ActionSwitchScreen.BY_NAME</code> (the default),
+    ignored otherwise.
+behavior:
+    One of :attr:<code>ActionSwitchScreen.BY_NAME</code> (0),
+    :attr:<code>ActionSwitchScreen.NEXT</code> (1) or
+    :attr:<code>ActionSwitchScreen.PREVIOUS</code> (2). NEXT/PREVIOUS step
+    through the firmware's registry in stable iteration order
+    (alphabetical, because the registry is a <code>std::map</code>) and wrap
+    around at the ends.</p>
+<p>The convenience wrappers :func:<code>next_screen_action</code> and
+:func:<code>prev_screen_action</code> cover the most common case.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.next_screen_action" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">next_screen_action</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Step to the next screen in the device registry (wraps around).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.prev_screen_action" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">prev_screen_action</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Step to the previous screen in the device registry (wraps around).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.button" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">button</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">on_click</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>A clickable button with an optional text label.</p>
+<p><code>on_click</code> accepts a single :class:<code>_proto.Action</code>, an <code>int</code> host
+code, or a list mixing both. Pass <code>None</code> (the default) for buttons
+that do nothing on click.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.label" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">label</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">font_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Static text. <code>font_size = 0</code> uses the theme default.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.slider" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">slider</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">min</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">max</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">on_change</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>A linear slider over <code>[min, max]</code>.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.toggle" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">toggle</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">on</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">on_change</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>An on/off switch.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.checkbox" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">checkbox</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">checked</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">on_change</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>A labelled tickbox.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.image" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">image</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">asset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">rotation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Display a previously-uploaded image asset (<code>/from_host/&lt;asset&gt;</code>).</p>
+<p><code>scale</code> is a multiplier (<code>1.0</code> / <code>1</code> / <code>256</code> all mean 100%):
+floats are interpreted as a multiplier (<code>0.5</code> = 50%, <code>2.0</code> =
+200%), ints <code>&gt; 16</code> are taken as raw LVGL units (256 = 100%) and
+ints <code>&lt;= 16</code> as a multiplier. <code>rotation</code> is in degrees (floats
+or ints); fractional degrees are honoured down to 0.1°.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.image_button" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">image_button</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">asset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pressed_asset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">on_click</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">rotation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pressed_scale</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pressed_rotation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Clickable image button backed by uploaded assets.</p>
+<p>The released-state image is described by an embedded <code>Image</code> (so
+it accepts the same <code>asset</code> / <code>scale</code> / <code>rotation</code> knobs as
+:func:<code>image</code>). <code>pressed_asset</code> is optional: pass <code>None</code> (the
+default) to leave LVGL's PRESSED state unset; LVGL then renders the
+released image while pressed. <code>pressed_scale</code> / <code>pressed_rotation</code>
+let the press-state image have its own transform — they default to
+the released-state values when omitted but a <code>pressed_asset</code> is
+provided. <code>on_click</code> accepts the same shapes as :func:<code>button</code>'s
+<code>on_click</code>.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.arc" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">arc</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">min</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">max</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>A circular arc indicator.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.spacer" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">spacer</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Invisible placeholder. Useful for padding inside flex/grid layouts.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.ripple_animation" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">ripple_animation</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">start_opa</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">max_radius</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">40</span><span class="p">,</span> <span class="n">duration_ms</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">350</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">ANIM_PATH_LINEAR</span><span class="p">,</span> <span class="n">border_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">RippleAnimation</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Touch-feedback ripple descriptor.</p>
+<p>A circle grows from radius 0 to <code>max_radius</code> while its opacity
+fades from <code>start_opa</code> (0-255) to 0 over <code>duration_ms</code>, eased by
+<code>path</code>. <code>border_width=0</code> (default) renders a filled disc;
+<code>&gt; 0</code> renders a hollow ring of that thickness. Color is <em>not</em>
+specified here — :func:<code>trackpad</code> picks it at spawn time from its
+per-finger-count palette so one descriptor can be reused across
+gestures.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.trackpad" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">trackpad</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scroll_invert_y</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">scroll_invert_x</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">left_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">right_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">middle_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">touch_ripple</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">RippleAnimation</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">tap_ripple</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">RippleAnimation</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Multitouch trackpad surface (device-side HID mouse).</p>
+<p>Touches inside the widget become USB HID mouse events on the device:
+one-finger drag → move, two-finger drag → scroll wheel,
+1/2/3-finger tap → left / right / middle click. Recognised gestures
+are echoed to the shared device log sink, so placing a
+:func:<code>log_line</code> on the same screen surfaces them to the user.</p>
+<p>Set <code>scroll_invert_y</code> / <code>scroll_invert_x</code> true for macOS-style
+"natural scrolling".</p>
+<p>Optional ripple animations:</p>
+<ul>
+<li><code>touch_ripple</code> spawns at each finger touch-down.</li>
+<li><code>tap_ripple</code> spawns at the centroid of the touched fingers when
+  a tap (no drag) is recognised on release.</li>
+</ul>
+<p>Both pick their color from <code>left_touch_color</code> /
+<code>right_touch_color</code> / <code>middle_touch_color</code> (0xRRGGBB) based on
+the gesture's finger count, matching the click convention. Unset
+colors fall back to firmware defaults (cyan / orange / magenta).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.log_line" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">log_line</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;log&#39;</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>One-line readout of the most recent device log message.</p>
+<p>Subscribes to the firmware's shared log sink (see
+<code>firmware/main/log_line.{h,cpp}</code>); the :func:<code>trackpad</code> widget
+and other subsystems push status lines through that sink.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.fps" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fps</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;fps&#39;</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Live frames-per-second readout for the active LVGL display.</p>
+<p>Renders as a small label that the firmware refreshes ~twice per
+second from a counter incremented on every display flush. Useful
+while iterating on layouts to spot the cost of expensive widgets
+(image scaling, transitions, ...).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.force_render" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">force_render</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;force_render&#39;</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Dev / benchmark toggle that pins LVGL to maximum redraw rate.</p>
+<p>Renders on-device as an LVGL checkbox labelled <code>"Force"</code>. While
+checked, the firmware schedules a 1 ms LV timer that invalidates
+the active screen each tick, so LVGL keeps the rendering pipeline
+busy at the display's maximum rate. Pair with :func:<code>fps</code> to read
+off the worst-case frame rate for the current layout.</p>
+<p>Has no host-visible Actions — the checkbox's on-change effect is
+handled entirely on-device.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.build_demo_screens" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">build_demo_screens</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Screen</span><span class="p">]</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build the demo screen set exercising stages 16 / 18 / 20 / 24.</p>
+<p>Returns two <code>Screen</code> instances meant to be uploaded together (the
+<code>touchy screens demo</code> CLI subcommand does this). They share a
+common header row of navigation controls so the user can flip
+between them on-device with no host involvement:</p>
+<p><code>[ Prev | FPS | Next ]</code></p>
+<p>using Stage-24 <code>ActionSwitchScreen</code>-typed actions on the Prev/Next
+buttons. The :func:<code>fps</code> widget in the middle is a live frames-per-
+second readout courtesy of the same stage.</p>
+<p>Screens:</p>
+<ul>
+<li><code>home</code> — full-bleed :func:<code>trackpad</code> for USB HID mouse output,
+  so the device is immediately useful after the demo upload.</li>
+<li><code>test</code> — the original Stage-16/18/20 widget showcase: hello
+  macro button, ping/slider/checkbox emitting host actions, the
+  Stage-20 image button, and a :func:<code>log_line</code> at the bottom that
+  mirrors the device's most recent log message.</li>
+</ul>
+<p>The first screen returned (<code>home</code>) becomes the boot default
+because the firmware autoloads the registry's lexicographically
+first entry on first boot; subsequent boots restore whichever
+screen was last viewed (Stage-24 prefs persistence).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="touchy_pad.api.screens.build_demo_screen" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">build_demo_screen</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;demo&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Screen</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Back-compat shim returning the trackpad-bearing demo screen.</p>
+<p>Pre-Stage-24 callers expected one screen; the demo is now split
+into two. We return the <code>home</code> screen because it carries the
+multitouch trackpad ("pad") that the previous demo led with, and
+that's what existing tests / docs key off.</p>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

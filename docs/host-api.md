@@ -109,12 +109,12 @@ USB HID is a composite single-interface design with report IDs
 1 = mouse, 2 = keyboard, so macros and the existing touchpad share one
 endpoint pair.
 
-The Stage-15 host-side DSL in [`touchy_pad.screens`](../app/src/touchy_pad/screens.py)
+The Stage-15 host-side DSL in [`touchy_pad.api.screens`](../app/src/touchy_pad/api/screens.py)
 is the supported way to author layouts; see
 [`docs/why-not-xml.md`](why-not-xml.md) for why we don't use XML.
 Use `host_action(code)`, `macro_action(steps)`, and `action()` from
-`touchy_pad.screens` together with the step factories in
-`touchy_pad.macros` and the key constants in `touchy_pad.hid_keys`.
+`touchy_pad.api.screens` together with the step factories in
+`touchy_pad.api.macros` and the key constants in `touchy_pad.api.hid_keys`.
 
 See https://lvgl.io/docs/open/common-widget-features/events#fields-of-lv_event_t
 and https://lvgl.io/docs/open/api/core/lv_event_h for more info.

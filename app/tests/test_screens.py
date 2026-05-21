@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from touchy_pad import _proto, hid_keys, macros
-from touchy_pad.screens import (
+from touchy_pad import _proto
+from touchy_pad.api import (
     ANIM_PATH_EASE_IN_OUT,
     ANIM_PATH_LINEAR,
     PART_KNOB,
@@ -16,7 +16,6 @@ from touchy_pad.screens import (
     PROP_TRANSFORM_WIDTH,
     STATE_PRESSED,
     Screen,
-    _collect_from_script,
     arc,
     build_demo_screen,
     build_demo_screens,
@@ -26,10 +25,12 @@ from touchy_pad.screens import (
     force_render,
     fps,
     grid,
+    hid_keys,
     host_action,
     image,
     label,
     macro_action,
+    macros,
     next_screen_action,
     prev_screen_action,
     rect,
@@ -235,7 +236,7 @@ def test_persistent_layers_round_trip():
 
 def test_empty_layer_clears_persistent_layer():
     """Passing ``top=Layer()`` is the explicit "clear top layer" payload."""
-    from touchy_pad.screens import Layer
+    from touchy_pad.api import Layer
 
     s = Screen("clr", top=Layer())
     decoded = _proto.Screen.FromString(s.to_bytes())
@@ -245,7 +246,7 @@ def test_empty_layer_clears_persistent_layer():
 
 def test_layer_per_layer_layout():
     """Each layer carries its own layout independently."""
-    from touchy_pad.screens import Layer
+    from touchy_pad.api import Layer
 
     s = Screen("g", layout=grid(cols=2, gap=1))
     s.top = Layer(layout=row(gap=4))
@@ -464,21 +465,6 @@ def test_write_to_disk_and_reload(tmp_path: Path):
     decoded = _proto.Screen.FromString(p.read_bytes())
     assert decoded.name == "disk"
     assert _children(decoded.active)[0].label.text == "hi"
-
-
-def test_collect_from_script(tmp_path: Path):
-    script = tmp_path / "layout.py"
-    script.write_text(
-        "from touchy_pad.screens import Screen, button\n"
-        "a = Screen('one')\n"
-        "a += button('go', text='Go')\n"
-        "b = Screen('two')\n"
-    )
-    found = _collect_from_script(script)
-    assert [s.name for s in found] == ["one", "two"]
-    # Second invocation should not include the first batch.
-    found2 = _collect_from_script(script)
-    assert [s.name for s in found2] == ["one", "two"]
 
 
 # -- Stage 20.4: Trackpad ripple animations + colors ------------------------

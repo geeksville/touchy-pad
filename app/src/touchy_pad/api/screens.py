@@ -29,10 +29,11 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from . import _proto
+from .. import _proto
 
 __all__ = [
     "Screen",
+    "Layer",
     "absolute",
     "flex",
     "row",
@@ -995,8 +996,11 @@ class Screen:
       leave the previous screen's widgets on that layer untouched.
     """
 
-    # Populated by every ``Screen.__init__`` call; cleared by
-    # :func:`_collect_from_script`.
+    # Every ``Screen.__init__`` appends to this class-level list so
+    # tests can grab the most-recently-constructed instance(s) without
+    # plumbing the result through their fixtures. Cleared between
+    # tests by the ``_clear_registry`` autouse fixture in
+    # ``tests/test_screens.py``.
     _registry: list[Screen] = []
 
     def __init__(
@@ -1291,16 +1295,3 @@ def build_demo_screen(name: str = "demo") -> Screen:
     target = next(s for s in screens if s.name == "home")
     target.name = name
     return target
-
-
-def _collect_from_script(path: str | Path) -> list[Screen]:
-    """Execute ``path`` in a fresh namespace and return every Screen created.
-
-    Used by ``touchy screens push``; exposed here so tests can drive it.
-    """
-    src = Path(path).read_text(encoding="utf-8")
-    Screen._registry = []
-    namespace: dict[str, object] = {"__name__": "__touchy_screen_script__", "__file__": str(path)}
-    code = compile(src, str(path), "exec")
-    exec(code, namespace)  # noqa: S102 — user explicitly asked to run this file
-    return list(Screen._registry)

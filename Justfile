@@ -155,6 +155,11 @@ app-test: build-proto-py
 app-lint: build-proto-py
     cd app && poetry run ruff check src tests
 
+# Build the public-API HTML docs into docs/python-api/ (commit-friendly).
+# Requires the optional `docs` Poetry group: `poetry install --with docs`.
+build-docs: build-proto-py
+    cd app && poetry run mkdocs build --site-dir ../docs/python-api
+
 # Build wheel + sdist into app/dist/. Regenerates proto first so the
 # wheel always contains an up-to-date touchy_pb2.py.
 app-build: build-proto-py

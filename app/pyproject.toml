@@ -67,6 +67,14 @@ mypy = "^1.10"
 grpcio-tools = "^1.60"   # used by `just build-proto` to regenerate bindings
 pre-commit = "^4.0"
 
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.6"
+mkdocs-material = "^9.5"
+mkdocstrings = { extras = ["python"], version = "^0.27" }
+
 [build-system]
 requires = ["poetry-core>=1.8"]
 build-backend = "poetry.core.masonry.api"

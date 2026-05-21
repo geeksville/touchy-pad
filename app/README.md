@@ -31,31 +31,37 @@ touchy events              # live-tail events from the device
 
 ## Library
 
+The supported entry point is `touchy_pad.api`:
+
 ```python
-from touchy_pad import TouchyClient
+from touchy_pad.api import touchy_open
 
-with TouchyClient.open() as client:
-    info = client.sys_version_get()
-    print(info.firmware_version_str)
+with touchy_open() as pad:
+    print("firmware:", pad.client.sys_version_get().firmware_version_str)
 
-    for event in client.stream_events():
-        print(event)
+    pad.on_host_event(0x100, lambda e: print("event", e))
+    # ...do work; events arrive on a background thread...
 ```
+
+See [`docs/python-api.md`](../docs/python-api.md) for the full guide
+and [`docs/python-api/`](../docs/python-api/) for auto-generated
+reference docs (built with `just build-docs`).
 
 ### Uploading images
 
-`TouchyClient.file_save` accepts any Pillow-readable image (BMP, PNG,
+`Touchy.file_save` accepts any Pillow-readable image (BMP, PNG,
 JPEG, GIF, WebP) and transparently converts it to LVGL's native `.bin`
 format before uploading, so the firmware (which only ships LVGL's
 built-in bin decoder) can render it without extra config:
 
 ```python
-with open("avatar.png", "rb") as f:
-    client.file_save("images/avatar.png", f.read())  # auto-converted
+with touchy_open() as pad:
+    with open("avatar.png", "rb") as f:
+        pad.file_save("images/avatar.png", f.read())  # auto-converted
 
-# Already-converted `.bin` payload, or any non-image bytes, pass
-# through unchanged.
-client.file_save("screens/home.pb", screen.to_bytes())
+    # Already-converted `.bin` payload, or any non-image bytes, pass
+    # through unchanged.
+    pad.file_save("screens/home.pb", screen.to_bytes())
 ```
 
 Refer to the asset by its upload path (`asset="images/avatar.png"`)
