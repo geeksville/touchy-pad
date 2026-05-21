@@ -534,10 +534,19 @@ def test_prev_screen_action():
 def test_build_demo_screens_returns_two_named_screens():
     screens = build_demo_screens()
     assert [s.name for s in screens] == ["home", "test"]
+
+    # Both screens have prev/next navigation in the header.
     for s in screens:
-        # Every demo screen carries the [Prev | FPS | Next] header.
         ids = [w.id for w in s.widgets]
-        assert "prev" in ids and "next" in ids and "fps" in ids
+        assert "prev" in ids and "next" in ids
+
+    # Home screen has the trackpad widget.
+    home_ids = [w.id for w in screens[0].widgets]
+    assert "pad" in home_ids
+
+    # Test screen has the fps widget.
+    test_ids = [w.id for w in screens[1].widgets]
+    assert "fps" in test_ids
 
 
 def test_build_demo_screens_header_wires_switch_actions():
