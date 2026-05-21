@@ -131,6 +131,63 @@ void TrackpadWidget::_process()
         _fingers[0].last_y = static_cast<int16_t>(pts[0].y);
     }
 
+    // ── Two-finger drag (scroll wheel) ───────────────────────────────
+    // Lock to the dominant axis once movement crosses TAP_MAX_MOVE; that
+    // also flags the fingers as `dragging`, suppressing the right-click
+    // that a stationary 2-finger tap would otherwise produce on release.
+    if (count == 2 && _fingers[0].active && _fingers[1].active) {
+        float dx0 = static_cast<float>(pts[0].x) - _fingers[0].last_x;
+        float dy0 = static_cast<float>(pts[0].y) - _fingers[0].last_y;
+        float dx1 = static_cast<float>(pts[1].x) - _fingers[1].last_x;
+        float dy1 = static_cast<float>(pts[1].y) - _fingers[1].last_y;
+        float dx = (dx0 + dx1) * 0.5f;
+        float dy = (dy0 + dy1) * 0.5f;
+
+        int16_t total_move = std::abs(static_cast<int>(pts[0].x) - _fingers[0].start_x) +
+                             std::abs(static_cast<int>(pts[0].y) - _fingers[0].start_y);
+        if (total_move > TAP_MAX_MOVE) {
+            _fingers[0].dragging = true;
+            _fingers[1].dragging = true;
+            _scrolling = true;
+        }
+
+        if (_scrolling) {
+            if (!_scroll_axis_locked) {
+                int adx = std::abs(static_cast<int>(pts[0].x) - _fingers[0].start_x);
+                int ady = std::abs(static_cast<int>(pts[0].y) - _fingers[0].start_y);
+                _scroll_axis_h      = adx > ady;
+                _scroll_axis_locked = true;
+            }
+            if (_scroll_axis_h) {
+                // HID AC Pan: positive = scroll right. Fingers moving
+                // right should pan content right.
+                _scroll_accum_h += dx * SCROLL_SCALE;
+            } else {
+                // HID Wheel: positive = scroll up. Fingers moving down
+                // should scroll content down → negative wheel ticks.
+                _scroll_accum_v += -dy * SCROLL_SCALE;
+            }
+            auto emit = [](float &accum) -> int8_t {
+                int v = static_cast<int>(accum);
+                accum -= static_cast<float>(v);
+                if (v >  127) v =  127;
+                if (v < -127) v = -127;
+                return static_cast<int8_t>(v);
+            };
+            int8_t v = emit(_scroll_accum_v);
+            int8_t h = emit(_scroll_accum_h);
+            if (v != 0 || h != 0) {
+                usb_hid_mouse_scroll(v, h);
+                log_line_post("scroll v=%+d h=%+d", v, h);
+            }
+        }
+
+        _fingers[0].last_x = static_cast<int16_t>(pts[0].x);
+        _fingers[0].last_y = static_cast<int16_t>(pts[0].y);
+        _fingers[1].last_x = static_cast<int16_t>(pts[1].x);
+        _fingers[1].last_y = static_cast<int16_t>(pts[1].y);
+    }
+
     // ── All fingers lifted → check for tap ───────────────────────────
     if (_prev_count > 0 && count == 0) {
         bool is_tap = true;
@@ -146,6 +203,11 @@ void TrackpadWidget::_process()
         if (is_tap) _clickButton(_session_max_fingers);
 
         _session_max_fingers = 0;
+        _scrolling           = false;
+        _scroll_axis_locked  = false;
+        _scroll_axis_h       = false;
+        _scroll_accum_v      = 0.0f;
+        _scroll_accum_h      = 0.0f;
         for (int i = 0; i < MAX_FINGERS; i++) _fingers[i] = FingerState{};
     }
 

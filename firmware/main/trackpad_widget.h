@@ -26,6 +26,9 @@ class TrackpadWidget {
 public:
     // Tuning constants (kept in sync with v1).
     static constexpr float    MOVE_SCALE    = 1.5f;
+    // Pixels of two-finger drag per emitted wheel unit. ~10 px/notch gives
+    // a comfortable scroll rate without overshooting on quick flicks.
+    static constexpr float    SCROLL_SCALE  = 0.1f;
     static constexpr uint32_t TAP_MAX_MS    = 200;
     static constexpr int16_t  TAP_MAX_MOVE  = 12;
     static constexpr uint8_t  MAX_FINGERS   = 3;
@@ -58,6 +61,13 @@ private:
     FingerState _fingers[MAX_FINGERS]{};
     uint8_t     _prev_count          = 0;
     uint8_t     _session_max_fingers = 0;
+
+    // Two-finger scroll state (reset on all-fingers-up).
+    bool  _scrolling          = false;
+    bool  _scroll_axis_locked = false;
+    bool  _scroll_axis_h      = false;
+    float _scroll_accum_v     = 0.0f;
+    float _scroll_accum_h     = 0.0f;
 
     // LVGL event entry points. `_process()` is the shared state machine,
     // dispatched from PRESSED / PRESSING / RELEASED. `_deleteCb` frees
