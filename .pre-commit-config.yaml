@@ -15,6 +15,15 @@
 repos:
   - repo: local
     hooks:
+      - id: poetry-lock-check
+        name: poetry check
+        language: system
+        entry: sh -c 'cd app && poetry check'
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^app/(pyproject\.toml|poetry\.lock)$
+        always_run: false
+
       - id: ruff-format
         name: ruff format
         language: system
