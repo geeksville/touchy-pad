@@ -37,11 +37,24 @@ namespace {
 struct RippleCtx {
     int16_t cx;  // ripple center, widget-local px
     int16_t cy;
+    // If non-null, points to the TrackpadWidget slot that tracks this
+    // ripple. The opacity-completion callback nulls `*back_slot` (when
+    // it still points at us) so the widget stops trying to follow /
+    // recolor a ripple that's already gone. nullptr = untracked
+    // (tap ripples).
+    lv_obj_t **back_slot;
+    // Remembers whether this ripple is rendered as a filled disc
+    // (style: bg_color) or as a hollow ring (style: border_color), so
+    // `_retint_ripple` knows which style property to overwrite when
+    // the parent widget asks for an on-the-fly color change.
+    bool has_border;
 };
 
 // Exec callback for the radius animation. `v` is the current radius;
 // we resize the object to (2v × 2v) and reposition so the center stays
-// pinned at the stored (cx, cy) regardless of size.
+// pinned at the stored (cx, cy) regardless of size — and crucially
+// reads `cx`/`cy` fresh each tick, so the parent widget can move the
+// center while the animation is still running (drag-to-follow).
 void ripple_size_cb(void *var, int32_t v)
 {
     auto *o   = static_cast<lv_obj_t *>(var);
@@ -67,6 +80,11 @@ void ripple_opa_completed(lv_anim_t *a)
 {
     auto *o   = static_cast<lv_obj_t *>(a->var);
     auto *ctx = static_cast<RippleCtx *>(lv_obj_get_user_data(o));
+    if (ctx && ctx->back_slot && *ctx->back_slot == o) {
+        // Detach from the widget's per-finger tracking slot so the
+        // widget stops trying to follow / recolor a doomed ripple.
+        *ctx->back_slot = nullptr;
+    }
     lv_obj_set_user_data(o, nullptr);
     delete ctx;
     lv_obj_delete(o);
@@ -187,17 +205,50 @@ void TrackpadWidget::_process()
         if (static_cast<uint8_t>(i + 1) > _session_max_fingers) {
             _session_max_fingers = static_cast<uint8_t>(i + 1);
         }
-        // Spawn the touch ripple. Color tracks the *current* finger
-        // count so e.g. landing the 2nd finger spawns a "right-click"
-        // colored ripple even while the 1st finger's left-colored
-        // ripple is still fading from the earlier frame.
+        // Spawn the touch ripple, tracked in `_finger_ripples[i]` so
+        // subsequent finger movements can drag its center along and
+        // count-changes can recolor every still-running ripple in
+        // unison (handled below).
         if (_has_touch_ripple) {
             int16_t lx = static_cast<int16_t>(pts[i].x) -
                          static_cast<int16_t>(lv_obj_get_x(_container));
             int16_t ly = static_cast<int16_t>(pts[i].y) -
                          static_cast<int16_t>(lv_obj_get_y(_container));
-            _spawn_ripple(lx, ly, _touch_ripple_cfg, _color_for_count(count));
+            _spawn_ripple(lx, ly, _touch_ripple_cfg,
+                          _color_for_count(count), &_finger_ripples[i]);
         }
+    }
+
+    // ── Recolor all live touch ripples when the finger count changes ─
+    // Without this, landing the 2nd finger would correctly spawn an
+    // orange (right-click) ripple under itself but the 1st finger's
+    // cyan (left-click) ripple — already mid-animation — would keep
+    // its stale color, so the user sees a multi-coloured cluster
+    // during 2/3-finger drags. Walk the tracked ripples and overwrite
+    // every one to the current count's color.
+    if (count > 0 && count != _prev_count) {
+        const uint32_t now_color = _color_for_count(count);
+        for (int i = 0; i < MAX_FINGERS; i++) {
+            _retint_ripple(_finger_ripples[i], now_color);
+        }
+    }
+
+    // ── Drag-to-follow: keep each ripple centered on its finger ──────
+    // Update the ctx (read by the size anim's exec cb each tick) AND
+    // reposition the object directly using its current size, so even
+    // ripples whose size animation has already completed continue to
+    // chase the finger during the fade-out tail.
+    for (int i = 0; i < count; i++) {
+        lv_obj_t *o = _finger_ripples[i];
+        if (!o) continue;
+        auto *ctx = static_cast<RippleCtx *>(lv_obj_get_user_data(o));
+        if (!ctx) continue;
+        ctx->cx = static_cast<int16_t>(pts[i].x) -
+                  static_cast<int16_t>(lv_obj_get_x(_container));
+        ctx->cy = static_cast<int16_t>(pts[i].y) -
+                  static_cast<int16_t>(lv_obj_get_y(_container));
+        int16_t r = static_cast<int16_t>(lv_obj_get_width(o) / 2);
+        lv_obj_set_pos(o, ctx->cx - r, ctx->cy - r);
     }
 
     // ── Single-finger drag (mouse move) ──────────────────────────────
@@ -355,7 +406,8 @@ uint32_t TrackpadWidget::_color_for_count(uint8_t n) const
 
 void TrackpadWidget::_spawn_ripple(int16_t cx, int16_t cy,
                                    const touchy_RippleAnimation &cfg,
-                                   uint32_t color_rgb)
+                                   uint32_t color_rgb,
+                                   lv_obj_t **back_slot)
 {
     if (!_container) return;
 
@@ -366,10 +418,11 @@ void TrackpadWidget::_spawn_ripple(int16_t cx, int16_t cy,
     const uint32_t border_w    = cfg.has_border_width ? cfg.border_width : 0u;
     if (max_radius == 0 || duration_ms == 0) return;
 
-    auto *ctx = new (std::nothrow) RippleCtx{cx, cy};
+    auto *ctx = new (std::nothrow) RippleCtx{cx, cy, back_slot, border_w > 0};
     if (!ctx) return;
     lv_obj_t *o = lv_obj_create(_container);
     if (!o) { delete ctx; return; }
+    if (back_slot) *back_slot = o;
 
     // Decorations off so we don't get themed default borders/shadows.
     lv_obj_remove_style_all(o);
@@ -419,4 +472,19 @@ void TrackpadWidget::_spawn_ripple(int16_t cx, int16_t cy,
     lv_anim_set_values(&a, static_cast<int32_t>(start_opa), 0);
     lv_anim_set_completed_cb(&a, ripple_opa_completed);
     lv_anim_start(&a);
+}
+
+void TrackpadWidget::_retint_ripple(lv_obj_t *o, uint32_t color_rgb)
+{
+    if (!o) return;
+    auto *ctx = static_cast<RippleCtx *>(lv_obj_get_user_data(o));
+    if (!ctx) return;
+    const lv_color_t col = lv_color_make(static_cast<uint8_t>(color_rgb >> 16),
+                                         static_cast<uint8_t>(color_rgb >> 8),
+                                         static_cast<uint8_t>(color_rgb));
+    if (ctx->has_border) {
+        lv_obj_set_style_border_color(o, col, 0);
+    } else {
+        lv_obj_set_style_bg_color(o, col, 0);
+    }
 }

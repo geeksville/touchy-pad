@@ -96,13 +96,27 @@ private:
     uint32_t _color_3 = 0xFF44FFu;  // magenta
 
     // Spawn a ripple animation at widget-local (`cx`, `cy`) coordinates
-    // using `cfg` and `color_rgb`. No-op if `o`bject allocation fails.
+    // using `cfg` and `color_rgb`. If `back_slot` is non-null, the
+    // resulting LVGL object pointer is stored there and the ripple's
+    // completion callback nulls the slot (so the widget can later
+    // re-target the still-running ripple to a moving finger or a new
+    // color). Pass `nullptr` for fire-and-forget ripples (taps).
     void _spawn_ripple(int16_t cx, int16_t cy,
                        const touchy_RippleAnimation &cfg,
-                       uint32_t color_rgb);
+                       uint32_t color_rgb,
+                       lv_obj_t **back_slot = nullptr);
+
+    // Re-color a single live ripple object in place. Picks bg_color vs
+    // border_color based on the stored `has_border` flag in its ctx.
+    static void _retint_ripple(lv_obj_t *o, uint32_t color_rgb);
 
     // Returns `_color_1` / `_color_2` / `_color_3` for `n` = 1 / 2 / 3+.
     uint32_t _color_for_count(uint8_t n) const;
+
+    // One live touch-ripple per finger slot. Tap ripples are not tracked
+    // (fire-and-forget). A slot holds the LVGL object pointer while the
+    // ripple animates; the opacity-completion callback nulls it again.
+    lv_obj_t *_finger_ripples[MAX_FINGERS] = {};
 
     // LVGL event entry points. `_process()` is the shared state machine,
     // dispatched from PRESSED / PRESSING / RELEASED. `_deleteCb` frees
