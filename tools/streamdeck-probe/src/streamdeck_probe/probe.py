@@ -144,10 +144,11 @@ def _probe_screen_image(deck, log: ProbeLogger, idx: int) -> None:
     fmt = None
     if hasattr(deck, "screen_image_format"):
         fmt, _ = _safe(deck.screen_image_format)
-    if not isinstance(fmt, dict) or "size" not in fmt:
-        log.log("set_screen_image", "skip_no_format", deck_index=idx)
+    size = fmt.get("size") if isinstance(fmt, dict) else None
+    if not size or size[0] <= 0 or size[1] <= 0:
+        log.log("set_screen_image", "skip_no_screen", deck_index=idx, data={"format": fmt})
         return
-    w, h = fmt["size"]
+    w, h = size
     pil = _make_tile(w, h, "screen")
     try:
         from StreamDeck.ImageHelpers import PILHelper  # type: ignore
@@ -165,10 +166,11 @@ def _probe_touchscreen(deck, log: ProbeLogger, idx: int) -> None:
     fmt = None
     if hasattr(deck, "touchscreen_image_format"):
         fmt, _ = _safe(deck.touchscreen_image_format)
-    if not isinstance(fmt, dict) or "size" not in fmt:
-        log.log("set_touchscreen_image", "skip_no_format", deck_index=idx)
+    size = fmt.get("size") if isinstance(fmt, dict) else None
+    if not size or size[0] <= 0 or size[1] <= 0:
+        log.log("set_touchscreen_image", "skip_no_touchscreen", deck_index=idx, data={"format": fmt})
         return
-    w, h = fmt["size"]
+    w, h = size
     pil = _make_tile(w, h, "touch")
     try:
         from StreamDeck.ImageHelpers import PILHelper  # type: ignore
@@ -318,10 +320,24 @@ def probe_deck(
 
         _probe_callbacks(deck, log, idx, interactive=interactive, press_timeout=press_timeout)
     finally:
+        # Deregister callbacks BEFORE close. The StreamDeck library's internal
+        # poll thread keeps the libusb handle live while a callback is set;
+        # tearing down libusb at interpreter exit while that thread is still
+        # running causes the "usbi_mutex_destroy: pthread_mutex_destroy(mutex) == 0"
+        # assertion crash we saw in early test runs.
+        for unset in ("set_key_callback", "set_dial_callback", "set_touchscreen_callback"):
+            if hasattr(deck, unset):
+                try:
+                    getattr(deck, unset)(None)
+                except Exception:  # noqa: BLE001 -- best-effort teardown
+                    pass
         with log.timed("close", "close", deck_index=idx):
             try:
                 deck.close()
             except Exception as e:  # noqa: BLE001
                 log.log("close", "error", deck_index=idx, data={"error": str(e)})
+        # Give the poll thread time to exit before we drop the reference and
+        # let GC trigger libusb teardown.
+        time.sleep(0.1)
 
     log.log("info", "end", deck_index=idx)

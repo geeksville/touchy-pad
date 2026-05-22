@@ -107,6 +107,14 @@ def main(
     click.echo(f"\nLogs written to:\n  {log.jsonl_path}\n  {log.text_path}", err=True)
     log.close()
 
+    # Belt-and-braces against libusb teardown crashing the interpreter after we
+    # already wrote logs. Drop all deck references, force GC, and pause briefly
+    # so any internal threads have time to fully exit.
+    import gc
+    del decks
+    gc.collect()
+    time.sleep(0.2)
+
 
 if __name__ == "__main__":  # pragma: no cover
     main()

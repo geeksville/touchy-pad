@@ -1,0 +1,83 @@
+[16:35:37.541] info/start  python='3.12.3' interactive=True brightness_pause_ms=300 press_timeout_s=60.0
+[16:35:37.579] info/enumerated  deck_count=1
+[16:35:37.579] info/begin  deck=0  deck_type='Stream Deck Original'
+[16:35:37.579] info/device_introspection  deck=0  deck_type='Stream Deck Original' id='5-1:1.0' vendor_id=4057 product_id=128 key_count=15 key_layout=[3, 5] is_visual=True is_touch=False dial_count=0 touch_key_count=0
+[16:35:37.612] open/open  deck=0  duration_ms=33.012
+[16:35:37.613] info/get_firmware_version  deck=0  value='1.02.000' error=None
+[16:35:37.613] info/get_serial_number  deck=0  value='A00SA5282I2LRM' error=None
+[16:35:37.613] info/image_formats  deck=0  key_image_format={size=[72, 72], format='JPEG', flip=[True, True], rotation=0} screen_image_format={size=[0, 0], format='', flip=[False, False], rotation=0} touchscreen_image_format={size=[0, 0], format='', flip=[False, False], rotation=0}
+[16:35:37.614] set_key_image/single_no_lock  deck=0  key=0 duration_ms=0.236
+[16:35:37.614] set_key_image/single_with_lock  deck=0  key=0 duration_ms=0.216
+[16:35:37.614] open/reset  deck=0  duration_ms=0.194
+[16:35:37.614] brightness/set_brightness  deck=0  percent=0 duration_ms=0.353
+[16:35:37.916] brightness/set_brightness  deck=0  percent=30 duration_ms=0.61
+[16:35:38.216] brightness/set_brightness  deck=0  percent=100 duration_ms=0.376
+[16:35:38.517] set_key_image/clear_none  deck=0  key=0 duration_ms=0.487
+[16:35:38.518] set_key_image/clear_none  deck=0  key=1 duration_ms=0.385
+[16:35:38.519] set_key_image/clear_none  deck=0  key=2 duration_ms=0.277
+[16:35:38.519] set_key_image/clear_none  deck=0  key=3 duration_ms=0.282
+[16:35:38.519] set_key_image/clear_none  deck=0  key=4 duration_ms=0.268
+[16:35:38.520] set_key_image/clear_none  deck=0  key=5 duration_ms=0.324
+[16:35:38.520] set_key_image/clear_none  deck=0  key=6 duration_ms=0.313
+[16:35:38.520] set_key_image/clear_none  deck=0  key=7 duration_ms=0.282
+[16:35:38.520] set_key_image/clear_none  deck=0  key=8 duration_ms=0.092
+[16:35:38.521] set_key_image/clear_none  deck=0  key=9 duration_ms=0.1
+[16:35:38.521] set_key_image/clear_none  deck=0  key=10 duration_ms=0.114
+[16:35:38.521] set_key_image/clear_none  deck=0  key=11 duration_ms=0.096
+[16:35:38.521] set_key_image/clear_none  deck=0  key=12 duration_ms=0.107
+[16:35:38.521] set_key_image/clear_none  deck=0  key=13 duration_ms=0.108
+[16:35:38.521] set_key_image/clear_none  deck=0  key=14 duration_ms=0.09
+[16:35:38.531] set_key_image/tile_prepared  deck=0  have_tile=True tile_bytes=2745
+[16:35:38.532] set_key_image/set_tile  deck=0  key=0 tile_bytes=2745 duration_ms=0.468
+[16:35:38.533] set_key_image/set_tile  deck=0  key=1 tile_bytes=2703 duration_ms=0.468
+[16:35:38.534] set_key_image/set_tile  deck=0  key=2 tile_bytes=2759 duration_ms=0.506
+[16:35:38.535] set_key_image/set_tile  deck=0  key=3 tile_bytes=2749 duration_ms=0.509
+[16:35:38.536] set_key_image/set_tile  deck=0  key=4 tile_bytes=2768 duration_ms=0.539
+[16:35:38.537] set_key_image/set_tile  deck=0  key=5 tile_bytes=2755 duration_ms=0.546
+[16:35:38.538] set_key_image/set_tile  deck=0  key=6 tile_bytes=2747 duration_ms=0.547
+[16:35:38.539] set_key_image/set_tile  deck=0  key=7 tile_bytes=2739 duration_ms=0.465
+[16:35:38.540] set_key_image/set_tile  deck=0  key=8 tile_bytes=2755 duration_ms=0.565
+[16:35:38.541] set_key_image/set_tile  deck=0  key=9 tile_bytes=2755 duration_ms=0.441
+[16:35:38.542] set_key_image/set_tile  deck=0  key=10 tile_bytes=2793 duration_ms=0.699
+[16:35:38.543] set_key_image/set_tile  deck=0  key=11 tile_bytes=2723 duration_ms=0.436
+[16:35:38.544] set_key_image/set_tile  deck=0  key=12 tile_bytes=2820 duration_ms=0.536
+[16:35:38.545] set_key_image/set_tile  deck=0  key=13 tile_bytes=2814 duration_ms=0.528
+[16:35:38.546] set_key_image/set_tile  deck=0  key=14 tile_bytes=2812 duration_ms=0.541
+[16:35:38.546] set_screen_image/skip_no_screen  deck=0  format={size=[0, 0], format='', flip=[False, False], rotation=0}
+[16:35:38.546] set_touchscreen_image/skip_no_touchscreen  deck=0  format={size=[0, 0], format='', flip=[False, False], rotation=0}
+[16:35:38.546] set_key_color/skip_no_touch_keys  deck=0
+[16:35:50.469] callback/key  deck=0  ts=1779438950.4692423 key=0 state=True
+[16:35:51.272] callback/key  deck=0  ts=1779438951.2721603 key=0 state=False
+[16:35:52.425] callback/key  deck=0  ts=1779438952.4252145 key=1 state=True
+[16:35:53.276] callback/key  deck=0  ts=1779438953.276782 key=1 state=False
+[16:35:54.228] callback/key  deck=0  ts=1779438954.2285752 key=2 state=True
+[16:35:55.280] callback/key  deck=0  ts=1779438955.2806146 key=2 state=False
+[16:35:56.185] callback/key  deck=0  ts=1779438956.1851473 key=3 state=True
+[16:35:57.343] callback/key  deck=0  ts=1779438957.343486 key=3 state=False
+[16:35:58.248] callback/key  deck=0  ts=1779438958.248409 key=4 state=True
+[16:35:59.305] callback/key  deck=0  ts=1779438959.305017 key=4 state=False
+[16:36:00.059] callback/key  deck=0  ts=1779438960.0597918 key=5 state=True
+[16:36:01.164] callback/key  deck=0  ts=1779438961.1648762 key=5 state=False
+[16:36:02.019] callback/key  deck=0  ts=1779438962.0194733 key=6 state=True
+[16:36:02.873] callback/key  deck=0  ts=1779438962.873614 key=6 state=False
+[16:36:03.777] callback/key  deck=0  ts=1779438963.777847 key=7 state=True
+[16:36:04.481] callback/key  deck=0  ts=1779438964.4813457 key=7 state=False
+[16:36:05.186] callback/key  deck=0  ts=1779438965.186034 key=8 state=True
+[16:36:06.041] callback/key  deck=0  ts=1779438966.0414865 key=8 state=False
+[16:36:06.798] callback/key  deck=0  ts=1779438966.798107 key=9 state=True
+[16:36:07.653] callback/key  deck=0  ts=1779438967.6537447 key=9 state=False
+[16:36:08.612] callback/key  deck=0  ts=1779438968.612608 key=10 state=True
+[16:36:09.468] callback/key  deck=0  ts=1779438969.4684963 key=10 state=False
+[16:36:10.376] callback/key  deck=0  ts=1779438970.3760219 key=11 state=True
+[16:36:11.080] callback/key  deck=0  ts=1779438971.0806434 key=11 state=False
+[16:36:12.138] callback/key  deck=0  ts=1779438972.138765 key=12 state=True
+[16:36:12.894] callback/key  deck=0  ts=1779438972.8945532 key=12 state=False
+[16:36:13.749] callback/key  deck=0  ts=1779438973.7495017 key=13 state=True
+[16:36:14.604] callback/key  deck=0  ts=1779438974.604386 key=13 state=False
+[16:36:15.359] callback/key  deck=0  ts=1779438975.3596513 key=14 state=True
+[16:36:15.610] callback/key  deck=0  ts=1779438975.6106882 key=14 state=False
+[16:36:28.572] callback/user_interrupt  deck=0
+[16:36:28.572] callback/summary  deck=0  key_event_count=30
+[16:36:28.625] close/close  deck=0  duration_ms=53.334
+[16:36:28.725] info/end  deck=0
+[16:36:28.726] info/done  jsonl='logs/probe-20260522-163537.jsonl' text='logs/probe-20260522-163537.txt'

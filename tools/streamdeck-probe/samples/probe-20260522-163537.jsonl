@@ -1,0 +1,83 @@
+{"ts": 1779438937.5410156, "phase": "info", "event": "start", "deck_index": null, "data": {"python": "3.12.3", "interactive": true, "brightness_pause_ms": 300, "press_timeout_s": 60.0}}
+{"ts": 1779438937.5791366, "phase": "info", "event": "enumerated", "deck_index": null, "data": {"deck_count": 1}}
+{"ts": 1779438937.5792816, "phase": "info", "event": "begin", "deck_index": 0, "data": {"deck_type": "Stream Deck Original"}}
+{"ts": 1779438937.5793364, "phase": "info", "event": "device_introspection", "deck_index": 0, "data": {"deck_type": "Stream Deck Original", "id": "5-1:1.0", "vendor_id": 4057, "product_id": 128, "key_count": 15, "key_layout": [3, 5], "is_visual": true, "is_touch": false, "dial_count": 0, "touch_key_count": 0}}
+{"ts": 1779438937.6124098, "phase": "open", "event": "open", "deck_index": 0, "data": {"duration_ms": 33.012}}
+{"ts": 1779438937.613009, "phase": "info", "event": "get_firmware_version", "deck_index": 0, "data": {"value": "1.02.000", "error": null}}
+{"ts": 1779438937.6136286, "phase": "info", "event": "get_serial_number", "deck_index": 0, "data": {"value": "A00SA5282I2LRM", "error": null}}
+{"ts": 1779438937.613783, "phase": "info", "event": "image_formats", "deck_index": 0, "data": {"key_image_format": {"size": [72, 72], "format": "JPEG", "flip": [true, true], "rotation": 0}, "screen_image_format": {"size": [0, 0], "format": "", "flip": [false, false], "rotation": 0}, "touchscreen_image_format": {"size": [0, 0], "format": "", "flip": [false, false], "rotation": 0}}}
+{"ts": 1779438937.6141012, "phase": "set_key_image", "event": "single_no_lock", "deck_index": 0, "data": {"key": 0, "duration_ms": 0.236}}
+{"ts": 1779438937.6143556, "phase": "set_key_image", "event": "single_with_lock", "deck_index": 0, "data": {"key": 0, "duration_ms": 0.216}}
+{"ts": 1779438937.6145744, "phase": "open", "event": "reset", "deck_index": 0, "data": {"duration_ms": 0.194}}
+{"ts": 1779438937.614952, "phase": "brightness", "event": "set_brightness", "deck_index": 0, "data": {"percent": 0, "duration_ms": 0.353}}
+{"ts": 1779438937.9162557, "phase": "brightness", "event": "set_brightness", "deck_index": 0, "data": {"percent": 30, "duration_ms": 0.61}}
+{"ts": 1779438938.216953, "phase": "brightness", "event": "set_brightness", "deck_index": 0, "data": {"percent": 100, "duration_ms": 0.376}}
+{"ts": 1779438938.5178802, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 0, "duration_ms": 0.487}}
+{"ts": 1779438938.5185375, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 1, "duration_ms": 0.385}}
+{"ts": 1779438938.5190332, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 2, "duration_ms": 0.277}}
+{"ts": 1779438938.519408, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 3, "duration_ms": 0.282}}
+{"ts": 1779438938.5197582, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 4, "duration_ms": 0.268}}
+{"ts": 1779438938.5201278, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 5, "duration_ms": 0.324}}
+{"ts": 1779438938.520513, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 6, "duration_ms": 0.313}}
+{"ts": 1779438938.5208588, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 7, "duration_ms": 0.282}}
+{"ts": 1779438938.520975, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 8, "duration_ms": 0.092}}
+{"ts": 1779438938.5210948, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 9, "duration_ms": 0.1}}
+{"ts": 1779438938.5212293, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 10, "duration_ms": 0.114}}
+{"ts": 1779438938.5213447, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 11, "duration_ms": 0.096}}
+{"ts": 1779438938.52147, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 12, "duration_ms": 0.107}}
+{"ts": 1779438938.5215971, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 13, "duration_ms": 0.108}}
+{"ts": 1779438938.521718, "phase": "set_key_image", "event": "clear_none", "deck_index": 0, "data": {"key": 14, "duration_ms": 0.09}}
+{"ts": 1779438938.5312474, "phase": "set_key_image", "event": "tile_prepared", "deck_index": 0, "data": {"have_tile": true, "tile_bytes": 2745}}
+{"ts": 1779438938.5323594, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 0, "tile_bytes": 2745, "duration_ms": 0.468}}
+{"ts": 1779438938.5333521, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 1, "tile_bytes": 2703, "duration_ms": 0.468}}
+{"ts": 1779438938.5343518, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 2, "tile_bytes": 2759, "duration_ms": 0.506}}
+{"ts": 1779438938.535346, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 3, "tile_bytes": 2749, "duration_ms": 0.509}}
+{"ts": 1779438938.5363498, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 4, "tile_bytes": 2768, "duration_ms": 0.539}}
+{"ts": 1779438938.53735, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 5, "tile_bytes": 2755, "duration_ms": 0.546}}
+{"ts": 1779438938.5383484, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 6, "tile_bytes": 2747, "duration_ms": 0.547}}
+{"ts": 1779438938.5392258, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 7, "tile_bytes": 2739, "duration_ms": 0.465}}
+{"ts": 1779438938.540226, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 8, "tile_bytes": 2755, "duration_ms": 0.565}}
+{"ts": 1779438938.541091, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 9, "tile_bytes": 2755, "duration_ms": 0.441}}
+{"ts": 1779438938.5422251, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 10, "tile_bytes": 2793, "duration_ms": 0.699}}
+{"ts": 1779438938.5430932, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 11, "tile_bytes": 2723, "duration_ms": 0.436}}
+{"ts": 1779438938.5440958, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 12, "tile_bytes": 2820, "duration_ms": 0.536}}
+{"ts": 1779438938.545095, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 13, "tile_bytes": 2814, "duration_ms": 0.528}}
+{"ts": 1779438938.546094, "phase": "set_key_image", "event": "set_tile", "deck_index": 0, "data": {"key": 14, "tile_bytes": 2812, "duration_ms": 0.541}}
+{"ts": 1779438938.546148, "phase": "set_screen_image", "event": "skip_no_screen", "deck_index": 0, "data": {"format": {"size": [0, 0], "format": "", "flip": [false, false], "rotation": 0}}}
+{"ts": 1779438938.5461926, "phase": "set_touchscreen_image", "event": "skip_no_touchscreen", "deck_index": 0, "data": {"format": {"size": [0, 0], "format": "", "flip": [false, false], "rotation": 0}}}
+{"ts": 1779438938.5462296, "phase": "set_key_color", "event": "skip_no_touch_keys", "deck_index": 0, "data": {}}
+{"ts": 1779438950.4692502, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438950.4692423, "key": 0, "state": true}}
+{"ts": 1779438951.2721658, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438951.2721603, "key": 0, "state": false}}
+{"ts": 1779438952.425218, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438952.4252145, "key": 1, "state": true}}
+{"ts": 1779438953.2767859, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438953.276782, "key": 1, "state": false}}
+{"ts": 1779438954.2285788, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438954.2285752, "key": 2, "state": true}}
+{"ts": 1779438955.2806187, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438955.2806146, "key": 2, "state": false}}
+{"ts": 1779438956.185152, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438956.1851473, "key": 3, "state": true}}
+{"ts": 1779438957.3434906, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438957.343486, "key": 3, "state": false}}
+{"ts": 1779438958.248414, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438958.248409, "key": 4, "state": true}}
+{"ts": 1779438959.3050222, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438959.305017, "key": 4, "state": false}}
+{"ts": 1779438960.059797, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438960.0597918, "key": 5, "state": true}}
+{"ts": 1779438961.164882, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438961.1648762, "key": 5, "state": false}}
+{"ts": 1779438962.019483, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438962.0194733, "key": 6, "state": true}}
+{"ts": 1779438962.8736203, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438962.873614, "key": 6, "state": false}}
+{"ts": 1779438963.7778518, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438963.777847, "key": 7, "state": true}}
+{"ts": 1779438964.4813533, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438964.4813457, "key": 7, "state": false}}
+{"ts": 1779438965.1860409, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438965.186034, "key": 8, "state": true}}
+{"ts": 1779438966.0414913, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438966.0414865, "key": 8, "state": false}}
+{"ts": 1779438966.798111, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438966.798107, "key": 9, "state": true}}
+{"ts": 1779438967.6537495, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438967.6537447, "key": 9, "state": false}}
+{"ts": 1779438968.6126158, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438968.612608, "key": 10, "state": true}}
+{"ts": 1779438969.4685016, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438969.4684963, "key": 10, "state": false}}
+{"ts": 1779438970.3760257, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438970.3760219, "key": 11, "state": true}}
+{"ts": 1779438971.0806484, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438971.0806434, "key": 11, "state": false}}
+{"ts": 1779438972.1387742, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438972.138765, "key": 12, "state": true}}
+{"ts": 1779438972.894557, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438972.8945532, "key": 12, "state": false}}
+{"ts": 1779438973.7495117, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438973.7495017, "key": 13, "state": true}}
+{"ts": 1779438974.6043909, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438974.604386, "key": 13, "state": false}}
+{"ts": 1779438975.3596551, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438975.3596513, "key": 14, "state": true}}
+{"ts": 1779438975.6106937, "phase": "callback", "event": "key", "deck_index": 0, "data": {"ts": 1779438975.6106882, "key": 14, "state": false}}
+{"ts": 1779438988.5720284, "phase": "callback", "event": "user_interrupt", "deck_index": 0, "data": {}}
+{"ts": 1779438988.5722933, "phase": "callback", "event": "summary", "deck_index": 0, "data": {"key_event_count": 30}}
+{"ts": 1779438988.625748, "phase": "close", "event": "close", "deck_index": 0, "data": {"duration_ms": 53.334}}
+{"ts": 1779438988.7259665, "phase": "info", "event": "end", "deck_index": 0, "data": {}}
+{"ts": 1779438988.7261443, "phase": "info", "event": "done", "deck_index": null, "data": {"jsonl": "logs/probe-20260522-163537.jsonl", "text": "logs/probe-20260522-163537.txt"}}
