@@ -30,6 +30,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 Main new features: Works with StreamController app to provide arbitrary user buttons
 
 * Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  I'll need to improve their plugin api a bit and send them a PR first
+* Turn off "Expensive debugging flags!" in sdkconfig.defaults
 
 ## For release Alpha 3
 

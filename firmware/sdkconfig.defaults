@@ -99,3 +99,62 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 # ----- Custom partition table (filename supplied per-board) -----
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
+# Expensive debugging flags!
+# The following debug flags collectively cost us 6 FPS (from 26 -> 20 FPS) but worth it for
+# now for better debugging.
+# ----- Crash / panic diagnostics -----
+# Goal: when the firmware faults, get as much useful info out of UART0
+# (and the post-reboot CDC console) as possible before the device resets.
+# See discussion in chat: TinyUSB CDC cannot be serviced from inside the
+# panic handler, so panic text only ever reaches UART0 in real time.
+
+# Hold the CPU in the panic handler for a few seconds so any in-flight
+# UART bytes flush and a human-attached terminal can see the dump before
+# the watchdog or auto-reset clobbers it.
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS=10
+
+# Run the panic handler from IRAM so it still works when the flash cache
+# is disabled (e.g. faults during SPI flash ops or from ISRs).
+CONFIG_ESP_PANIC_HANDLER_IRAM=y
+
+# Catch heap corruption at the point of the bad write rather than waiting
+# for a downstream allocator crash. Comprehensive mode adds head/tail
+# canaries on every block and fills freed memory with 0xFE so
+# use-after-free reads are obvious in the dump.
+CONFIG_HEAP_POISONING_COMPREHENSIVE=y
+CONFIG_HEAP_TASK_TRACKING=y
+
+# Stack-overflow detection: canary is already on above; this additionally
+# arms a hardware watchpoint at the end of every task stack so the fault
+# fires on the *first* over-the-edge write instead of at the next context
+# switch.
+CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y
+
+# GCC stack protector (cheap, catches classic buffer-overrun smashes with
+# a clean __stack_chk_fail panic + backtrace).
+CONFIG_COMPILER_STACK_CHECK_MODE_NORM=y
+
+# Interrupt + task watchdogs: if a task or ISR hangs, panic with a full
+# backtrace of the offending task rather than silently wedging.
+CONFIG_ESP_INT_WDT=y
+CONFIG_ESP_INT_WDT_TIMEOUT_MS=300
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+
+# Use .eh_frame unwind info so backtraces survive across non-trivial C++
+# call sites (exception tables present anyway).
+CONFIG_ESP_SYSTEM_USE_EH_FRAME=y
+
+# ----- LVGL runtime asserts -----
+# Catch the most common LVGL misuse (the bug class that just bit us:
+# deleting / accessing an lv_obj_t* from inside its own event handler)
+# at the point of misuse, with an LV_LOG_ERROR + backtrace, instead of
+# letting it cascade into an unprintable memory-corruption panic.
+CONFIG_LV_USE_LOG=y
+CONFIG_LV_LOG_LEVEL_WARN=y
+CONFIG_LV_USE_ASSERT_NULL=y
+CONFIG_LV_USE_ASSERT_MALLOC=y
+CONFIG_LV_USE_ASSERT_OBJ=y
+CONFIG_LV_USE_ASSERT_STYLE=y
+
