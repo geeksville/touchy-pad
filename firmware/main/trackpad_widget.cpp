@@ -35,6 +35,29 @@ static uint32_t millis()
 // ---------------------------------------------------------------------------
 namespace {
 
+// Padding (in px) added on every side when invalidating an object's
+// pre-move footprint. Rounded-corner anti-aliasing writes a sub-pixel
+// fringe slightly outside the integer bounding box; without this pad
+// translating/resizing objects leaves faint AA artifacts behind.
+constexpr int32_t AA_PAD = 4;
+
+// Invalidate the object's current (pre-move) area on its parent,
+// expanded by AA_PAD. Call this immediately before any
+// `lv_obj_set_pos` / `lv_obj_set_size` so the old footprint (plus its
+// AA fringe) gets repainted along with the new one.
+void invalidate_old_footprint(lv_obj_t *obj)
+{
+    lv_obj_t *parent = lv_obj_get_parent(obj);
+    if (!parent) return;
+    lv_area_t a;
+    lv_obj_get_coords(obj, &a);
+    a.x1 -= AA_PAD;
+    a.y1 -= AA_PAD;
+    a.x2 += AA_PAD;
+    a.y2 += AA_PAD;
+    lv_obj_invalidate_area(parent, &a);
+}
+
 struct RippleCtx {
     int16_t cx;  // ripple center, widget-local px
     int16_t cy;
@@ -61,6 +84,7 @@ void ripple_size_cb(void *var, int32_t v)
     auto *o   = static_cast<lv_obj_t *>(var);
     auto *ctx = static_cast<RippleCtx *>(lv_obj_get_user_data(o));
     if (!ctx) return;
+    invalidate_old_footprint(o);
     lv_obj_set_size(o, v * 2, v * 2);
     lv_obj_set_pos(o, ctx->cx - v, ctx->cy - v);
 }
@@ -274,6 +298,7 @@ void TrackpadWidget::_process()
         ctx->cy = static_cast<int16_t>(pts[i].y) -
                   static_cast<int16_t>(lv_obj_get_y(_container));
         int16_t r = static_cast<int16_t>(lv_obj_get_width(o) / 2);
+        invalidate_old_footprint(o);
         lv_obj_set_pos(o, ctx->cx - r, ctx->cy - r);
     }
 
@@ -358,15 +383,21 @@ void TrackpadWidget::_process()
                 _scroll_axis_h      = adx > ady;
                 _scroll_axis_locked = true;
                 // First frame after axis lock-in: spawn the optional
-                // scrollbar overlay. Bar grows from 0 to the full extent
-                // of the trackpad along the scroll axis (vertical scroll
-                // → vertical bar on the right edge, horizontal scroll →
-                // horizontal bar on the bottom edge).
+                // scrollbar overlay. The bar is a small handle centered
+                // on the two-finger centroid and perpendicular to the
+                // scroll axis; it grows outward to fill the widget
+                // along that perpendicular dimension.
                 if (_has_scrollbar && !_scrollbar) {
-                    _spawn_scrollbar(_scroll_axis_h);
+                    int16_t cx = static_cast<int16_t>(
+                        (static_cast<int>(pts[0].x) + static_cast<int>(pts[1].x)) / 2 -
+                        lv_obj_get_x(_container));
+                    int16_t cy = static_cast<int16_t>(
+                        (static_cast<int>(pts[0].y) + static_cast<int>(pts[1].y)) / 2 -
+                        lv_obj_get_y(_container));
+                    _spawn_scrollbar(_scroll_axis_h, cx, cy);
                     // The scrollbar is now the primary visual; fade
                     // out any active finger ripples so they don't
-                    // compete with it during the scroll.
+                    // compete with the handle during the scroll.
                     for (int i = 0; i < MAX_FINGERS; i++) {
                         if (_finger_ripples[i]) {
                             _fade_out_ripple(_finger_ripples[i]);
@@ -399,6 +430,19 @@ void TrackpadWidget::_process()
             if (v != 0 || h != 0) {
                 usb_hid_mouse_scroll(v, h);
                 log_line_post("scroll v=%+d h=%+d", v, h);
+            }
+
+            // Slide the scrollbar handle to follow the fingers as they
+            // drag. The grow animation owns the handle's length; this
+            // just updates its position via the centroid.
+            if (_scrollbar) {
+                int16_t cx = static_cast<int16_t>(
+                    (static_cast<int>(pts[0].x) + static_cast<int>(pts[1].x)) / 2 -
+                    lv_obj_get_x(_container));
+                int16_t cy = static_cast<int16_t>(
+                    (static_cast<int>(pts[0].y) + static_cast<int>(pts[1].y)) / 2 -
+                    lv_obj_get_y(_container));
+                _update_scrollbar(cx, cy);
             }
         }
 
@@ -625,16 +669,80 @@ void TrackpadWidget::_fade_out_ripple(lv_obj_t *o)
 // ---------------------------------------------------------------------------
 namespace {
 
-// Width / height animation exec callback for the scrollbar. Used to grow
-// the bar along the scroll axis from 0 to the container's matching
-// dimension when scrolling starts.
-void scrollbar_grow_w_cb(void *var, int32_t v)
+// Per-bar context: where the user's fingers currently are
+// (container-local; updated each frame the fingers move), the scroll
+// axis (horizontal=true → horizontal scroll → vertical handle), and
+// the container's full extent. Lives in the bar's user_data and is
+// deleted by the opacity completion callback.
+struct ScrollbarCtx {
+    bool     horizontal;       // scroll axis is horizontal
+    int16_t  anchor_x;
+    int16_t  anchor_y;
+    int16_t  cw;
+    int16_t  ch;
+    int16_t  max_len;          // 75 % of cw or ch
+    int16_t  cur_len;          // current animated length (px)
+};
+
+// Re-apply size + position from the current ctx state. Called both by
+// the grow animation (when `cur_len` changes) and by
+// `_update_scrollbar` (when the anchor changes).
+void scrollbar_reposition(lv_obj_t *bar)
 {
-    lv_obj_set_width(static_cast<lv_obj_t *>(var), v);
+    auto *ctx = static_cast<ScrollbarCtx *>(lv_obj_get_user_data(bar));
+    if (!ctx) return;
+    const int32_t len = ctx->cur_len;
+
+    // Mark the bar's current (pre-move) area dirty on the parent so
+    // the background + any ripples underneath get repainted there.
+    // See `invalidate_old_footprint` for why this is needed.
+    invalidate_old_footprint(bar);
+
+    if (ctx->horizontal) {
+        // Horizontal scroll → vertical handle. Length grows along Y;
+        // X follows the fingers, clamped so the bar stays on-screen.
+        int32_t y = ctx->anchor_y - len / 2;
+        if (y < 0) y = 0;
+        if (y + len > ctx->ch) y = ctx->ch - len;
+        int32_t x = ctx->anchor_x - TrackpadWidget::SCROLLBAR_THICK / 2;
+        if (x < 0) x = 0;
+        if (x + TrackpadWidget::SCROLLBAR_THICK > ctx->cw)
+            x = ctx->cw - TrackpadWidget::SCROLLBAR_THICK;
+        lv_obj_set_size(bar, TrackpadWidget::SCROLLBAR_THICK,
+                        static_cast<lv_coord_t>(len));
+        lv_obj_set_pos(bar, static_cast<lv_coord_t>(x),
+                       static_cast<lv_coord_t>(y));
+    } else {
+        // Vertical scroll → horizontal handle. Length grows along X;
+        // Y follows the fingers, clamped.
+        int32_t x = ctx->anchor_x - len / 2;
+        if (x < 0) x = 0;
+        if (x + len > ctx->cw) x = ctx->cw - len;
+        int32_t y = ctx->anchor_y - TrackpadWidget::SCROLLBAR_THICK / 2;
+        if (y < 0) y = 0;
+        if (y + TrackpadWidget::SCROLLBAR_THICK > ctx->ch)
+            y = ctx->ch - TrackpadWidget::SCROLLBAR_THICK;
+        lv_obj_set_size(bar, static_cast<lv_coord_t>(len),
+                        TrackpadWidget::SCROLLBAR_THICK);
+        lv_obj_set_pos(bar, static_cast<lv_coord_t>(x),
+                       static_cast<lv_coord_t>(y));
+    }
 }
-void scrollbar_grow_h_cb(void *var, int32_t v)
+
+// Single exec callback driven by a 0..1000 progress animation. Stores
+// the interpolated length in the ctx then re-applies the layout.
+void scrollbar_grow_cb(void *var, int32_t progress)
 {
-    lv_obj_set_height(static_cast<lv_obj_t *>(var), v);
+    auto *bar = static_cast<lv_obj_t *>(var);
+    auto *ctx = static_cast<ScrollbarCtx *>(lv_obj_get_user_data(bar));
+    if (!ctx) return;
+
+    const int32_t init = TrackpadWidget::SCROLLBAR_INIT_LEN;
+    int32_t len = init + ((ctx->max_len - init) * progress) / 1000;
+    if (len < init) len = init;
+    if (len > ctx->max_len) len = ctx->max_len;
+    ctx->cur_len = static_cast<int16_t>(len);
+    scrollbar_reposition(bar);
 }
 
 // Opacity animation exec callback for the scrollbar fade-out.
@@ -644,15 +752,19 @@ void scrollbar_opa_cb(void *var, int32_t opa)
                          static_cast<lv_opa_t>(opa), 0);
 }
 
-// Completion callback for the fade-out: delete the object.
+// Completion callback for the fade-out: delete the ctx then the object.
 void scrollbar_fade_done(lv_anim_t *a)
 {
-    lv_obj_delete(static_cast<lv_obj_t *>(a->var));
+    auto *bar = static_cast<lv_obj_t *>(a->var);
+    delete static_cast<ScrollbarCtx *>(lv_obj_get_user_data(bar));
+    lv_obj_set_user_data(bar, nullptr);
+    lv_obj_delete(bar);
 }
 
 }  // namespace
 
-void TrackpadWidget::_spawn_scrollbar(bool horizontal)
+void TrackpadWidget::_spawn_scrollbar(bool horizontal,
+                                      int16_t anchor_x, int16_t anchor_y)
 {
     if (!_container || _scrollbar) return;
     lv_obj_t *bar = lv_obj_create(_container);
@@ -676,27 +788,41 @@ void TrackpadWidget::_spawn_scrollbar(bool horizontal)
     const lv_coord_t cw = lv_obj_get_width(_container);
     const lv_coord_t ch = lv_obj_get_height(_container);
 
-    // Horizontal scroll → horizontal bar pinned to the bottom edge
-    // (full width when grown, SCROLLBAR_THICK tall). Vertical scroll →
-    // vertical bar pinned to the right edge (full height when grown,
-    // SCROLLBAR_THICK wide).
+    auto *ctx = new (std::nothrow) ScrollbarCtx{
+        horizontal,
+        anchor_x,
+        anchor_y,
+        static_cast<int16_t>(cw),
+        static_cast<int16_t>(ch),
+        // Max length is 75 % of the container along the grow axis.
+        static_cast<int16_t>((horizontal ? ch : cw) * 3 / 4),
+        // Initial visible length; the grow anim will ramp this up.
+        SCROLLBAR_INIT_LEN,
+    };
+    if (!ctx) return;
+    lv_obj_set_user_data(bar, ctx);
+
+    // Initial visible state: a small box centered on the anchor.
+    scrollbar_reposition(bar);
+
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, bar);
     lv_anim_set_duration(&a, SCROLLBAR_GROW_MS);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    if (horizontal) {
-        lv_obj_set_size(bar, 0, SCROLLBAR_THICK);
-        lv_obj_set_pos(bar, 0, ch - SCROLLBAR_THICK);
-        lv_anim_set_exec_cb(&a, scrollbar_grow_w_cb);
-        lv_anim_set_values(&a, 0, cw);
-    } else {
-        lv_obj_set_size(bar, SCROLLBAR_THICK, 0);
-        lv_obj_set_pos(bar, cw - SCROLLBAR_THICK, 0);
-        lv_anim_set_exec_cb(&a, scrollbar_grow_h_cb);
-        lv_anim_set_values(&a, 0, ch);
-    }
+    lv_anim_set_exec_cb(&a, scrollbar_grow_cb);
+    lv_anim_set_values(&a, 0, 1000);
     lv_anim_start(&a);
+}
+
+void TrackpadWidget::_update_scrollbar(int16_t anchor_x, int16_t anchor_y)
+{
+    if (!_scrollbar) return;
+    auto *ctx = static_cast<ScrollbarCtx *>(lv_obj_get_user_data(_scrollbar));
+    if (!ctx) return;
+    ctx->anchor_x = anchor_x;
+    ctx->anchor_y = anchor_y;
+    scrollbar_reposition(_scrollbar);
 }
 
 void TrackpadWidget::_dismiss_scrollbar()

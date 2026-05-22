@@ -41,6 +41,11 @@ public:
     static constexpr uint32_t SCROLLBAR_FADE_MS = 200;
     // Visual thickness of the scrollbar (px), perpendicular to scroll axis.
     static constexpr int16_t  SCROLLBAR_THICK = 4;
+    // Initial visible length of the scrollbar handle (px) before it
+    // starts growing outward from the centroid of the two fingers.
+    // Small enough to read as "a handle the fingers are holding", big
+    // enough to actually see at touch-down.
+    static constexpr int16_t  SCROLLBAR_INIT_LEN = 24;
 
     // Construct the widget as a child of `parent`. The caller is
     // expected to size/style it via the usual `apply_rect` /
@@ -170,7 +175,22 @@ private:
     bool      _has_scrollbar    = false;
     uint32_t  _scrollbar_color  = 0u;
     lv_obj_t *_scrollbar        = nullptr;
-    void _spawn_scrollbar(bool horizontal);
+    // Spawn the scrollbar handle at the centroid of the two fingers
+    // (`anchor_x`,`anchor_y` are container-local coords). The handle
+    // is perpendicular to the scroll axis (horizontal bar for vertical
+    // scrolling and vice-versa), starts as a small box at the centroid
+    // and grows outward in both directions to fill the widget along
+    // that perpendicular axis, clamping at the edges.
+    void _spawn_scrollbar(bool horizontal, int16_t anchor_x, int16_t anchor_y);
+    // Update the scrollbar's anchor as the fingers move. Re-positions
+    // the handle so that:
+    //   * along the grow axis it stays centered on the anchor until it
+    //     bumps a container edge, then clamps;
+    //   * along the cross (finger-travel) axis it tracks the anchor so
+    //     the handle visually follows the fingers, clamped to the
+    //     container.
+    // No-op if no scrollbar is currently spawned.
+    void _update_scrollbar(int16_t anchor_x, int16_t anchor_y);
     void _dismiss_scrollbar();
 
     // LVGL event entry points. `_process()` is the shared state machine,
