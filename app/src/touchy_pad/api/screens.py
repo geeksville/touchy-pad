@@ -1169,6 +1169,8 @@ def build_demo_screens() -> list[Screen]:
     home += cell(
         trackpad(
             "pad",
+            # dual_tap_window_ms=100,
+            # tap_max_ms=100,
             # Cyan / orange / magenta map to 1- / 2- / 3-finger gestures
             # so the user can see which click the firmware is about to
             # synthesise as their fingers land.
