@@ -47,6 +47,14 @@ sim = [
     "platformdirs>=4",
 ]
 
+# Optional StreamController/StreamDeck compatibility shim. Install with:
+#   pip install 'touchy-pad[streamdeck]'
+# Pulls in the upstream Python library that the `touchy_pad.touchydeck`
+# package subclasses; without it `TouchyDeck` raises at construction time.
+streamdeck = [
+    "streamcontroller-streamdeck>=0.1.5,<1",
+]
+
 [project.urls]
 Homepage = "https://github.com/geeksville/touchy-pad"
 Repository = "https://github.com/geeksville/touchy-pad"

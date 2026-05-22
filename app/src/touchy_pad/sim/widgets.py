@@ -157,7 +157,7 @@ def _build_leaf(
 ) -> QtWidgets.QWidget:
     if kind == "button":
         btn = QtWidgets.QPushButton(w.button.text or "")
-        _wire_click(btn.clicked, w, on_event)
+        _wire_click(btn, w, on_event)
         return btn
 
     if kind == "label":
@@ -208,7 +208,7 @@ def _build_leaf(
             btn.setIconSize(pix.size())
         else:
             btn.setText(w.image_button.released.asset or "(img)")
-        _wire_click(btn.clicked, w, on_event)
+        _wire_click(btn, w, on_event)
         return btn
 
     if kind == "arc":
@@ -273,13 +273,24 @@ def _qt_align(text_align: int) -> QtCore.Qt.AlignmentFlag:
 
 
 def _wire_click(
-    signal: QtCore.SignalInstance,
+    btn: QtWidgets.QAbstractButton,
     widget_proto: _proto.Widget,
     on_event: EventHandler | None,
 ) -> None:
+    """Wire press/release/click signals on a Qt button to ``on_event``.
+
+    Mirrors the firmware's three-edge dispatch (PRESSED, RELEASED, plus
+    CLICKED for the full press+release lifecycle). The ``on_press`` /
+    ``on_release`` action slots in the widget protobuf are only seen by
+    listeners if we forward those signals; doing it unconditionally
+    keeps the sim faithful regardless of which slots the screen
+    actually populated.
+    """
     if on_event is None:
         return
-    signal.connect(lambda *_args, _w=widget_proto: on_event(_w, "click", {}))
+    btn.pressed.connect(lambda _w=widget_proto: on_event(_w, "press", {}))
+    btn.released.connect(lambda _w=widget_proto: on_event(_w, "release", {}))
+    btn.clicked.connect(lambda *_args, _w=widget_proto: on_event(_w, "click", {}))
 
 
 def _build_image(img: _proto.Image, fs: SimFs) -> QtWidgets.QWidget:

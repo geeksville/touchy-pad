@@ -358,6 +358,16 @@ message GridCell {
 message Button {
     string text             = 1;
     repeated Action on_click = 2;   // see widgets.options for max count
+    // Press/release edge actions. `on_click` fires once on a completed
+    // press+release (suppressed if the press is cancelled by
+    // scroll/press-lost). `on_press` / `on_release` fire on the raw
+    // edges, so they're suitable for hold-aware host code (e.g.
+    // StreamDeck plugins, MIDI note-on / note-off). LV_EVENT_PRESS_LOST
+    // also triggers `on_release` so callers always see a matching
+    // press/release pair. The host distinguishes which edge fired by
+    // looking at `LvEvent.code` (1=PRESSED, 8=RELEASED, 7=CLICKED).
+    repeated Action on_press   = 3;  // see widgets.options for max count
+    repeated Action on_release = 4;  // see widgets.options for max count
 }
 
 // Text alignment within a label widget. Maps directly to lv_text_align_t.
@@ -423,6 +433,11 @@ message ImageButton {
     Image released                 = 1;   // required — at minimum `asset`
     optional Image pressed         = 2;   // optional press-state image
     repeated Action on_click       = 3;   // see widgets.options for cap
+    // Press/release edge actions — same semantics as on `Button`. See
+    // the comment on `Button.on_press` / `Button.on_release` for the
+    // edge-vs-click contract and which `LvEvent.code` values fire.
+    repeated Action on_press       = 4;   // see widgets.options for cap
+    repeated Action on_release     = 5;   // see widgets.options for cap
 }
 
 message Arc {

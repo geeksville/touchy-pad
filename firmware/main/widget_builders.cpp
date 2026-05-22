@@ -42,6 +42,20 @@ lv_obj_t *build_button(lv_obj_t *parent, const touchy_Widget &w)
     widget_attach_actions(btn, w.id,
                           w.kind.button.on_click, w.kind.button.on_click_count,
                           LV_EVENT_CLICKED, widget_value_none);
+    // Press / release edges — see widgets.proto for the contract. The
+    // LVGL event code is forwarded verbatim in `LvEvent.code` so the
+    // host can distinguish press (1) / release (8) / click (7). We
+    // also bind on_release to LV_EVENT_PRESS_LOST so a cancelled press
+    // (e.g. swiped off the button) still produces a matching release.
+    widget_attach_actions(btn, w.id,
+                          w.kind.button.on_press, w.kind.button.on_press_count,
+                          LV_EVENT_PRESSED, widget_value_none);
+    widget_attach_actions(btn, w.id,
+                          w.kind.button.on_release, w.kind.button.on_release_count,
+                          LV_EVENT_RELEASED, widget_value_none);
+    widget_attach_actions(btn, w.id,
+                          w.kind.button.on_release, w.kind.button.on_release_count,
+                          LV_EVENT_PRESS_LOST, widget_value_none);
     return btn;
 }
 
@@ -264,6 +278,16 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
     widget_attach_actions(btn, w.id,
                           ib.on_click, ib.on_click_count,
                           LV_EVENT_CLICKED, widget_value_none);
+    // See `build_button` for the press/release edge contract.
+    widget_attach_actions(btn, w.id,
+                          ib.on_press, ib.on_press_count,
+                          LV_EVENT_PRESSED, widget_value_none);
+    widget_attach_actions(btn, w.id,
+                          ib.on_release, ib.on_release_count,
+                          LV_EVENT_RELEASED, widget_value_none);
+    widget_attach_actions(btn, w.id,
+                          ib.on_release, ib.on_release_count,
+                          LV_EVENT_PRESS_LOST, widget_value_none);
     return btn;
 }
 

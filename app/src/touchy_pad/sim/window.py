@@ -162,7 +162,7 @@ class SimWindow(QtWidgets.QMainWindow):
             self.log(f"event: {widget_id or '(no id)'} ({kind}) — no actions")
             return
         for action in actions:
-            self._dispatch_action(action, widget_id, state)
+            self._dispatch_action(action, widget_id, kind, state)
 
     def _actions_for(self, w: _proto.Widget, kind: str) -> list:
         wk = w.WhichOneof("kind")
@@ -171,6 +171,16 @@ class SimWindow(QtWidgets.QMainWindow):
                 return list(w.button.on_click)
             if wk == "image_button":
                 return list(w.image_button.on_click)
+        elif kind == "press":
+            if wk == "button":
+                return list(w.button.on_press)
+            if wk == "image_button":
+                return list(w.image_button.on_press)
+        elif kind == "release":
+            if wk == "button":
+                return list(w.button.on_release)
+            if wk == "image_button":
+                return list(w.image_button.on_release)
         elif kind == "change":
             if wk == "slider":
                 return list(w.slider.on_change)
@@ -180,22 +190,36 @@ class SimWindow(QtWidgets.QMainWindow):
                 return list(w.toggle.on_change)
         return []
 
-    def _dispatch_action(self, action: _proto.Action, widget_id: str, state: dict) -> None:
-        kind = action.WhichOneof("kind")
-        if kind == "host":
+    # Mapping from our internal kind-strings to the LVGL `lv_event_code_t`
+    # value the firmware would forward in `LvEvent.code`. Used when
+    # pushing host events from the sim so connected clients see the same
+    # codes they'd see on real hardware.
+    _LV_CODE_BY_KIND = {
+        "press": 1,  # LV_EVENT_PRESSED
+        "click": 7,  # LV_EVENT_CLICKED
+        "release": 8,  # LV_EVENT_RELEASED
+        "change": 28,  # LV_EVENT_VALUE_CHANGED
+    }
+
+    def _dispatch_action(
+        self, action: _proto.Action, widget_id: str, kind: str, state: dict
+    ) -> None:
+        a_kind = action.WhichOneof("kind")
+        if a_kind == "host":
             host_code = int(action.host.code)
-            self._device.push_host_event(host_code, widget_id, **state)
+            lv_code = self._LV_CODE_BY_KIND.get(kind)
+            self._device.push_host_event(host_code, widget_id, lv_code=lv_code, **state)
             extras = " ".join(f"{k}={v}" for k, v in state.items())
             self.log(
                 f"host: code=0x{host_code:x} widget={widget_id!r}"
                 + (f" {extras}" if extras else "")
             )
-        elif kind == "macro":
+        elif a_kind == "macro":
             self.log(f"macro: widget={widget_id!r} steps={len(action.macro.steps)} (not emulated)")
-        elif kind == "device":
+        elif a_kind == "device":
             self._dispatch_device(action.device, widget_id)
         else:
-            self.log(f"action: widget={widget_id!r} (unknown kind {kind!r})")
+            self.log(f"action: widget={widget_id!r} (unknown kind {a_kind!r})")
 
     def _dispatch_device(self, action: _proto.ActionDevice, widget_id: str) -> None:
         sub = action.WhichOneof("kind")

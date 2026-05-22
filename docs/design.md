@@ -647,7 +647,32 @@ Have this tool emit the logs into a datafile you can refer to later when plannin
 
 ## Stage 50.2 Implement our Sim StreamDeck API
 
-* Put the code for this simulator/wrapper in app/src/touchy_pad/touchymdeck.
+**Done (May 2026).** Implemented as `touchy_pad.touchydeck`:
+
+* `TouchyDeck(StreamDeck)` subclass at `app/src/touchy_pad/touchydeck/deck.py`
+  drives a real Touchy-Pad via `TouchyClient`. Builds a grid of
+  `image_button` widgets (default 5×3) whose `on_press` / `on_release`
+  action slots both carry a host-code in the range `0xA000..0xA0FF`;
+  the `_read_control_states` poller distinguishes the two edges via
+  `LvEvent.code` (`1`=PRESSED, `8`/`32`=RELEASED/PRESS_LOST) and
+  returns the StreamDeck-format snapshot the base read loop expects.
+* `touchy_pad.touchydeck.install()` monkey-patches
+  `StreamDeck.DeviceManager.DeviceManager.enumerate` so connected
+  Touchy-Pads appear alongside real StreamDecks. Available as the
+  optional extra `pip install 'touchy-pad[streamdeck]'`.
+
+Required a small Stage 50.2 prerequisite — adding explicit
+`on_press` / `on_release` action slots to `Button` / `ImageButton`
+(proto fields 3,4 / 4,5; nanopb FT_POINTER) because the original
+`host_action` wiring only fired on `LV_EVENT_CLICKED`. The firmware
+attaches the same action list to `LV_EVENT_PRESSED`,
+`LV_EVENT_RELEASED`, and `LV_EVENT_PRESS_LOST` (cancelled press still
+emits release). See `proto/widgets.proto` and
+`firmware/main/widget_builders.cpp`.
+
+Original spec (kept for context):
+
+* Put the code for this simulator/wrapper in app/src/touchy_pad/touchydeck.
 * The main class in this module will be subclassing an ABC called [StreamDeck.Devices.StreamDeck.StreamDeck](https://github.com/StreamController/streamcontroller-python-elgato-streamdeck/blob/master/src/StreamDeck/Devices/StreamDeck.py).  Call our subclass TouchyDeck.
 * In that subclass you'll USE the public touchypad.api to implement most of those methods.  At the very least, I want you to support sending images to the device for each of the 'buttons' making a button layout and passing presses back as if it was a StreamDeck.
 * You'll need to come up with a scheme for mapping hostids (for press events) to the proper asyncio invocations as required by the StreamDeck API

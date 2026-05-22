@@ -142,16 +142,28 @@ class SimDevice:
         """
         self._on_screen_change = cb
 
-    def push_host_event(self, host_code: int, widget_id: str = "", **state: object) -> None:
+    def push_host_event(
+        self,
+        host_code: int,
+        widget_id: str = "",
+        *,
+        lv_code: int | None = None,
+        **state: object,
+    ) -> None:
         """Queue a host event as if a widget had fired ``ActionHost``.
 
         Used by the GUI when the user clicks a button whose ``on_click``
         contains an :class:`ActionHost`, and by tests that want to
-        simulate widget activations without rendering.
+        simulate widget activations without rendering. ``lv_code`` lets
+        callers pick the LVGL `lv_event_code_t` to forward in
+        ``LvEvent.code``; defaults to ``7`` (LV_EVENT_CLICKED) for
+        backwards compatibility with pre-50.2 callers.
         """
-        evt = _proto.LvEvent(code=7, user_data=widget_id, host_code=host_code)
-        # code=7 == LV_EVENT_CLICKED (matches what the firmware emits
-        # for button clicks; see lv_event_code_t).
+        evt = _proto.LvEvent(
+            code=7 if lv_code is None else int(lv_code),
+            user_data=widget_id,
+            host_code=host_code,
+        )
         if "value" in state:
             evt.value = int(state["value"])  # type: ignore[arg-type]
         if "checked" in state:

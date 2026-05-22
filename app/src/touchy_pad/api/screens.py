@@ -562,18 +562,29 @@ def button(
     id: str,
     text: str = "",
     on_click=None,
+    on_press=None,
+    on_release=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
 ) -> _proto.Widget:
     """A clickable button with an optional text label.
 
-    ``on_click`` accepts a single :class:`_proto.Action`, an ``int`` host
-    code, or a list mixing both. Pass ``None`` (the default) for buttons
-    that do nothing on click.
+    ``on_click`` fires once on a completed press+release (and is
+    suppressed when the press is cancelled by a scroll or press-lost).
+    ``on_press`` / ``on_release`` fire on the raw edges so hold-aware
+    host code (StreamDeck plugins, MIDI note-on/note-off, ...) can see
+    both transitions; the press-lost case also triggers ``on_release``
+    so callers always observe matching press/release pairs. The host
+    distinguishes edges via ``LvEvent.code`` (1=PRESSED, 8=RELEASED,
+    7=CLICKED). Each parameter accepts a single :class:`_proto.Action`,
+    an ``int`` host code, or a list mixing both; pass ``None`` (the
+    default) for buttons that don't react on that edge.
     """
     w = _widget(id, rect=rect, style=style)
     w.button.text = text
     w.button.on_click.extend(_normalise_actions(on_click))
+    w.button.on_press.extend(_normalise_actions(on_press))
+    w.button.on_release.extend(_normalise_actions(on_release))
     return w
 
 
@@ -665,6 +676,8 @@ def image_button(
     asset: str,
     pressed_asset: str | None = None,
     on_click=None,
+    on_press=None,
+    on_release=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     scale: int | float | None = None,
@@ -701,6 +714,8 @@ def image_button(
             pressed_rotation if pressed_rotation is not None else rotation,
         )
     w.image_button.on_click.extend(_normalise_actions(on_click))
+    w.image_button.on_press.extend(_normalise_actions(on_press))
+    w.image_button.on_release.extend(_normalise_actions(on_release))
     return w
 
 

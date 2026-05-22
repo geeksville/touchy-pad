@@ -113,3 +113,43 @@ def test_host_action_pushes_event(qapp, provisioned_fs) -> None:
     assert by_code[0x101].value == sl.value()
     assert 0x102 in by_code
     assert by_code[0x102].user_data == "enable"
+
+
+def test_button_press_release_edges_dispatch(qapp, tmp_path) -> None:
+    """`on_press` / `on_release` produce two LvEvents with distinguishable codes.
+
+    Stage 50.2: the firmware now attaches actions on `LV_EVENT_PRESSED` and
+    `LV_EVENT_RELEASED` as well as `LV_EVENT_CLICKED`. The sim mirrors that:
+    a single Qt push activation should enqueue three host events when the
+    same `host_code` is wired to all three slots, and we should be able to
+    tell them apart by `LvEvent.code` (1=PRESSED, 7=CLICKED, 8=RELEASED).
+    """
+    from touchy_pad.api.screens import Screen, button, host_action
+
+    fs = SimFs(tmp_path, serial="SIMEDGE")
+    s = Screen("edges")
+    s += button(
+        "pad",
+        text="Pad",
+        on_click=host_action(0xABC),
+        on_press=host_action(0xABC),
+        on_release=host_action(0xABC),
+    )
+    fs.save("screens/edges.pb", s.to_proto().SerializeToString())
+
+    dev = SimDevice(fs)
+    win = SimWindow(dev, size=(320, 200))
+    qapp.processEvents()
+    assert dev.active_screen_name == "edges"
+
+    pad = next(b for b in win.findChildren(QPushButton) if b.text() == "Pad")
+    pad.click()
+    qapp.processEvents()
+
+    evts = _drain(dev._events)
+    codes = sorted(e.code for e in evts if e.host_code == 0xABC)
+    # Qt's QAbstractButton.click() emits pressed → released → clicked.
+    assert codes == [1, 7, 8], codes
+    for e in evts:
+        if e.host_code == 0xABC:
+            assert e.user_data == "pad"

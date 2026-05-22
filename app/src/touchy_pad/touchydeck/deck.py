@@ -1,0 +1,334 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""``TouchyDeck`` — a Touchy-Pad masquerading as an Elgato StreamDeck.
+
+See :mod:`touchy_pad.touchydeck` for the package-level intro.
+
+Wire-level mapping
+------------------
+Each cell ``k`` (``0 <= k < KEY_COUNT``, indexed left-to-right then
+top-to-bottom) is a Touchy ``image_button`` widget with id
+``f"{layout.ID_PREFIX}{k}"`` whose ``on_press`` and ``on_release``
+action slots both carry the host-code ``layout.HOST_CODE_BASE + k``.
+The two edges are distinguished on the host by ``LvEvent.code``:
+
+* ``1`` (``LV_EVENT_PRESSED``)  → key pressed,  ``state = True``
+* ``8`` (``LV_EVENT_RELEASED``) → key released, ``state = False``
+
+The base ``StreamDeck`` class polls :meth:`_read_control_states` from
+a daemon thread (~20 Hz by default) and diffs the returned per-key
+booleans against its own ``last_key_states`` cache, firing
+``self.key_callback`` on each edge — so we just have to keep our
+snapshot honest.
+
+Thread safety
+-------------
+``TouchyClient`` is single-shot per RPC: there's no internal lock, so
+concurrent calls from the read thread and the caller would corrupt the
+request/response stream. We serialise every RPC through the base class'
+``self.update_lock`` (an ``RLock`` it already holds for its own
+state-update paths).
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+# `streamcontroller-streamdeck` is an *optional* dep. Importing the
+# package lazily lets the rest of `touchy_pad` import cleanly even when
+# StreamController support isn't installed; users only hit the import
+# error when they actually construct a `TouchyDeck`.
+try:
+    from StreamDeck.Devices.StreamDeck import ControlType, StreamDeck
+except ImportError as _e:  # pragma: no cover - environmental
+    _IMPORT_ERROR: Exception | None = _e
+    StreamDeck = object  # type: ignore[assignment,misc]
+    ControlType = None  # type: ignore[assignment]
+else:
+    _IMPORT_ERROR = None
+
+if TYPE_CHECKING:
+    from ..client import TouchyClient
+
+from . import layout as _layout
+
+_LOG = logging.getLogger(__name__)
+
+# LVGL event codes that flag press / release edges. Must stay in sync
+# with the firmware's `widget_attach_actions(..., LV_EVENT_PRESSED ...)`
+# / `LV_EVENT_RELEASED` / `LV_EVENT_PRESS_LOST` registrations in
+# `firmware/main/widget_builders.cpp`.
+_LV_EVENT_PRESSED = 1
+_LV_EVENT_RELEASED = 8
+_LV_EVENT_PRESS_LOST = 32
+
+
+class _FakeTransportDevice:
+    """Minimal ``StreamDeck.Transport.Transport.Device`` stand-in.
+
+    The base ``StreamDeck`` class stores its USB ``Device`` on
+    ``self.device`` and only ever pokes a handful of methods on it:
+    ``is_open()``, ``connected()``, ``open()``, ``close()``, plus the
+    HID I/O helpers (which we never reach because we override every
+    abstract method that would call them). This shim is just enough to
+    keep ``StreamDeck.open()`` / ``.connected()`` from blowing up.
+    """
+
+    def __init__(self, client: TouchyClient, serial: str) -> None:
+        self._client = client
+        self._serial = serial
+        self._open = True
+
+    # -- presence ---------------------------------------------------------
+    def is_open(self) -> bool:
+        return self._open
+
+    def connected(self) -> bool:
+        return self._open
+
+    # -- lifecycle --------------------------------------------------------
+    def open(self) -> None:
+        self._open = True
+
+    def close(self) -> None:
+        self._open = False
+
+    # -- identity ---------------------------------------------------------
+    def path(self) -> bytes:
+        # StreamDeck base uses this as a unique id string in some logs.
+        return f"touchy:{self._serial}".encode()
+
+
+class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
+    """``StreamDeck`` subclass backed by a Touchy-Pad device.
+
+    Construct with an already-connected :class:`TouchyClient`. Call
+    :meth:`open` (inherited from ``StreamDeck``) to start the read
+    thread and push the initial empty key grid, then drive it like any
+    other StreamDeck (``set_key_callback``, ``set_key_image``, etc.).
+
+    The grid geometry defaults to 5 cols × 3 rows (15 keys, matching the
+    original Elgato StreamDeck) but is overridable via the
+    ``cols`` / ``rows`` ctor kwargs so future Touchy-Pad form factors
+    (or odd layouts) can advertise different shapes.
+    """
+
+    # -- StreamDeck class constants (overridden per-instance in __init__) --
+    KEY_COUNT = 15
+    KEY_COLS = 5
+    KEY_ROWS = 3
+    TOUCH_KEY_COUNT = 0
+    KEY_PIXEL_WIDTH = 128
+    KEY_PIXEL_HEIGHT = 128
+    KEY_IMAGE_FORMAT = "PNG"
+    KEY_FLIP = (False, False)
+    KEY_ROTATION = 0
+
+    DECK_TYPE = "Touchy-Pad (StreamDeck-compatible)"
+    DECK_VISUAL = True
+
+    def __init__(
+        self,
+        client: TouchyClient,
+        *,
+        cols: int = 5,
+        rows: int = 3,
+        key_pixel_size: int = 128,
+        serial: str | None = None,
+    ) -> None:
+        if _IMPORT_ERROR is not None:  # pragma: no cover - environmental
+            raise RuntimeError(
+                "streamcontroller-streamdeck is not installed; "
+                "install touchy-pad[streamdeck] to use TouchyDeck"
+            ) from _IMPORT_ERROR
+        if cols < 1 or rows < 1:
+            raise ValueError("TouchyDeck cols and rows must be >= 1")
+
+        # Instance-level overrides for the StreamDeck class constants.
+        # The base class reads them via `self.KEY_COUNT`, etc., so
+        # instance attributes shadow the class defaults cleanly.
+        self.KEY_COLS = cols
+        self.KEY_ROWS = rows
+        self.KEY_COUNT = cols * rows
+        self.KEY_PIXEL_WIDTH = key_pixel_size
+        self.KEY_PIXEL_HEIGHT = key_pixel_size
+
+        self._client = client
+        self._serial = serial or f"touchy-{id(client):x}"
+        self._screen_pushed = False
+        self._brightness_pct = 100
+
+        # Per-key pressed state. Mutated by `_read_control_states` as it
+        # drains the event queue; the base read loop diffs against its
+        # own copy to emit edges.
+        self._key_state: list[bool] = [False] * self.KEY_COUNT
+        # Set True whenever an edge mutates _key_state so the next
+        # `_read_control_states` returns a snapshot instead of None
+        # (None makes the base sleep ~1/poll_rate).
+        self._state_dirty = threading.Event()
+
+        super().__init__(_FakeTransportDevice(client, self._serial))
+
+    # -- helpers ----------------------------------------------------------
+
+    def _rpc(self, fn: Callable[..., Any], *args: Any, **kw: Any) -> Any:
+        """Serialise an RPC against the base class' update_lock.
+
+        Both the read thread (via :meth:`_read_control_states`) and the
+        caller's main thread (``set_key_image`` etc.) reach
+        :class:`TouchyClient`, which itself isn't internally locked.
+        """
+        with self.update_lock:
+            return fn(*args, **kw)
+
+    # -- StreamDeck abstract methods --------------------------------------
+
+    def _read_control_states(self) -> dict | None:  # noqa: D401 - base-class API
+        """Poll one event from the device, update key state, return snapshot.
+
+        Returns a ``{ControlType.KEY: [bool] * KEY_COUNT}`` mapping when
+        anything changed since the last call; ``None`` otherwise (which
+        makes the base read loop sleep instead of busy-polling).
+        """
+        try:
+            evt = self._rpc(self._client.event_consume)
+        except Exception:  # pragma: no cover - device-side I/O failures
+            _LOG.exception("touchydeck: event_consume failed")
+            return None
+
+        if evt is None:
+            # Nothing pending; tell the base loop to sleep ~1/poll_rate.
+            return None
+
+        # Filter to events from our own key widgets, identified by their
+        # host_code range (NOT user_data, so a host-side rename of the
+        # widget id can't break this).
+        key = _layout.key_for_host_code(evt.host_code)
+        if key is None or key >= self.KEY_COUNT:
+            return None
+
+        code = evt.code
+        if code == _LV_EVENT_PRESSED:
+            pressed = True
+        elif code in (_LV_EVENT_RELEASED, _LV_EVENT_PRESS_LOST):
+            pressed = False
+        else:
+            # CLICKED / VALUE_CHANGED / etc. — ignored (we only emit
+            # press+release for these widgets, but defend against future
+            # firmware adding extra edges).
+            return None
+
+        if self._key_state[key] == pressed:
+            return None
+        self._key_state[key] = pressed
+        # Snapshot — the base class diffs vs its own last_key_states and
+        # fires key_callback on edges, so returning the full list is the
+        # contract even when only one cell changed.
+        return {ControlType.KEY: list(self._key_state)}
+
+    def _reset_key_stream(self) -> None:  # noqa: D401 - base-class API
+        """No-op: Touchy has no streaming-image HID protocol to abort."""
+
+    def reset(self) -> None:  # noqa: D401 - base-class API
+        """Push the grid screen and clear cached key state."""
+        screen = _layout.build_screen(cols=self.KEY_COLS, rows=self.KEY_ROWS)
+        self._rpc(
+            self._client.file_save,
+            f"screens/{_layout.SCREEN_NAME}.pb",
+            screen.to_bytes(),
+        )
+        self._rpc(self._client.screen_load, _layout.SCREEN_NAME)
+        self._key_state = [False] * self.KEY_COUNT
+        self._screen_pushed = True
+
+    def set_brightness(self, percent: int) -> None:  # noqa: D401 - base-class API
+        """Stash the requested brightness; real backlight control is TBD.
+
+        The Touchy backlight RPC exposes wake/sleep but not a 0-100% PWM
+        target yet, so for now we just record the value and log it.
+        StreamController-side code that introspects `set_brightness`
+        before calling it sees the method as available (matching real
+        StreamDecks) without hitting an exception.
+        """
+        percent = max(0, min(100, int(percent)))
+        self._brightness_pct = percent
+        if percent == 0:
+            # Best-effort screen sleep; ignored if RPC fails.
+            try:
+                self._rpc(self._client.screen_sleep_timeout, 0)
+            except Exception:  # pragma: no cover
+                _LOG.debug("touchydeck: screen_sleep_timeout(0) failed", exc_info=True)
+        else:
+            try:
+                self._rpc(self._client.screen_wake)
+            except Exception:  # pragma: no cover
+                _LOG.debug("touchydeck: screen_wake failed", exc_info=True)
+
+    def set_key_image(self, key: int, image: bytes | None) -> None:  # noqa: D401 - base-class API
+        """Upload ``image`` (PNG bytes) to cell ``key`` and refresh the screen.
+
+        ``image=None`` is treated as "clear" — there's no on-device
+        delete in the public API yet, so we just skip the upload; the
+        existing asset (if any) stays until the next call.
+        """
+        if key < 0 or key >= self.KEY_COUNT:
+            raise IndexError(f"key {key} out of range (0..{self.KEY_COUNT - 1})")
+        if image is None:
+            return
+        path = _layout.asset_path_for(key)
+        # `file_save` auto-converts PNG/JPEG/etc. → LVGL .bin and rewrites
+        # the path's extension to .bin, matching the asset path the
+        # layout already references.
+        self._rpc(self._client.file_save, path, bytes(image))
+        # Re-load the screen so LVGL picks up the freshly-written asset.
+        # NOTE: this flashes the whole grid. A widget-targeted refresh
+        # RPC would be friendlier; tracked separately.
+        if self._screen_pushed:
+            self._rpc(self._client.screen_load, _layout.SCREEN_NAME)
+
+    def set_key_color(self, key: int, r: int, g: int, b: int) -> None:  # noqa: D401 - base-class API
+        """Solid-colour key fill — not implemented for Touchy yet."""
+        raise NotImplementedError(
+            "TouchyDeck has no solid-colour key path; use set_key_image() with a "
+            "PNG of the desired colour instead."
+        )
+
+    def set_screen_image(self, image: bytes | None) -> None:  # noqa: D401 - base-class API
+        raise NotImplementedError("TouchyDeck does not expose a single full-screen image slot")
+
+    def set_touchscreen_image(  # noqa: D401 - base-class API
+        self, image: bytes | None, x_pos: int = 0, y_pos: int = 0, width: int = 0, height: int = 0
+    ) -> None:
+        raise NotImplementedError(
+            "TouchyDeck routes touchscreen pixels through Screen widgets, not the "
+            "StreamDeck Plus touchscreen-strip API."
+        )
+
+    def get_firmware_version(self) -> str:  # noqa: D401 - base-class API
+        try:
+            v = self._rpc(self._client.sys_version_get)
+        except Exception:  # pragma: no cover
+            return "unknown"
+        return getattr(v, "firmware_version_str", "") or str(getattr(v, "firmware_version", 0))
+
+    def get_serial_number(self) -> str:  # noqa: D401 - base-class API
+        return self._serial
+
+    # -- identity --------------------------------------------------------
+
+    def deck_type(self) -> str:
+        return self.DECK_TYPE
+
+    def id(self) -> str:
+        return self._serial
+
+    # -- friendly repr ---------------------------------------------------
+
+    def __repr__(self) -> str:  # pragma: no cover - cosmetic
+        return (
+            f"<TouchyDeck serial={self._serial!r} "
+            f"keys={self.KEY_COLS}x{self.KEY_ROWS} "
+            f"open={self.connected()}>"
+        )

@@ -1723,6 +1723,19 @@ files = [
 ]
 
 [[package]]
+name = "streamcontroller-streamdeck"
+version = "0.1.5"
+description = "Library to control Elgato StreamDeck devices."
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "extra == \"streamdeck\""
+files = [
+    {file = "streamcontroller_streamdeck-0.1.5-py3-none-any.whl", hash = "sha256:21a2bc4d2cc0c2b0216c080663fe507ef2274f54f9c9bbf9ac0b48729fb5b210"},
+    {file = "streamcontroller_streamdeck-0.1.5.tar.gz", hash = "sha256:2520c283d3cb0eac4cd4a7680849d8cc98a9ef5adeeab752fe62e7e9fb069fd1"},
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.15.0"
 description = "Backported and Experimental Type Hints for Python 3.9+"
@@ -1815,8 +1828,9 @@ watchmedo = ["PyYAML (>=3.10)"]
 
 [extras]
 sim = ["PySide6", "platformdirs"]
+streamdeck = ["streamcontroller-streamdeck"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "8633441e136abd0c2a2d1ba6c4c5cdb15106e6839bc952abb396bad75f450a93"
+content-hash = "91f5cec8e47032918bea9152caead3df808bf60523d5910d9e6586cba3b32540"
