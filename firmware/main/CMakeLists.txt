@@ -14,6 +14,7 @@ idf_component_register(
         "fs.cpp"
         "prefs.cpp"
         "backlight.cpp"
+        "debug.cpp"
         "screens.cpp"
         "screen_layout.cpp"
         "widget_actions.cpp"

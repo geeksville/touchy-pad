@@ -20,6 +20,7 @@
 
 #include "screens.h"
 
+#include "debug.h"
 #include "default_screen_pb.h"
 #include "fs.h"
 #include "prefs.h"
@@ -224,6 +225,7 @@ bool load_decoded(std::unique_ptr<ScreenMsg> holder, const char *log_name)
     }
 
     ESP_LOGI(TAG, "loaded screen '%s'", log_name);
+    dump_critical_info();
     return true;
 }
 

@@ -16,6 +16,8 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
 CONFIG_FREERTOS_HZ=1000
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# Required by uxTaskGetSystemState() (used by screens.cpp:dump_critical_info).
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
 
 # Stage 24.2 — `Screen.active` is a recursive `Widget` (with nested
 # `Layout.children`), and nanopb's `pb_release` walks the tree

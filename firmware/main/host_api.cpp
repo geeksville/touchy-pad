@@ -319,7 +319,7 @@ extern "C" void host_api_start(void)
     // 8 KB stack: pb_decode of an ImageSaveCmd uses static buffers (the
     // generated struct is heap/.bss), so this is mostly for nanopb's small
     // call stack. Pin to APP CPU to keep TinyUSB on the PRO CPU.
-    xTaskCreatePinnedToCore(host_api_task, "host_api", 8 * 1024,
+    xTaskCreatePinnedToCore(host_api_task, "host_api", 10 * 1024,
                             nullptr, tskIDLE_PRIORITY + 4, &s_task, 1);
 }
 
