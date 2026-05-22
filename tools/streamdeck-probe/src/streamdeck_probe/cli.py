@@ -39,11 +39,22 @@ from .probe import probe_deck
     show_default=True,
     help="Maximum seconds to wait for the press-test phase.",
 )
+@click.option(
+    "--sim",
+    is_flag=True,
+    help=(
+        "Spin up the in-process touchy-pad sim and install the "
+        "touchydeck DeviceManager monkey-patch before enumeration. "
+        "Used to validate that the StreamDeck-compat layer is wired "
+        "correctly end-to-end without real hardware."
+    ),
+)
 def main(
     out_dir: Path,
     no_interactive: bool,
     brightness_pause_ms: int,
     press_timeout: float,
+    sim: bool,
 ) -> None:
     """Enumerate any attached StreamDeck devices and record their behavior."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -58,8 +69,28 @@ def main(
             "interactive": not no_interactive,
             "brightness_pause_ms": brightness_pause_ms,
             "press_timeout_s": press_timeout,
+            "sim": sim,
         },
     )
+
+    if sim:
+        try:
+            from touchy_pad.api import create_sim_device
+            from touchy_pad.touchydeck import install as touchydeck_install
+        except ImportError as e:
+            log.log("error", "sim_import_failed", data={"error": str(e)})
+            log.close()
+            raise click.ClickException(
+                "--sim requires the `touchy-pad` package. Run `poetry install`."
+            ) from e
+
+        sim_transport = create_sim_device(headless=True)
+        touchydeck_install()
+        log.log(
+            "info",
+            "sim_ready",
+            data={"serial": sim_transport.serial},
+        )
 
     try:
         from StreamDeck.DeviceManager import DeviceManager  # type: ignore

@@ -52,6 +52,8 @@ else:
 if TYPE_CHECKING:
     from ..client import TouchyClient
 
+from ..usb_ids import PID as _TOUCHY_PID
+from ..usb_ids import VID as _TOUCHY_VID
 from . import layout as _layout
 
 _LOG = logging.getLogger(__name__)
@@ -99,6 +101,17 @@ class _FakeTransportDevice:
     def path(self) -> bytes:
         # StreamDeck base uses this as a unique id string in some logs.
         return f"touchy:{self._serial}".encode()
+
+    # Pseudo-USB descriptor methods. Real StreamDeck transports expose
+    # these as callables on the device object (the StreamDeck base
+    # class and probe tools call them like ``deck.device.vendor_id()``).
+    # Values match the Touchy-Pad USB descriptor (see
+    # ``touchy_pad.usb_ids``).
+    def vendor_id(self) -> int:
+        return _TOUCHY_VID
+
+    def product_id(self) -> int:
+        return _TOUCHY_PID
 
 
 class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]

@@ -127,6 +127,12 @@ from .screens import (
     trackpad,
     transition,
 )
+from .sim_registry import (
+    create_sim_device,
+    destroy_sim_device,
+    get_sim_serial,
+    get_sim_transport,
+)
 
 __all__ = [
     # Device lifecycle.
@@ -135,6 +141,11 @@ __all__ = [
     "touchy_get_pad_ids",
     "IncompatibleFirmwareError",
     "MINIMUM_FIRMWARE_VERSION",
+    # Sim device registry (for testing / host apps without USB hardware).
+    "create_sim_device",
+    "destroy_sim_device",
+    "get_sim_serial",
+    "get_sim_transport",
     # Submodules.
     "hid_keys",
     "images",

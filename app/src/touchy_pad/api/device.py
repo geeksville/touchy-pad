@@ -63,20 +63,31 @@ def touchy_get_pad_ids() -> list[str]:
     Each entry is suitable as the ``serial`` argument to
     :func:`touchy_open`. The list is empty if no device is plugged in.
     Requires a working ``libusb-1.0`` runtime on the host.
+
+    When :func:`touchy_pad.api.create_sim_device` has been called this
+    process, the sim's pseudo-serial is appended to the list too — so
+    discovery code (StreamController, the touchydeck enumeration hook,
+    etc.) sees the sim and real devices through the same API.
     """
+    serials: list[str] = []
     try:
         import usb.core
     except ImportError:  # pragma: no cover — handled by libusb install docs.
-        return []
+        pass
+    else:
+        for dev in usb.core.find(idVendor=VID, idProduct=PID, find_all=True) or []:
+            try:
+                serials.append(usb.util.get_string(dev, dev.iSerialNumber) or "")  # type: ignore[attr-defined]
+            except Exception:
+                # Fall back to a stable per-device identifier when the serial
+                # string isn't readable (no permission, descriptor missing, …).
+                serials.append(f"bus{dev.bus}-addr{dev.address}")
 
-    serials: list[str] = []
-    for dev in usb.core.find(idVendor=VID, idProduct=PID, find_all=True) or []:
-        try:
-            serials.append(usb.util.get_string(dev, dev.iSerialNumber) or "")  # type: ignore[attr-defined]
-        except Exception:
-            # Fall back to a stable per-device identifier when the serial
-            # string isn't readable (no permission, descriptor missing, …).
-            serials.append(f"bus{dev.bus}-addr{dev.address}")
+    from .sim_registry import get_sim_serial
+
+    sim_serial = get_sim_serial()
+    if sim_serial is not None and sim_serial not in serials:
+        serials.append(sim_serial)
     return serials
 
 
@@ -259,15 +270,40 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
     matching device is attached, and :class:`IncompatibleFirmwareError`
     when the device reports a firmware version older than
     :data:`MINIMUM_FIRMWARE_VERSION`.
+
+    If :func:`touchy_pad.api.create_sim_device` has been called this
+    process and ``serial`` matches the sim's serial (or no real USB
+    device is plugged in and ``serial`` is ``None``), the sim's
+    transport is used transparently — exactly the same code path real
+    hardware uses.
     """
     if transport is None:
-        from ..transport import UsbTransport
+        from .sim_registry import get_sim_serial, get_sim_transport
 
-        # ``serial`` filtering is currently a no-op on UsbTransport (it
-        # always opens the first matching VID/PID). When multi-device
-        # support lands we'll plumb ``serial`` through here.
-        del serial
-        transport = UsbTransport()
+        sim_transport = get_sim_transport()
+        sim_serial = get_sim_serial()
+
+        use_sim = sim_transport is not None and (serial is None or serial == sim_serial)
+
+        if use_sim and serial is None:
+            # Prefer a real device over the sim when both are present
+            # and the caller didn't explicitly ask for either.
+            try:
+                from ..transport import UsbTransport
+
+                transport = UsbTransport()
+            except Exception:
+                transport = sim_transport
+        elif use_sim:
+            transport = sim_transport
+        else:
+            from ..transport import UsbTransport
+
+            # ``serial`` filtering is currently a no-op on UsbTransport
+            # (it always opens the first matching VID/PID). When
+            # multi-device support lands we'll plumb ``serial`` through.
+            del serial
+            transport = UsbTransport()
 
     client = TouchyClient(transport)
     try:

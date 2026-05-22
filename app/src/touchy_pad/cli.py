@@ -89,17 +89,24 @@ def cli(
     # Qt window pointing at its SimDevice) up-front. The subcommand
     # then talks to that same SimDevice, so its effects (uploads,
     # screen switches, host events) show up live in the window.
-    from .sim import SimDeviceTransport
+    #
+    # Goes through the public `create_sim_device` helper so the sim
+    # is registered in the process-wide registry — that's what makes
+    # `touchy_get_pad_ids()` and the touchydeck StreamDeck-compat
+    # enumeration hook see it too.
+    from .api import create_sim_device
 
-    transport = SimDeviceTransport(
+    transport = create_sim_device(
+        headless=not sim_gui,
         serial=sim_serial,
         fs_root=sim_dir,
-        headless=not sim_gui,
     )
     ctx.obj["sim_transport"] = transport
     # Closed after the result callback's app.exec() returns (or
     # immediately after the subcommand in headless mode).
-    ctx.call_on_close(transport.close)
+    from .api import destroy_sim_device
+
+    ctx.call_on_close(destroy_sim_device)
 
     if not sim_gui:
         return

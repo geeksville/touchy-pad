@@ -33,28 +33,51 @@ def find_touchy_decks() -> list[TouchyDeck]:
     Returns an empty list on platforms without libusb / when no device
     is plugged in. Never raises — discovery failures are logged.
 
+    When :func:`touchy_pad.api.create_sim_device` has been called this
+    process, the sim device is included in the returned list (in
+    addition to any real USB devices). This is how the StreamController
+    integration picks up the in-process sim with no extra wiring on
+    the consumer side.
+
     Each returned ``TouchyDeck`` is constructed but *not* opened; the
     caller (or ``DeviceManager.enumerate`` consumers) calls ``.open()``
     when ready to start the read thread + push the grid.
     """
+    decks: list[TouchyDeck] = []
+
+    # Real USB device (if any). Single-device for now; future work
+    # extends to enumeration across multiple attached pads.
     try:
         transport = UsbTransport()
     except DeviceNotFoundError:
-        return []
+        transport = None
     except Exception:
         _LOG.debug("touchydeck: UsbTransport probe failed", exc_info=True)
-        return []
+        transport = None
 
-    client = TouchyClient(transport)
-    try:
-        return [TouchyDeck(client)]
-    except Exception:
-        _LOG.exception("touchydeck: failed to instantiate TouchyDeck")
+    if transport is not None:
         try:
-            client.close()
-        except Exception:  # pragma: no cover
-            pass
-        return []
+            client = TouchyClient(transport)
+            decks.append(TouchyDeck(client))
+        except Exception:
+            _LOG.exception("touchydeck: failed to instantiate TouchyDeck for USB device")
+            try:
+                transport.close()
+            except Exception:  # pragma: no cover
+                pass
+
+    # In-process sim (if `create_sim_device` was called this process).
+    from ..api.sim_registry import get_sim_transport
+
+    sim_transport = get_sim_transport()
+    if sim_transport is not None:
+        try:
+            sim_client = TouchyClient(sim_transport)
+            decks.append(TouchyDeck(sim_client, serial=sim_transport.serial))
+        except Exception:
+            _LOG.exception("touchydeck: failed to instantiate TouchyDeck for sim device")
+
+    return decks
 
 
 def install() -> None:

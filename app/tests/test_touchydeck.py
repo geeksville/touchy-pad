@@ -163,3 +163,31 @@ def test_set_key_color_not_implemented() -> None:
         deck = TouchyDeck(c, cols=2, rows=1)
         with pytest.raises(NotImplementedError):
             deck.set_key_color(0, 255, 0, 0)
+
+
+def test_create_sim_device_surfaces_via_enumerate(tmp_path) -> None:
+    """`create_sim_device` registers a sim that DeviceManager.enumerate finds."""
+    from StreamDeck.DeviceManager import DeviceManager
+
+    from touchy_pad.api import (
+        create_sim_device,
+        destroy_sim_device,
+        touchy_get_pad_ids,
+    )
+    from touchy_pad.touchydeck import install, uninstall
+
+    try:
+        sim = create_sim_device(headless=True, serial="SIM-test", fs_root=tmp_path)
+        assert sim.serial == "SIM-test"
+        assert "SIM-test" in touchy_get_pad_ids()
+
+        install()
+        # Use the "dummy" HID transport so this test doesn't require
+        # libhidapi to be installed on the runner.
+        decks = DeviceManager(transport="dummy").enumerate()
+        touchy_decks = [d for d in decks if isinstance(d, TouchyDeck)]
+        assert len(touchy_decks) == 1
+        assert touchy_decks[0].get_serial_number() == "SIM-test"
+    finally:
+        uninstall()
+        destroy_sim_device()
