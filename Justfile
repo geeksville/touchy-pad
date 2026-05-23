@@ -177,13 +177,18 @@ app-run *ARGS: build-proto-py
 # Increment the patch component of the semver in VERSION, bump the build
 # number, commit the change, tag it "vX.Y.Z", and push both the commit and
 # the tag to origin.  Requires a clean git index on the branch to be pushed.
-bump-version:
+# Optionally accepts a version argument (e.g., `just bump-version 0.2.0`).
+bump-version VERSION="":
     #!/usr/bin/env bash
     set -euo pipefail
     ver=$(sed -n '1p' VERSION)
     build=$(sed -n '2p' VERSION)
-    IFS='.' read -r major minor patch <<< "$ver"
-    new_ver="$major.$minor.$((patch + 1))"
+    if [ -n "{{VERSION}}" ]; then
+        new_ver="{{VERSION}}"
+    else
+        IFS='.' read -r major minor patch <<< "$ver"
+        new_ver="$major.$minor.$((patch + 1))"
+    fi
     new_build=$((build + 1))
     printf '%s\n%s\n' "$new_ver" "$new_build" > VERSION
     # Keep app/pyproject.toml in sync — the regex matches only the bare
