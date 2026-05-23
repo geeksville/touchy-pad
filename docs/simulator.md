@@ -57,7 +57,7 @@ This:
 If the cache is empty, push the bundled demo screens first:
 
 ```bash
-touchy --sim screen demo   # uploads images/smiley.png + screens/{home,test}.pb
+touchy --sim screen demo   # uploads F:host/images/smiley.png + F:host/screens/{home,test}.pb
 touchy --sim sim           # now the window has something to render
 ```
 
@@ -137,7 +137,7 @@ from touchy_pad.sim.transport import make_tempdir_transport
 with make_tempdir_transport() as transport:
     client = TouchyClient(transport)
     print(client.sys_version_get().firmware_version_str)   # "sim"
-    client.screen_load("home")
+    client.screen_load("F:host/screens/home.pb")
 ```
 
 `make_tempdir_transport()` returns a fully-functional
@@ -152,7 +152,8 @@ worked examples.
 | Feature                          | Sim behaviour                                    |
 |----------------------------------|--------------------------------------------------|
 | `Command` / `Response` protocol  | Full — same protobuf wire format as firmware.    |
-| Screen storage (`screens/*.pb`)  | Sandbox-rooted pseudo-fs; survives across runs.  |
+| Screen storage (`F:host/screens/*.pb`) | Sandbox-rooted pseudo-fs; survives across runs.  |
+| `R:` PSRAM filesystem              | Mirrored to the same pseudo-fs under an `R/` subdir; behaves as transient (the sim doesn't enforce loss-on-reboot, but treat it that way for parity with hardware). |
 | Image asset upload               | Stored as-is; **no `.png → .bin` conversion**.   |
 | Widget rendering                 | Buttons, labels, sliders, checkboxes, toggles, images, image-buttons, FPS, log, force-render checkbox. |
 | Trackpad widget                  | Static "Sim Trackpad" placeholder — no touches.  |

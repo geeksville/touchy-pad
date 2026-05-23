@@ -58,6 +58,9 @@ def _make_server(*, protocol_version: int = MINIMUM_FIRMWARE_VERSION):
     saved: dict[str, bytes] = {}
     events: queue.Queue[_proto.LvEvent] = queue.Queue()
     loaded: list[str] = []
+    # Streaming-write transaction state: handle → (path, accumulated bytes).
+    writes: dict[int, tuple[str, bytearray]] = {}
+    next_handle = [1]
 
     def server(cmd, _t):
         kind = cmd.WhichOneof("cmd")
@@ -71,14 +74,36 @@ def _make_server(*, protocol_version: int = MINIMUM_FIRMWARE_VERSION):
                     board_name="test_board",
                 ),
             )
-        if kind == "file_save":
-            saved[cmd.file_save.path] = bytes(cmd.file_save.data)
+        if kind == "file_open_write":
+            h = next_handle[0]
+            next_handle[0] += 1
+            writes[h] = (cmd.file_open_write.path, bytearray())
+            return _proto.Response(
+                code=_proto.RESULT_OK,
+                file_open_write=_proto.FileOpenWriteResponse(handle=h),
+            )
+        if kind == "file_write":
+            entry = writes.get(cmd.file_write.handle)
+            if entry is None:
+                return _proto.Response(code=_proto.RESULT_IO_ERROR)
+            entry[1].extend(cmd.file_write.data)
             return _proto.Response(code=_proto.RESULT_OK)
-        if kind == "file_reset":
-            saved.clear()
+        if kind == "file_close":
+            entry = writes.pop(cmd.file_close.handle, None)
+            if entry is None:
+                return _proto.Response(code=_proto.RESULT_IO_ERROR)
+            if cmd.file_close.commit:
+                saved[entry[0]] = bytes(entry[1])
+            return _proto.Response(code=_proto.RESULT_OK)
+        if kind == "file_delete":
+            path = cmd.file_delete.path
+            # Treat `"F:host"` (or any prefix path) as a subtree wipe.
+            removed = [k for k in saved if k == path or k.startswith(path + "/")]
+            for k in removed:
+                saved.pop(k, None)
             return _proto.Response(code=_proto.RESULT_OK)
         if kind == "screen_load":
-            loaded.append(cmd.screen_load.name)
+            loaded.append(cmd.screen_load.path)
             return _proto.Response(code=_proto.RESULT_OK)
         if kind == "event_consume":
             try:
@@ -146,20 +171,20 @@ def test_screen_save_accepts_host_dsl(open_pad):
     s = Screen("home")
     s += button("go", text="Go")
     pad.screen_save(s)
-    assert "screens/home.pb" in server.saved
+    assert "F:host/screens/home.pb" in server.saved
 
 
 def test_screen_save_accepts_protobuf_message(open_pad):
     pad, server = open_pad()
     msg = protobuf.Screen(name="raw", version=protobuf.Screen.Version.CURRENT)
     pad.screen_save(msg)
-    assert "screens/raw.pb" in server.saved
+    assert "F:host/screens/raw.pb" in server.saved
 
 
 def test_screen_save_accepts_dict(open_pad):
     pad, server = open_pad()
     pad.screen_save({"name": "dictish", "version": "CURRENT"})
-    assert "screens/dictish.pb" in server.saved
+    assert "F:host/screens/dictish.pb" in server.saved
 
 
 def test_screen_save_accepts_json_path(open_pad, tmp_path: Path):
@@ -167,15 +192,15 @@ def test_screen_save_accepts_json_path(open_pad, tmp_path: Path):
     p = tmp_path / "pathish.json"
     p.write_text(json.dumps({"name": "pathish", "version": "CURRENT"}))
     pad.screen_save(p)
-    assert "screens/pathish.pb" in server.saved
+    assert "F:host/screens/pathish.pb" in server.saved
 
 
 def test_screen_save_name_override(open_pad):
     pad, server = open_pad()
     s = Screen("default")
     pad.screen_save(s, name="renamed")
-    assert "screens/renamed.pb" in server.saved
-    assert "screens/default.pb" not in server.saved
+    assert "F:host/screens/renamed.pb" in server.saved
+    assert "F:host/screens/default.pb" not in server.saved
 
 
 def test_screen_save_requires_a_name(open_pad):
@@ -187,8 +212,8 @@ def test_screen_save_requires_a_name(open_pad):
 def test_screen_load_and_file_reset_wrappers(open_pad):
     pad, server = open_pad()
     pad.file_reset()
-    pad.screen_load("home")
-    assert server.loaded == ["home"]
+    pad.screen_load("F:host/screens/home.pb")
+    assert server.loaded == ["F:host/screens/home.pb"]
 
 
 def test_on_host_event_dispatches_callback(open_pad):

@@ -3,9 +3,10 @@
 // Widget / screen layout types for the Touchy-Pad declarative UI system.
 //
 // These messages describe LVGL screens authored on the host and uploaded to
-// the device via `FileSaveCmd` (see `touchy.proto`). The device decodes them
-// from `screens/<name>.pb` files using nanopb; the host DSL in
-// `app/src/touchy_pad/screens.py` serialises them using protobuf-python.
+// the device via streamed `FileOpenWrite`/`FileWrite`/`FileClose` (see
+// `touchy.proto`). The device decodes them from `F:host/screens/<name>.pb`
+// files using nanopb; the host DSL in `app/src/touchy_pad/screens.py`
+// serialises them using protobuf-python.
 //
 // See docs/why-not-xml.md for the rationale behind protobuf over XML.
 
@@ -19,9 +20,9 @@ package touchy;
 //
 // A `Screen` describes a single LVGL screen as a flat list of `Widget`s
 // plus an optional `Layout`. The host serialises one `Screen` per file
-// and uploads it via `FileSaveCmd` to `screens/<name>.pb`; the device
-// caches the encoded bytes and instantiates LVGL objects when
-// `ScreenLoadCmd("<name>")` arrives.
+// and streams it to the device under `F:host/screens/<name>.pb`; the
+// device caches the encoded bytes and instantiates LVGL objects when
+// `ScreenLoadCmd("F:host/screens/<name>.pb")` arrives.
 //
 // See docs/why-not-xml.md for the rationale behind protobuf over XML.
 
@@ -250,11 +251,11 @@ message ActionDevice {
 // Replace the currently-loaded screen with another previously-registered
 // one (see screens_load() in firmware/main/screens.{h,cpp}).
 //
-//   * BY_NAME (default): load the screen whose registered stem matches
-//     the `name` field. The name is the same as the filename stem under
-//     /from_host/screens/<name>.pb.
+//   * BY_PATH (default): load the screen whose registered drive-prefixed
+//     path matches the `path` field exactly (e.g.
+//     `F:host/screens/home.pb` or `R:host/screens/home.pb`).
 //   * NEXT / PREVIOUS: advance to the next / previous screen in the
-//     registry's iteration order (wraps around at the ends). `name` is
+//     registry's iteration order (wraps around at the ends). `path` is
 //     ignored.
 //
 // Combined with a `Button` carrying labels like "Next" / "Previous"
@@ -262,12 +263,12 @@ message ActionDevice {
 // host without round-tripping through ActionHost.
 message ActionSwitchScreen {
     enum Behavior {
-        BY_NAME  = 0;
+        BY_PATH  = 0;
         NEXT     = 1;
         PREVIOUS = 2;
     }
     Behavior behavior = 1;
-    string   name     = 2;   // used iff behavior == BY_NAME
+    string   path     = 2;   // used iff behavior == BY_PATH
 }
 
 // Behaviour attached to a widget event trigger (click / value changed /
@@ -406,10 +407,12 @@ message Checkbox {
 }
 
 message Image {
-    // Path to a previously-uploaded image, relative to /from_host/
-    // (e.g. "img/avatar.png"). The firmware always supports its native
-    // LVGL `.bin` format; other decoders (BMP/PNG/JPG) require the
-    // matching `LV_USE_*` flag in sdkconfig.
+    // Drive-prefixed LVGL path to a previously-uploaded image, e.g.
+    // "F:host/images/avatar.bin" (persistent flash) or
+    // "R:host/images/avatar.bin" (transient PSRAM). Passed verbatim to
+    // `lv_image_set_src`. The firmware always supports its native LVGL
+    // `.bin` format; other decoders (BMP/PNG/JPG) require the matching
+    // `LV_USE_*` flag in sdkconfig.
     string asset = 1;
     // Scale factor in 1/256 units (256 = 100%, 512 = 2x, 128 = 50%).
     // Mapped to `lv_image_set_scale`. When unset, the image is rendered
@@ -615,7 +618,7 @@ message Widget {
 // so widgets placed on them persist across screen switches.
 //
 // One on-device LVGL screen. The encoded `Screen` is what lives in
-// /from_host/screens/<name>.pb.
+// F:host/screens/<name>.pb.
 message Screen {
     // Wire-format version of the `Screen` message. The device rejects (and
     // deletes) any saved `.pb` file whose `version` field is not `CURRENT`.
@@ -626,7 +629,7 @@ message Screen {
     // from the device filesystem so the host re-uploads a fresh copy.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default — any file without a version field
-        CURRENT         = 12;  // current wire format
+        CURRENT         = 13;  // current wire format
     }
 
     // Must equal `CURRENT`; the firmware deletes and ignores files that

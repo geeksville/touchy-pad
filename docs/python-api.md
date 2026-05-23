@@ -48,8 +48,8 @@ s += button("go", text="Go",
             style=style(bg_color=0x1E90FF, text_color=0xFFFFFF))
 
 with touchy_open() as pad:
-    pad.screen_save(s)         # uploads to /from_host/screens/home.pb
-    pad.screen_load("home")
+    pad.screen_save(s)         # uploads to F:host/screens/home.pb
+    pad.screen_load("F:host/screens/home.pb")
 ```
 
 `Screen.to_proto()` is also exposed for advanced users who want the raw
@@ -78,6 +78,42 @@ with touchy_open() as pad:
 * a raw `protobuf.Screen`
 * a `dict` of JSON-shaped screen data (camelCase fields)
 * a `pathlib.Path` or `str` pointing at a `.json` file
+
+## Uploading arbitrary files
+
+`pad.file_save(path, data)` writes one file to the device atomically.
+Paths are **drive-prefixed** — pick the filesystem with the leading
+letter:
+
+* `F:host/...` — persistent flash (LittleFS). Use for screens, fonts,
+  long-lived images. Survives reboot.
+* `R:host/...` — transient PSRAM (`RamFs`). Use for assets that change
+  often (e.g. StreamDeck-style key icons) — avoids wearing the flash.
+  Lost on reboot.
+
+```python
+from pathlib import Path
+
+with touchy_open() as pad:
+    # 16x16 PNG → auto-converted to LVGL .bin and stored as
+    # F:host/images/smiley.bin on flash.
+    pad.file_save("F:host/images/smiley.png", Path("smiley.png").read_bytes())
+
+    # A frequently-replaced key icon goes in PSRAM.
+    pad.file_save("R:host/images/key_0.png", Path("key_0.png").read_bytes())
+```
+
+Behind the scenes `file_save` drives a streaming protocol
+(`File_Open_Write` → `File_Write*` → `File_Close`) in ≤4 KiB USB-bulk
+chunks, so arbitrarily large files upload without needing the device
+to buffer the whole payload. From the caller's point of view it's a
+single atomic operation — interruptions surface as exceptions and
+leave no partial file behind.
+
+`pad.file_delete(path)` removes one file or a whole subtree. The
+convenience `pad.file_reset()` is shorthand for
+`pad.file_delete("F:host")` and wipes the entire host-uploaded flash
+area.
 
 ## Macros
 

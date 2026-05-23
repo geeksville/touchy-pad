@@ -249,10 +249,10 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         screen = _layout.build_screen(cols=self.KEY_COLS, rows=self.KEY_ROWS)
         self._rpc(
             self._client.file_save,
-            f"screens/{_layout.SCREEN_NAME}.pb",
+            _layout.SCREEN_PATH,
             screen.to_bytes(),
         )
-        self._rpc(self._client.screen_load, _layout.SCREEN_NAME)
+        self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
         self._key_state = [False] * self.KEY_COUNT
         self._screen_pushed = True
 
@@ -299,7 +299,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         # NOTE: this flashes the whole grid. A widget-targeted refresh
         # RPC would be friendlier; tracked separately.
         if self._screen_pushed:
-            self._rpc(self._client.screen_load, _layout.SCREEN_NAME)
+            self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
 
     def set_key_color(self, key: int, r: int, g: int, b: int) -> None:  # noqa: D401 - base-class API
         """Solid-colour key fill — not implemented for Touchy yet."""

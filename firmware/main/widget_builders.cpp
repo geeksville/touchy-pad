@@ -129,10 +129,28 @@ lv_obj_t *build_checkbox(lv_obj_t *parent, const touchy_Widget &w)
 // and rotation) to an lv_image. lv_image_set_src() with an `F:`
 // filename triggers a string-clone internally, so passing a stack
 // buffer is safe here.
+//
+// Post-Stage 51 the wire `asset` is a full drive-prefixed path like
+// `F:host/images/foo.bin` or `R:host/images/foo.bin`. LVGL's path
+// parser expects a slash directly after the drive colon, so we splice
+// one in before handing the string off.
+std::string to_lvgl_path(const char *wire)
+{
+    if (!wire || !wire[0]) return {};
+    if (wire[0] && wire[1] == ':') {
+        // "F:host/foo" -> "F:/host/foo". Existing `F:/host/foo` (with
+        // slash already in place) becomes `F://host/foo`, which the
+        // POSIX driver collapses to `/littlefs//host/foo` — still a
+        // valid path on every libc we target.
+        return std::string(wire, 2) + "/" + (wire + 2);
+    }
+    return std::string(wire);
+}
+
 void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
 {
     if (im.asset[0] != '\0') {
-        std::string lv_path = std::string("F:/from_host/") + im.asset;
+        std::string lv_path = to_lvgl_path(im.asset);
         lv_image_set_src(img, lv_path.c_str());
     }
     if (im.has_scale) lv_image_set_scale(img, (uint16_t)im.scale);
@@ -142,11 +160,14 @@ void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
 lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
 {
     lv_obj_t *img = lv_image_create(parent);
-    // The host-uploaded files live under /littlefs/from_host/; LVGL's
-    // POSIX FS bridge (CONFIG_LV_USE_FS_POSIX) exposes /littlefs as the
-    // "F:" drive, so the wire-format asset path is rebased here. The
-    // LVGL native `.bin` decoder is always built in; BMP/PNG/JPG
-    // require their respective `LV_USE_*` flag in sdkconfig.
+    // The wire `asset` is already drive-prefixed (e.g.
+    // `F:host/images/avatar.bin` for persistent flash, or
+    // `R:host/images/avatar.bin` for the transient RAM filesystem).
+    // LVGL's POSIX FS bridge maps `F:` onto `/littlefs`, and our
+    // custom LVGL driver (registered in fs.cpp) serves `R:` reads
+    // from the in-memory RamFs. The LVGL native `.bin` decoder is
+    // always built in; BMP/PNG/JPG require their respective
+    // `LV_USE_*` flag in sdkconfig.
     ESP_LOGI(TAG, "build_image id='%s' src='%s'", w.id, w.kind.image.asset);
     apply_image_attrs(img, w.kind.image);
     return img;
@@ -175,7 +196,7 @@ lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
 
 // User-data for the press/release src-swap handler. `img_child` is the
 // inner lv_image owned by the button. Each state owns a heap-allocated
-// LVGL path string (e.g. "F:/from_host/foo.bin") plus optional scale /
+// LVGL path string (e.g. "F:/host/foo.bin") plus optional scale /
 // rotation overrides. Strings and the struct itself are freed in
 // image_button_state_delete_cb when the button is destroyed.
 struct ImageButtonSrc {
@@ -245,12 +266,12 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
     if (!st) return btn;
     st->img_child = img;
 
-    std::string released_path = std::string("F:/from_host/") + released.asset;
+    std::string released_path = to_lvgl_path(released.asset);
     st->released = {strdup(released_path.c_str()),
                     released.has_scale,    (uint16_t)released.scale,
                     released.has_rotation, released.rotation};
     if (ib.has_pressed && ib.pressed.asset[0] != '\0') {
-        std::string pressed_path = std::string("F:/from_host/") + ib.pressed.asset;
+        std::string pressed_path = to_lvgl_path(ib.pressed.asset);
         st->pressed = {strdup(pressed_path.c_str()),
                        ib.pressed.has_scale,    (uint16_t)ib.pressed.scale,
                        ib.pressed.has_rotation, ib.pressed.rotation};

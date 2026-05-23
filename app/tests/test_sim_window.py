@@ -44,9 +44,12 @@ def qapp() -> QtWidgets.QApplication:
 @pytest.fixture
 def provisioned_fs(tmp_path: pathlib.Path) -> SimFs:
     fs = SimFs(tmp_path, serial="SIMTEST")
-    fs.save("images/smiley.png", make_smiley_png())
+    fs.save("F:host/images/smiley.png", make_smiley_png())
     for s in build_demo_screens():
-        fs.save(f"screens/{s.name}.pb", s.to_proto().SerializeToString())
+        fs.save(
+            f"F:host/screens/{s.name}.pb",
+            s.to_proto().SerializeToString(),
+        )
     return fs
 
 
@@ -66,7 +69,7 @@ def test_renders_initial_screen(qapp, provisioned_fs) -> None:
     win = SimWindow(dev, size=(480, 300))
     qapp.processEvents()
 
-    assert dev.active_screen_name == "home"
+    assert dev.active_screen_path == "F:host/screens/home.pb"
     labels = [b.text() for b in win.findChildren(QPushButton)]
     assert "< Prev" in labels and "Next >" in labels
 
@@ -81,7 +84,7 @@ def test_next_button_dispatches_switch_screen(qapp, provisioned_fs) -> None:
     nxt.click()
     qapp.processEvents()
 
-    assert dev.active_screen_name == "test"
+    assert dev.active_screen_path == "F:host/screens/test.pb"
 
 
 def test_host_action_pushes_event(qapp, provisioned_fs) -> None:
@@ -135,12 +138,12 @@ def test_button_press_release_edges_dispatch(qapp, tmp_path) -> None:
         on_press=host_action(0xABC),
         on_release=host_action(0xABC),
     )
-    fs.save("screens/edges.pb", s.to_proto().SerializeToString())
+    fs.save("F:host/screens/edges.pb", s.to_proto().SerializeToString())
 
     dev = SimDevice(fs)
     win = SimWindow(dev, size=(320, 200))
     qapp.processEvents()
-    assert dev.active_screen_name == "edges"
+    assert dev.active_screen_path == "F:host/screens/edges.pb"
 
     pad = next(b for b in win.findChildren(QPushButton) if b.text() == "Pad")
     pad.click()

@@ -40,26 +40,69 @@ enum ResultCode {
 }
 
 // ---------------------------------------------------------------------------
-// Commands (host -> device, on the command OUT endpoint)
+// Filesystem paths (stage 51)
 // ---------------------------------------------------------------------------
+//
+// All file paths exchanged with the device are drive-letter prefixed:
+//
+//   "F:host/screens/home.pb"   — flash, persisted across reboots
+//   "R:host/images/foo.bin"    — RAM (PSRAM), lost on reboot
+//
+// The drive letter is a single ASCII byte followed by a colon; everything
+// after the colon is filesystem-relative (no leading slash). Hosts that
+// omit the drive letter prefix get F: by default (Python wrappers add it
+// for backward compatibility) — the firmware itself requires the prefix.
 
-// Discard all files stored on the device filesystem (XML layouts, images, etc.).
-message FileResetCmd {
+// Delete a single file OR an entire directory subtree at `path`. The
+// drive letter selects which filesystem to operate on; the rest of the
+// path is FS-relative. Examples:
+//
+//   FileDelete("F:host")                  -- wipe all flash host files
+//   FileDelete("R:host")                  -- wipe all RAM host files
+//   FileDelete("F:host/screens/old.pb")   -- delete a single screen
+//
+// Missing files / directories are treated as success.
+message FileDeleteCmd {
+    string path = 1;
 }
 
-// Write an arbitrary file to the device filesystem. The device inspects the
-// file extension to decide how to handle the content after writing:
-//   * "screens/<name>.pb" — decoded as a `Screen` message (see below) and
-//                           cached for `ScreenLoadCmd`.
-//   * other extensions    — written verbatim; no post-processing.
-message FileSaveCmd {
-    string path = 1;      // virtual filesystem path, e.g. "screens/home.pb"
-    bytes  data = 2;      // file payload (text or binary)
+// Open a new write transaction. `path` includes the drive letter (e.g.
+// "F:host/screens/home.pb"). On success the response carries a
+// FileOpenWriteResponse with an opaque uint32 handle that subsequent
+// FileWriteCmd / FileCloseCmd messages must echo back.
+//
+// The device only supports one in-flight write transaction at a time;
+// attempting to open a second returns RESULT_IO_ERROR.
+//
+// On commit (FileCloseCmd { commit = true }) the data is atomically
+// renamed into place. On abort or any error mid-stream the partial
+// data is discarded.
+message FileOpenWriteCmd {
+    string path = 1;
 }
 
-// Switch the currently displayed screen to `name`.
+// Append a chunk of bytes to an open write transaction. `handle` must
+// match a handle previously returned by FileOpenWriteCmd. `data` is
+// capped at ~4 KiB (USB bulk frame budget) on the wire.
+message FileWriteCmd {
+    uint32 handle = 1;
+    bytes  data   = 2;
+}
+
+// Finalise an in-flight write transaction. If `commit` is true the
+// staged data is atomically moved into place; otherwise it's discarded.
+// The handle is invalidated either way.
+message FileCloseCmd {
+    uint32 handle = 1;
+    bool   commit = 2;
+}
+
+// Switch the currently displayed screen to the screen at `path`. The
+// path must be drive-letter prefixed (e.g. "F:host/screens/home.pb").
+// An empty path loads the first registered screen, or the built-in
+// fallback if none have been uploaded.
 message ScreenLoadCmd {
-    string name = 1;      // previously-registered screen name
+    string path = 1;
 }
 
 // Force the backlight on (cancels any pending auto-sleep).
@@ -92,12 +135,14 @@ message SysBoardInfoGetCmd {
 // Top-level command envelope. Exactly one `cmd` is set per message.
 message Command {
     oneof cmd {
-        FileResetCmd           file_reset            = 1;
-        FileSaveCmd            file_save             = 2;
+        FileDeleteCmd          file_delete           = 1;
+        FileOpenWriteCmd       file_open_write       = 2;
         ScreenLoadCmd          screen_load           = 3;
         ScreenWakeCmd          screen_wake           = 4;
         ScreenSleepTimeoutCmd  screen_sleep_timeout  = 5;
         EventConsumeCmd        event_consume         = 6;
+        FileWriteCmd           file_write            = 7;
+        FileCloseCmd           file_close            = 8;
         SysRebootBootloaderCmd sys_reboot_bootloader = 9;
         SysBoardInfoGetCmd     sys_board_info_get    = 10;
     }
@@ -116,12 +161,20 @@ message SysBoardInfoResponse {
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
                  //           LvEvent.host_code added; events via host polling
-        CURRENT = 2;  // alias: always equals the latest defined version
+        V3 = 3;  // stage 51: drive-letter paths, streaming file uploads,
+                 //           FileDelete replaces FileReset/FileSave
+        CURRENT = 3;  // alias: always equals the latest defined version
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
     string firmware_version_str = 3; // human-readable "1.2.3" or git hash
     string board_name = 4;           // CMake BOARD name, e.g. "jc4827w543"; "sim" in simulator
+}
+
+// Reply to FileOpenWriteCmd. Carries the handle the host must echo
+// back on subsequent FileWriteCmd / FileCloseCmd messages.
+message FileOpenWriteResponse {
+    uint32 handle = 1;
 }
 
 // Reply to EventConsumeCmd. Carries the popped event, if any. When the
@@ -137,8 +190,9 @@ message EventConsumeResponse {
 message Response {
     ResultCode code = 1;
     oneof payload {
-        SysBoardInfoResponse sys_board_info = 2;
-        EventConsumeResponse event_consume  = 3;
+        SysBoardInfoResponse  sys_board_info  = 2;
+        EventConsumeResponse  event_consume   = 3;
+        FileOpenWriteResponse file_open_write = 4;
     }
 }
 
@@ -191,28 +245,19 @@ message Event {
 // Service definition
 // ---------------------------------------------------------------------------
 //
-// This service describes the logical RPC surface exposed by the device. It
-// is consumed by the host-side Python library (which speaks the wire format
-// directly over USB; the gRPC machinery is not used on-device — the embedded
-// firmware only handles `Command`/`Response`/`Event` envelopes via nanopb).
-//
-// Mapping to the USB wire protocol:
-//   * Each unary RPC corresponds to one round-trip on the
-//     command-OUT / response-IN endpoint pair. The host wraps the request
-//     in a `Command` (selecting the matching oneof variant), reads the
-//     reply `Response`, and unpacks `Response.payload` for RPCs that
-//     return more than just a ResultCode.
-//   * `StreamEvents` is implemented as a long-lived read on the event
-//     interrupt-IN endpoint; each `Event` packet (or `EventReady`
-//     placeholder followed by an `EventConsume` round-trip) becomes one
-//     element in the returned stream.
+// See top-of-file comment for the unary-RPC <-> command/response mapping.
 //
 // nanopb ignores `service` blocks, so adding this here has no embedded-side
 // cost.
 service Touchy {
     // ----- Generic filesystem (XML, images, fonts, …) -----------------
-    rpc FileReset(FileResetCmd) returns (Response);
-    rpc FileSave(FileSaveCmd) returns (Response);
+    // Stage 51: file writes are streamed via FileOpenWrite + FileWrite*
+    // + FileClose triplet; the Python client wraps this back into a
+    // single `file_save(path, data)` call.
+    rpc FileDelete(FileDeleteCmd) returns (Response);
+    rpc FileOpenWrite(FileOpenWriteCmd) returns (Response);
+    rpc FileWrite(FileWriteCmd) returns (Response);
+    rpc FileClose(FileCloseCmd) returns (Response);
 
     // ----- Screen management ------------------------------------------
     rpc ScreenLoad(ScreenLoadCmd) returns (Response);
@@ -226,24 +271,10 @@ service Touchy {
     rpc SysBoardInfoGet(SysBoardInfoGetCmd) returns (Response);
 
     // ----- Async events -----------------------------------------------
-    // Single-shot drain: pops one queued event, returning RESULT_NOT_FOUND
-    // if none are pending. Mirrors the on-device EventConsumeCmd directly;
-    // intended mainly as the follow-up to an `EventReady` notification on
-    // the interrupt endpoint.
     rpc EventConsume(EventConsumeCmd) returns (Response);
-
-    // Long-lived event stream. The host library typically uses this in
-    // preference to polling EventConsume: it reads the event interrupt
-    // endpoint and yields each `Event` it receives (transparently issuing
-    // EventConsume round-trips behind the scenes when the device only sent
-    // an `EventReady` placeholder). The stream terminates when the device
-    // is disconnected.
     rpc StreamEvents(StreamEventsCmd) returns (stream Event);
 }
 
-// Empty request marker for the streaming RPC. (proto3 requires a request
-// message type even when there are no fields; we don't reuse
-// google.protobuf.Empty so the file stays free of external imports — which
-// matters for nanopb.)
+// Empty request marker for the streaming RPC.
 message StreamEventsCmd {
 }

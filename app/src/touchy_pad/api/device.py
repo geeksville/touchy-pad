@@ -150,26 +150,42 @@ class Touchy:
 
     # -- thin wrappers over the host API -----------------------------------
 
+    def file_delete(self, path: str) -> None:
+        """Delete a file or directory subtree from the device filesystem.
+
+        *path* must be drive-prefixed
+        (e.g. ``"F:host/screens/home.pb"`` to remove one screen, or
+        ``"F:host"`` to wipe the whole host-uploaded area on flash).
+        """
+        self._client.file_delete(path)
+
+    # Back-compat alias: previously called ``file_reset``. Wipes the
+    # entire host-uploaded flash area.
     def file_reset(self) -> None:
-        """Wipe every file from the device's `/from_host` partition."""
-        self._client.file_reset()
+        """Wipe every file from the device's flash host-upload area."""
+        self._client.file_delete("F:host")
 
     def file_save(self, path: str, data: bytes | str) -> None:
-        """Upload a single file to ``/from_host/<path>`` on the device.
+        """Upload a single file to *path* on the device.
 
-        ``data`` may be raw ``bytes`` or a path-like ``str`` pointing at
-        a local file. Image inputs are auto-converted to LVGL ``.bin``
-        format by the underlying client.
+        *path* must be drive-prefixed
+        (e.g. ``"F:host/images/avatar.png"`` for persistent flash or
+        ``"R:host/images/avatar.bin"`` for transient PSRAM storage).
+        ``data`` may be raw ``bytes`` or a ``str``. Image inputs are
+        auto-converted to LVGL ``.bin`` format by the underlying
+        client. Internally this issues the streaming
+        ``FileOpenWrite`` / ``FileWrite`` / ``FileClose`` sequence, but
+        callers see a single atomic operation.
         """
         self._client.file_save(path, data)
 
-    def screen_load(self, name: str) -> None:
-        """Switch the device's currently displayed screen to ``name``.
+    def screen_load(self, path: str) -> None:
+        """Activate the screen at the given drive-prefixed *path*.
 
-        ``name`` is the base filename (without ``.pb`` suffix) under
-        ``/from_host/screens/`` on the device.
+        E.g. ``pad.screen_load("F:host/screens/home.pb")``. Passing an
+        empty string loads the device's default screen.
         """
-        self._client.screen_load(name)
+        self._client.screen_load(path)
 
     # -- higher-level screen authoring -------------------------------------
 
@@ -186,16 +202,16 @@ class Touchy:
         * a ``str`` or :class:`pathlib.Path` pointing at a ``.json`` file
           containing the same.
 
-        ``name`` overrides the screen's own name if given. Returns the
-        final name used (i.e. the device-side filename without
-        ``.pb``).
+        ``name`` overrides the screen's own name if given. The screen
+        is uploaded to ``F:host/screens/<name>.pb`` (persistent flash).
+        Returns the final name used.
         """
         msg = self._coerce_screen(screen)
         final_name = name if name is not None else msg.name
         if not final_name:
             raise ValueError("screen_save: screen has no name and no explicit name= given")
         msg.name = final_name
-        self._client.file_save(f"screens/{final_name}.pb", msg.SerializeToString())
+        self._client.file_save(f"F:host/screens/{final_name}.pb", msg.SerializeToString())
         return final_name
 
     @staticmethod

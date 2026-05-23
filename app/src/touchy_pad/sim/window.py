@@ -227,20 +227,20 @@ class SimWindow(QtWidgets.QMainWindow):
             self.log(f"device: widget={widget_id!r} (unsupported {sub!r})")
             return
         sw = action.switch_screen
-        if sw.behavior == _proto.ActionSwitchScreen.BY_NAME:
-            target = sw.name
+        if sw.behavior == _proto.ActionSwitchScreen.BY_PATH:
+            target = sw.path
         else:
-            names = self._device.list_screens()
-            current = self._device.active_screen_name
-            if not names:
+            paths = self._device.list_screens()
+            current = self._device.active_screen_path
+            if not paths:
                 self.log(f"switch: widget={widget_id!r} — no screens registered")
                 return
             try:
-                idx = names.index(current) if current in names else 0
+                idx = paths.index(current) if current in paths else 0
             except ValueError:
                 idx = 0
             step = 1 if sw.behavior == _proto.ActionSwitchScreen.NEXT else -1
-            target = names[(idx + step) % len(names)]
+            target = paths[(idx + step) % len(paths)]
         try:
             # `_do_screen_load` updates the active screen and fires the
             # callback that we wired in __init__ — the renderer reacts

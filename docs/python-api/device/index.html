@@ -357,6 +357,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#touchy_pad.api.device.Touchy.file_delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        file_delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#touchy_pad.api.device.Touchy.file_reset" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -632,6 +643,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#touchy_pad.api.device.Touchy.file_delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        file_delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#touchy_pad.api.device.Touchy.file_reset" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -894,6 +916,26 @@ using it as a context manager::</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="touchy_pad.api.device.Touchy.file_delete" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">file_delete</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Delete a file or directory subtree from the device filesystem.</p>
+<p><em>path</em> must be drive-prefixed
+(e.g. <code>"F:host/screens/home.pb"</code> to remove one screen, or
+<code>"F:host"</code> to wipe the whole host-uploaded area on flash).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="touchy_pad.api.device.Touchy.file_reset" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">file_reset</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
 
@@ -902,7 +944,7 @@ using it as a context manager::</p>
 
     <div class="doc doc-contents ">
 
-        <p>Wipe every file from the device's <code>/from_host</code> partition.</p>
+        <p>Wipe every file from the device's flash host-upload area.</p>
 
     </div>
 
@@ -919,10 +961,15 @@ using it as a context manager::</p>
 
     <div class="doc doc-contents ">
 
-        <p>Upload a single file to <code>/from_host/&lt;path&gt;</code> on the device.</p>
-<p><code>data</code> may be raw <code>bytes</code> or a path-like <code>str</code> pointing at
-a local file. Image inputs are auto-converted to LVGL <code>.bin</code>
-format by the underlying client.</p>
+        <p>Upload a single file to <em>path</em> on the device.</p>
+<p><em>path</em> must be drive-prefixed
+(e.g. <code>"F:host/images/avatar.png"</code> for persistent flash or
+<code>"R:host/images/avatar.bin"</code> for transient PSRAM storage).
+<code>data</code> may be raw <code>bytes</code> or a <code>str</code>. Image inputs are
+auto-converted to LVGL <code>.bin</code> format by the underlying
+client. Internally this issues the streaming
+<code>FileOpenWrite</code> / <code>FileWrite</code> / <code>FileClose</code> sequence, but
+callers see a single atomic operation.</p>
 
     </div>
 
@@ -932,16 +979,16 @@ format by the underlying client.</p>
 
 
 <h4 id="touchy_pad.api.device.Touchy.screen_load" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">screen_load</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
+            <code class="highlight language-python"><span class="n">screen_load</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
 
 </h4>
 
 
     <div class="doc doc-contents ">
 
-        <p>Switch the device's currently displayed screen to <code>name</code>.</p>
-<p><code>name</code> is the base filename (without <code>.pb</code> suffix) under
-<code>/from_host/screens/</code> on the device.</p>
+        <p>Activate the screen at the given drive-prefixed <em>path</em>.</p>
+<p>E.g. <code>pad.screen_load("F:host/screens/home.pb")</code>. Passing an
+empty string loads the device's default screen.</p>
 
     </div>
 
@@ -969,9 +1016,9 @@ format by the underlying client.</p>
 <li>a <code>str</code> or :class:<code>pathlib.Path</code> pointing at a <code>.json</code> file
   containing the same.</li>
 </ul>
-<p><code>name</code> overrides the screen's own name if given. Returns the
-final name used (i.e. the device-side filename without
-<code>.pb</code>).</p>
+<p><code>name</code> overrides the screen's own name if given. The screen
+is uploaded to <code>F:host/screens/&lt;name&gt;.pb</code> (persistent flash).
+Returns the final name used.</p>
 
     </div>
 
@@ -1022,6 +1069,10 @@ with USB polling.</p>
 <p>Each entry is suitable as the <code>serial</code> argument to
 :func:<code>touchy_open</code>. The list is empty if no device is plugged in.
 Requires a working <code>libusb-1.0</code> runtime on the host.</p>
+<p>When :func:<code>touchy_pad.api.create_sim_device</code> has been called this
+process, the sim's pseudo-serial is appended to the list too — so
+discovery code (StreamController, the touchydeck enumeration hook,
+etc.) sees the sim and real devices through the same API.</p>
 
     </div>
 
@@ -1047,6 +1098,11 @@ hatch used by tests — production code should leave it <code>None</code>.</p>
 matching device is attached, and :class:<code>IncompatibleFirmwareError</code>
 when the device reports a firmware version older than
 :data:<code>MINIMUM_FIRMWARE_VERSION</code>.</p>
+<p>If :func:<code>touchy_pad.api.create_sim_device</code> has been called this
+process and <code>serial</code> matches the sim's serial (or no real USB
+device is plugged in and <code>serial</code> is <code>None</code>), the sim's
+transport is used transparently — exactly the same code path real
+hardware uses.</p>
 
     </div>
 

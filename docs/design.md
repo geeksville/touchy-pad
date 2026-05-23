@@ -645,7 +645,7 @@ When you are ready to run this tool, tell me and I'll run it for you while talki
 
 Have this tool emit the logs into a datafile you can refer to later when planning stage 50.2.
 
-## Stage 50.2 Implement our Sim StreamDeck API
+## Stage 50.2 Implement our Sim StreamDeck API - DONE
 
 **Done (May 2026).** Implemented as `touchy_pad.touchydeck`:
 
@@ -678,6 +678,24 @@ Original spec (kept for context):
 * You'll need to come up with a scheme for mapping hostids (for press events) to the proper asyncio invocations as required by the StreamDeck API
 * Monkey patch the DeviceManager().enumerate() method so it **also** includes any TouchyDecks connected to our machine.  Ideally you'll be able to install that monkey patch automatically on any project that has a poetry dependency on our touchy-pad package.
 * Change the original reverse engineering tool made in 50.1 so that it uses our library and therefore you can modify that tool so it also dumps TouchyDecks the exact same way it dumped the original StreamDeck usage.
+
+## Stage 51: cleanup filesystem (DONE)
+
+Currently the host uses paths like "images/foo.bin" when writing files (for images or screens or whatever).  The device maps that name to "F:from_host/images/foo.bin" which was a bit of a mistake.  I want to change things so the host has the ability to write files to other filesystems (in addition to the current F flash filesystem I want you to make a new R ram file system)
+
+So the HOST is now responsible for knowing which file goes on which filesystem and the host specifies full paths "R:host/images/foo.bin" etc...
+
+Various aspects of this:
+* Use "host" as the standard prefix for files from the host (rather than from_host) - it is shorter
+* improve the file writing API so it starts with a name, then a series of writes, then a close - this way we can write large files without needing huge ram space.  The close can also do
+an atomic rename to protect from filesystem corruption. until closed the filename can be some private temp name
+* have the host provide the full path for file writes, so that it can specify drive letter (R: or F:)
+* make a psram based filesytem for lvgl images.  I think this means you probably want to implement this API: https://lvgl.io/docs/open/8.2/overview/file-system.  Also I think you want it to be a subclass of our Fs class.  So we might want three classes Fs (abstract?), FlashFs, RamFS?
+* The ram implementation can be very simple, just a c++ hashtable mapping to block of memory allocated for each file?  Or a list of blocks (one allocated for each FileWrite operation)?  Files written to RAM are not persisted if device reboots - they are lost
+* Important note: the public python API will still maintain the illusion of a single FileSave operation, our python code will be smart enough to do the USB FileCreate, a series of FileWrites and a FileClose.
+* Both the device version and our python sim device should cope with these new file paths (it is acceptable if the simulator stores 'ram' files to the regular filesystem if it makes implemention easier)
+* The max block size for a FileWrite should be picked to fit in a USB bulk transfer (4KB?)
+* The current screen preferences string should include the full path to the file instead of just the screen name.  The device protocol screen_load command should also provide full paths.
 
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?

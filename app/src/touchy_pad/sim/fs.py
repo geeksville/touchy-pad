@@ -1,9 +1,20 @@
 """Pseudo-filesystem for the device simulator.
 
-Mirrors the firmware's host-uploaded file area (``/from_host/`` on
-device) inside a per-serial subdirectory of the user's cache dir, so
-the sim's state survives restarts and isolates between simultaneously-
-running sim instances.
+Mirrors the firmware's host-uploaded file area inside a per-serial
+subdirectory of the user's cache dir, so the sim's state survives
+restarts and isolates between simultaneously-running sim instances.
+
+After stage 51 the device exposes two filesystems addressed by drive
+letter:
+
+* ``F:host/...`` — persistent flash (LittleFS on real hardware).
+* ``R:host/...`` — PSRAM RAM-disk; lost on reboot in firmware but the
+  sim mirrors it to disk too for implementation simplicity (per
+  ``docs/design.md`` stage 51 notes).
+
+We sub-directory by drive letter under the sim root so the two stores
+stay separated. Keys passed across the API are full drive-prefixed
+paths, exactly as they appear on the wire.
 
 Cache root resolution uses :mod:`platformdirs` when available, with a
 ``$XDG_CACHE_HOME``/``~/.cache`` fallback so the sim still works in
@@ -13,6 +24,7 @@ minimal environments (e.g. CI without optional deps installed).
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 
@@ -32,13 +44,35 @@ def default_cache_root() -> Path:
     return Path(user_cache_dir("touchy-pad", appauthor=False)) / "sim"
 
 
-class SimFs:
-    """A flat key/value store under ``<root>/<serial>/``.
+def _split_drive(path: str) -> tuple[str, str]:
+    """Return ``(letter, rest)`` for ``"<L>:rest"`` paths.
 
-    Keys are virtual paths the host uses on the wire (e.g.
-    ``"screens/home.pb"``, ``"images/smiley.png"``). They're written
-    verbatim to ``<root>/<serial>/<key>`` with parent directories
-    created on demand. Path traversal (``..``) is rejected.
+    Tolerates a leading slash after the colon (``"F:/host/x"`` →
+    ``("F", "host/x")``) for callers that habitually include one.
+    Raises ``ValueError`` for missing or malformed prefixes so the
+    sim mirrors the device's refusal to silently rebase legacy paths.
+    """
+    if len(path) < 2 or path[1] != ":":
+        raise ValueError(f"missing drive letter in path: {path!r}")
+    letter = path[0].upper()
+    if letter not in ("F", "R"):
+        raise ValueError(f"unknown drive {letter!r} in {path!r}")
+    rest = path[2:]
+    if rest.startswith("/"):
+        rest = rest[1:]
+    if not rest or ".." in Path(rest).parts:
+        raise ValueError(f"bad sim-fs path: {path!r}")
+    return letter, rest
+
+
+class SimFs:
+    """A flat key/value store under ``<root>/<serial>/<drive>/``.
+
+    Keys are full drive-prefixed paths the host uses on the wire (e.g.
+    ``"F:host/screens/home.pb"``, ``"R:host/images/avatar.bin"``).
+    They map to ``<root>/<serial>/<letter>/<rest>`` on disk; parent
+    directories are created on demand. Path traversal (``..``) and
+    missing/unknown drive letters are rejected.
     """
 
     def __init__(self, root: Path, serial: str) -> None:
@@ -48,41 +82,42 @@ class SimFs:
     # -- helpers ----------------------------------------------------------
 
     def _resolve(self, path: str) -> Path:
-        """Map a virtual path to an absolute path inside :attr:`root`.
-
-        Raises ``ValueError`` on traversal attempts so a malicious
-        upload can't write outside the sim's sandbox.
-        """
-        if not path or path.startswith("/") or ".." in Path(path).parts:
-            raise ValueError(f"bad sim-fs path: {path!r}")
-        abs_path = (self.root / path).resolve()
-        # Belt-and-suspenders: even if Path.parts looked clean, confirm
-        # the resolved target really sits under root.
+        """Map a drive-prefixed path to an absolute path inside :attr:`root`."""
+        letter, rest = _split_drive(path)
+        abs_path = (self.root / letter / rest).resolve()
+        # Belt-and-suspenders: confirm the resolved target really sits
+        # under root, even if Path.parts looked clean.
         try:
             abs_path.relative_to(self.root)
         except ValueError as exc:
             raise ValueError(f"path escapes sim-fs root: {path!r}") from exc
         return abs_path
 
+    def _drive_root(self, letter: str) -> Path:
+        if letter not in ("F", "R"):
+            raise ValueError(f"unknown drive {letter!r}")
+        return self.root / letter
+
     # -- API --------------------------------------------------------------
 
-    def reset(self) -> None:
-        """Delete every uploaded file (FileResetCmd analog)."""
-        for child in list(self.root.rglob("*")):
-            if child.is_file():
-                child.unlink()
-        for child in sorted(
-            (p for p in self.root.rglob("*") if p.is_dir()),
-            key=lambda p: len(p.parts),
-            reverse=True,
-        ):
-            try:
-                child.rmdir()
-            except OSError:
-                pass
+    def delete(self, path: str) -> None:
+        """Remove a file or directory subtree at the given drive path.
+
+        Mirrors firmware ``FlashFs::removeTree``: deleting a directory
+        recursively unlinks every child; deleting a missing path is a
+        no-op (so the host can issue blanket wipes without checking).
+        """
+        letter, rest = _split_drive(path)
+        target = self._resolve(path)
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        elif target.is_file():
+            target.unlink()
+        # else: missing — treat as a no-op (matches firmware semantics).
+        _ = letter  # only used for validation
 
     def save(self, path: str, data: bytes) -> None:
-        """Write *data* to virtual *path*, creating parents."""
+        """Write *data* to drive-prefixed *path*, creating parents."""
         target = self._resolve(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
@@ -97,13 +132,20 @@ class SimFs:
             return False
 
     def list_screens(self) -> list[str]:
-        """Return uploaded screen stems, sorted lexicographically.
+        """Return uploaded screen paths, sorted lexicographically.
 
-        Mirrors the firmware's boot-time scan of ``screens/*.pb``; the
-        first entry is the default-load target when no last-screen pref
-        is recorded.
+        Returns full drive-prefixed paths
+        (e.g. ``"F:host/screens/home.pb"``) so callers can hand them
+        straight to :meth:`SimDevice._do_screen_load` /
+        :meth:`TouchyClient.screen_load`. Mirrors the firmware's
+        boot-time scan of every drive's ``host/screens/*.pb`` subtree.
         """
-        d = self.root / "screens"
-        if not d.is_dir():
-            return []
-        return sorted(p.stem for p in d.glob("*.pb"))
+        found: list[str] = []
+        for letter in ("F", "R"):
+            d = self._drive_root(letter) / "host" / "screens"
+            if not d.is_dir():
+                continue
+            for p in d.glob("*.pb"):
+                found.append(f"{letter}:host/screens/{p.name}")
+        found.sort()
+        return found

@@ -1918,7 +1918,7 @@ timings, attach a different transition to the pressed-state Style.</p>
 pressed, both directions animated linearly over 200 ms::</p>
 <pre><code>image_button(
     "smile",
-    asset="images/smiley.png",
+    asset="F:host/images/smiley.png",
     style=[
         style(transition=transition(
             props=[PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA],
@@ -2029,7 +2029,7 @@ instead; this exists for forward-compatibility with new
 
 
 <h3 id="touchy_pad.api.screens.switch_screen_action" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">switch_screen_action</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">behavior</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
+            <code class="highlight language-python"><span class="n">switch_screen_action</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">behavior</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Action</span></code>
 
 </h3>
 
@@ -2038,18 +2038,24 @@ instead; this exists for forward-compatibility with new
 
         <p>Build an Action that swaps the active screen on-device.</p>
 <h5 id="touchy_pad.api.screens.switch_screen_action--parameters">Parameters</h5>
-<p>name:
-    Stem of the target screen (the <code>screens/&lt;stem&gt;.pb</code> filename),
-    matching the <code>name=</code> passed to :class:<code>Screen</code>. Required when
-    <code>behavior</code> is :attr:<code>ActionSwitchScreen.BY_NAME</code> (the default),
-    ignored otherwise.
+<p>path:
+    Full drive-prefixed path of the target screen (e.g.
+    <code>"F:host/screens/home.pb"</code>), matching the path :class:<code>Screen</code>
+    uploads to. Required when <code>behavior</code> is
+    :attr:<code>ActionSwitchScreen.BY_PATH</code> (the default), ignored
+    otherwise.
 behavior:
-    One of :attr:<code>ActionSwitchScreen.BY_NAME</code> (0),
+    One of :attr:<code>ActionSwitchScreen.BY_PATH</code> (0),
     :attr:<code>ActionSwitchScreen.NEXT</code> (1) or
     :attr:<code>ActionSwitchScreen.PREVIOUS</code> (2). NEXT/PREVIOUS step
     through the firmware's registry in stable iteration order
     (alphabetical, because the registry is a <code>std::map</code>) and wrap
-    around at the ends.</p>
+    around at the ends.
+name:
+    Deprecated alias for <code>path</code>, kept so pre-stage-51 callers
+    still compile. If both are given, <code>path</code> wins. When only
+    <code>name</code> is supplied we assume the screen lives in flash and
+    construct the canonical <code>F:host/screens/&lt;name&gt;.pb</code> path.</p>
 <p>The convenience wrappers :func:<code>next_screen_action</code> and
 :func:<code>prev_screen_action</code> cover the most common case.</p>
 
@@ -2095,7 +2101,7 @@ behavior:
 
 
 <h3 id="touchy_pad.api.screens.button" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">button</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">on_click</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+            <code class="highlight language-python"><span class="n">button</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">on_click</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">on_press</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">on_release</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
 
 </h3>
 
@@ -2103,9 +2109,16 @@ behavior:
     <div class="doc doc-contents ">
 
         <p>A clickable button with an optional text label.</p>
-<p><code>on_click</code> accepts a single :class:<code>_proto.Action</code>, an <code>int</code> host
-code, or a list mixing both. Pass <code>None</code> (the default) for buttons
-that do nothing on click.</p>
+<p><code>on_click</code> fires once on a completed press+release (and is
+suppressed when the press is cancelled by a scroll or press-lost).
+<code>on_press</code> / <code>on_release</code> fire on the raw edges so hold-aware
+host code (StreamDeck plugins, MIDI note-on/note-off, ...) can see
+both transitions; the press-lost case also triggers <code>on_release</code>
+so callers always observe matching press/release pairs. The host
+distinguishes edges via <code>LvEvent.code</code> (1=PRESSED, 8=RELEASED,
+7=CLICKED). Each parameter accepts a single :class:<code>_proto.Action</code>,
+an <code>int</code> host code, or a list mixing both; pass <code>None</code> (the
+default) for buttons that don't react on that edge.</p>
 
     </div>
 
@@ -2205,7 +2218,7 @@ or ints); fractional degrees are honoured down to 0.1°.</p>
 
 
 <h3 id="touchy_pad.api.screens.image_button" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">image_button</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">asset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pressed_asset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">on_click</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">rotation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pressed_scale</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pressed_rotation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+            <code class="highlight language-python"><span class="n">image_button</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">asset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pressed_asset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">on_click</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">on_press</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">on_release</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">rotation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pressed_scale</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pressed_rotation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
 
 </h3>
 
@@ -2289,7 +2302,7 @@ gestures.</p>
 
 
 <h3 id="touchy_pad.api.screens.trackpad" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">trackpad</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scroll_invert_y</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">scroll_invert_x</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">left_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">right_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">middle_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">touch_ripple</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">RippleAnimation</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">tap_ripple</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">RippleAnimation</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
+            <code class="highlight language-python"><span class="n">trackpad</span><span class="p">(</span><span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">rect</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Rect</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Style</span> <span class="o">|</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">_proto</span><span class="o">.</span><span class="n">Style</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scroll_invert_y</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">scroll_invert_x</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">left_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">right_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">middle_touch_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">touch_ripple</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">RippleAnimation</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">tap_ripple</span><span class="p">:</span> <span class="n">_proto</span><span class="o">.</span><span class="n">RippleAnimation</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">scrollbar_color</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">tap_max_ms</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_proto</span><span class="o">.</span><span class="n">Widget</span></code>
 
 </h3>
 
@@ -2314,6 +2327,10 @@ are echoed to the shared device log sink, so placing a
 <code>right_touch_color</code> / <code>middle_touch_color</code> (0xRRGGBB) based on
 the gesture's finger count, matching the click convention. Unset
 colors fall back to firmware defaults (cyan / orange / magenta).</p>
+<p><code>scrollbar_color</code> (0xRRGGBB), if set, enables a thin progress bar
+that grows along the active scroll axis when a two-finger scroll
+starts and fades out when all fingers lift. <code>tap_max_ms</code> overrides
+the tap-vs-drag hold threshold (default 200 ms on-device).</p>
 
     </div>
 

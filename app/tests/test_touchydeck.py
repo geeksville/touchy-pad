@@ -70,12 +70,13 @@ def test_touchydeck_constructs_with_default_geometry() -> None:
 
 
 def test_touchydeck_reset_pushes_screen() -> None:
+    from touchy_pad.touchydeck.layout import SCREEN_PATH
+
     with make_tempdir_transport() as t, TouchyClient(t) as c:
         deck = TouchyDeck(c, cols=2, rows=2)
         deck.reset()
         # The sim transport's fs has the screen blob.
-        path = f"screens/{SCREEN_NAME}.pb"
-        assert t._fs.read(path) is not None
+        assert t._fs.read(SCREEN_PATH) is not None
 
 
 def test_touchydeck_read_loop_fires_press_release_callbacks() -> None:

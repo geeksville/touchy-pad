@@ -9,14 +9,15 @@
 # See https://jpa.kapsi.fi/nanopb/docs/concepts.html#field-allocation
 
 # Filesystem paths — long enough for any practical layout/image path.
-touchy.FileSaveCmd.path                max_size:64
-touchy.ScreenLoadCmd.name              max_size:64
+# Drive-letter prefix included ("F:host/...").
+touchy.FileDeleteCmd.path              max_size:96
+touchy.FileOpenWriteCmd.path           max_size:96
+touchy.ScreenLoadCmd.path              max_size:96
 
-# Generic file payload. Allocated dynamically (FT_POINTER) so we don't
-# burn a 32 KB .bss slot on every device just to cover the worst-case
-# upload. After Stage 17 the rx buffer is sized by the on-wire frame,
-# not the decoded struct.
-touchy.FileSaveCmd.data                type:FT_POINTER
+# Streamed file payload chunk (FileWriteCmd.data). Allocated dynamically
+# (FT_POINTER) so we don't burn ~4 KiB of .bss on every device; the
+# rx buffer is sized by the on-wire frame instead.
+touchy.FileWriteCmd.data               type:FT_POINTER
 
 # Version string (semver or git short hash).
 touchy.SysBoardInfoResponse.firmware_version_str  max_size:32

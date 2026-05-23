@@ -25,16 +25,17 @@ public:
     // Update the timeout and persist it immediately to flash.
     void set_screen_timeout_ms(uint32_t ms);
 
-    // Name of the screen the firmware was most recently asked to show
-    // (set by screens.cpp after every successful screens_load). Empty
-    // string means "no preference" — boot uses the registry's first
-    // entry, falling back to the built-in default screen.
+    // Full drive-prefixed path of the screen the firmware was most
+    // recently asked to show (set by screens.cpp after every successful
+    // screens_load) — e.g. `F:host/screens/home.pb`. Empty string
+    // means "no preference": boot uses the registry's first entry,
+    // falling back to the built-in default screen.
     const std::string &current_screen() const { return m_current_screen; }
 
-    // Record the most-recently-loaded screen name; written through to
+    // Record the most-recently-loaded screen path; written through to
     // flash so a reboot can restore it. No-op when the value would not
     // change, to avoid pointless flash wear on rapid screen switches.
-    void set_current_screen(const std::string &name);
+    void set_current_screen(const std::string &path);
 
     // Singleton accessor.
     static Prefs &instance();

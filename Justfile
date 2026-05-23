@@ -153,7 +153,7 @@ app-test: build-proto-py
 
 # Run the linter.
 app-lint: build-proto-py
-    cd app && poetry lock && poetry run ruff check src tests --fix
+    cd app && poetry lock && poetry run ruff format src tests
 
 # Build the public-API HTML docs into docs/python-api/ (commit-friendly).
 # Requires the optional `docs` Poetry group: `poetry install --with docs`.

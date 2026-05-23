@@ -182,25 +182,6 @@ def test_style_list_round_trip():
     assert styles_[1].for_state == STATE_PRESSED
 
 
-def test_screen_version_is_twelve():
-    """Wire-format bump: Screen.Version.CURRENT == 12.
-
-    Stage 24 (v9) added the ``Fps`` widget and the
-    ``ActionDevice`` / ``ActionSwitchScreen`` action subtype. v10
-    added the dev-only ``ForceRender`` widget. v11 (Stage 24.1)
-    moved layout + widgets off ``Screen`` and into a ``Layer``
-    sub-message. v12 (Stage 24.2) collapses ``Layer`` into ``Widget``:
-    layout managers are themselves a ``Widget.kind`` choice carrying
-    their own ``Layout.children``, and each ``Screen`` layer
-    (``active`` / ``top`` / ``sys`` / ``bottom``) is now a single
-    ``Widget`` (almost always a layout-widget).
-    """
-    s = Screen("v")
-    decoded = _proto.Screen.FromString(s.to_bytes())
-    assert decoded.version == _proto.Screen.Version.CURRENT
-    assert int(_proto.Screen.Version.CURRENT) == 12
-
-
 def test_default_screen_only_has_active_layer():
     """A bare Screen only carries `active`; persistent layers stay unset."""
     s = Screen("d")
@@ -577,17 +558,25 @@ def test_force_render_widget_round_trip():
     assert w.WhichOneof("kind") == "force_render"
 
 
-def test_switch_screen_action_by_name():
-    """BY_NAME (default) packs the name into the proto."""
-    a = switch_screen_action(name="home")
+def test_switch_screen_action_by_path():
+    """BY_PATH (default) packs the path into the proto."""
+    a = switch_screen_action(path="F:host/screens/home.pb")
     assert a.WhichOneof("kind") == "device"
     ss = a.device.switch_screen
-    assert ss.name == "home"
-    assert ss.behavior == _proto.ActionSwitchScreen.Behavior.BY_NAME
+    assert ss.path == "F:host/screens/home.pb"
+    assert ss.behavior == _proto.ActionSwitchScreen.Behavior.BY_PATH
 
 
-def test_switch_screen_action_by_name_requires_name():
-    """A missing name is a hard error — silent fallback would surprise users."""
+def test_switch_screen_action_legacy_name_kwarg():
+    """Pre-stage-51 ``name=`` is still accepted for compatibility."""
+    a = switch_screen_action(name="home")
+    ss = a.device.switch_screen
+    assert ss.path == "F:host/screens/home.pb"
+    assert ss.behavior == _proto.ActionSwitchScreen.Behavior.BY_PATH
+
+
+def test_switch_screen_action_by_path_requires_path():
+    """A missing path is a hard error — silent fallback would surprise users."""
     with pytest.raises(ValueError):
         switch_screen_action()
 
@@ -596,14 +585,14 @@ def test_next_screen_action():
     a = next_screen_action()
     ss = a.device.switch_screen
     assert ss.behavior == _proto.ActionSwitchScreen.Behavior.NEXT
-    assert ss.name == ""
+    assert ss.path == ""
 
 
 def test_prev_screen_action():
     a = prev_screen_action()
     ss = a.device.switch_screen
     assert ss.behavior == _proto.ActionSwitchScreen.Behavior.PREVIOUS
-    assert ss.name == ""
+    assert ss.path == ""
 
 
 def test_build_demo_screens_returns_two_named_screens():

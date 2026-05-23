@@ -36,9 +36,11 @@ extern "C" void app_main(void)
     // Give enough time for user to open a debug serial port to our board
     vTaskDelay(pdMS_TO_TICKS(5000));
 
-    // Mount the on-device filesystem (stage 14). host_api command handlers
-    // expect /littlefs/from_host to exist by the time they run.
-    Fs::instance().begin();
+    // Mount the on-device filesystems (stage 51). host_api command handlers
+    // expect both F: (littlefs) and R: (psram) to be ready, and the LVGL
+    // R: driver must be registered before any screen mentioning an `R:`
+    // image is loaded.
+    fs_init();
 
     // Load persisted preferences (screen timeout, etc.) before any
     // subsystem that might query them.
@@ -78,8 +80,9 @@ extern "C" void app_main(void)
     // Show something on the display from the very first frame. Preference
     // order:
     //   1. The screen the user was last viewing (saved by screens.cpp into
-    //      `prefs/prefs.pb` after every successful screens_load).
-    //   2. If that name isn't currently registered, screens_load() falls
+    //      `prefs/prefs.pb` after every successful screens_load). Stored
+    //      as a full drive-prefixed path (e.g. `F:host/screens/home.pb`).
+    //   2. If that path isn't currently registered, screens_load() falls
     //      back to the first discovered host screen.
     //   3. If nothing has been provisioned, the built-in fallback compiled
     //      in from proto/default_screen.json.
@@ -88,9 +91,10 @@ extern "C" void app_main(void)
     bool loaded = last.empty() ? screens_load(nullptr)
                                : screens_load(last.c_str());
     if (!loaded && !last.empty()) {
-        // Saved screen name is no longer registered (e.g. after a firmware
-        // upgrade that changes layout versions). Clear the stale pref and
-        // fall back to the built-in default so the display isn't left blank.
+        // Saved screen path is no longer registered (e.g. it lived on R:
+        // and didn't survive reboot, or a firmware upgrade changed the
+        // layout version). Clear the stale pref and fall back to the
+        // built-in default so the display isn't left blank.
         ESP_LOGW(TAG, "saved screen '%s' not found — resetting to default",
                  last.c_str());
         Prefs::instance().set_current_screen("");

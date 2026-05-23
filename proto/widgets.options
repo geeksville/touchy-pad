@@ -17,10 +17,10 @@
 touchy.Button.text                     max_size:64
 touchy.Label.text                      max_size:128
 touchy.Checkbox.text                   max_size:64
-touchy.Image.asset                     max_size:64
+touchy.Image.asset                     max_size:96
 touchy.Widget.id                       max_size:32
 touchy.Screen.name                     max_size:32
-touchy.ActionSwitchScreen.name         max_size:32
+touchy.ActionSwitchScreen.path         max_size:96
 
 # ----- dynamic repeated fields (allocated via pb_realloc at decode time) -----
 touchy.Layout.children                 type:FT_POINTER

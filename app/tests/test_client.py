@@ -84,29 +84,60 @@ def test_screen_sleep_timeout_arg_passed(make_client):
 
 
 def test_xml_save_round_trip(make_client):
-    payloads = {}
+    """``file_save`` should drive the streaming write protocol end-to-end."""
+    state = {"buf": bytearray(), "path": None, "handle": 0, "closed": False}
 
     def server(cmd, _t):
-        payloads["path"] = cmd.file_save.path
-        payloads["data"] = cmd.file_save.data
-        return _proto.Response(code=_proto.RESULT_OK)
+        kind = cmd.WhichOneof("cmd")
+        if kind == "file_open_write":
+            state["path"] = cmd.file_open_write.path
+            state["handle"] = 42
+            return _proto.Response(
+                code=_proto.RESULT_OK,
+                file_open_write=_proto.FileOpenWriteResponse(handle=42),
+            )
+        if kind == "file_write":
+            assert cmd.file_write.handle == 42
+            state["buf"].extend(cmd.file_write.data)
+            return _proto.Response(code=_proto.RESULT_OK)
+        if kind == "file_close":
+            assert cmd.file_close.handle == 42
+            assert cmd.file_close.commit is True
+            state["closed"] = True
+            return _proto.Response(code=_proto.RESULT_OK)
+        raise AssertionError(f"unexpected command {kind!r}")
 
     with make_client(server) as c:
-        c.file_save("screens/home.xml", "<view/>")
-    assert payloads == {"path": "screens/home.xml", "data": b"<view/>"}
+        c.file_save("F:host/screens/home.xml", "<view/>")
+    assert state["path"] == "F:host/screens/home.xml"
+    assert bytes(state["buf"]) == b"<view/>"
+    assert state["closed"] is True
 
 
 def test_image_save_binary_round_trip(make_client):
-    data_seen = {}
+    """Large blobs are split into 4 KiB chunks and reassembled."""
+    state = {"buf": bytearray(), "writes": 0}
 
     def server(cmd, _t):
-        data_seen["data"] = cmd.file_save.data
-        return _proto.Response(code=_proto.RESULT_OK)
+        kind = cmd.WhichOneof("cmd")
+        if kind == "file_open_write":
+            return _proto.Response(
+                code=_proto.RESULT_OK,
+                file_open_write=_proto.FileOpenWriteResponse(handle=1),
+            )
+        if kind == "file_write":
+            state["writes"] += 1
+            state["buf"].extend(cmd.file_write.data)
+            return _proto.Response(code=_proto.RESULT_OK)
+        if kind == "file_close":
+            return _proto.Response(code=_proto.RESULT_OK)
+        raise AssertionError(f"unexpected command {kind!r}")
 
     blob = bytes(range(256)) * 4  # 1 KB of arbitrary bytes
     with make_client(server) as c:
-        c.file_save("img/test.png", blob)
-    assert data_seen["data"] == blob
+        c.file_save("F:host/img/test.png", blob)
+    assert bytes(state["buf"]) == blob
+    assert state["writes"] >= 1
 
 
 def test_event_consume_empty_returns_none(make_client):

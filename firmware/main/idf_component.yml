@@ -26,7 +26,8 @@ dependencies:
   # as an IDF component; matches the generator version we use locally.
   livekit/nanopb: "^0.4.9"
 
-  # LittleFS filesystem on the `storage` partition. Used by Fs (fs.cpp) to
-  # persist host-uploaded layouts and images under /littlefs/from_host and
-  # device prefs under /littlefs/prefs (see docs/design.md stage 14).
+  # LittleFS filesystem on the `storage` partition. Used by FlashFs
+  # (fs.cpp) to persist host-uploaded layouts and images under
+  # /littlefs/host and device prefs under /littlefs/prefs (see
+  # docs/design.md stages 14 and 51).
   joltwallet/littlefs: "^1.21.1"

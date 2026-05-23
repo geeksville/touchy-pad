@@ -14,13 +14,16 @@
 
 static const char *TAG = "prefs";
 
-// Filesystem path (relative to the LittleFS mount root).
+// Filesystem path (relative to the LittleFS mount root). Stays on flash
+// regardless of the new R:/F: drive-letter scheme — device-private
+// preferences are never addressed by host paths.
 static constexpr const char *PREFS_PATH = "prefs/prefs.pb";
 
-// Encode buffer — `PreferencesFile` carries one fixed-size string
-// (current_screen, max 32 bytes via preferences.options) plus a couple
-// of scalars. 128 bytes is comfortably above the worst-case encoding.
-static constexpr size_t PREFS_BUF_SIZE = 128;
+// Encode buffer. `PreferencesFile` carries the scalars plus one
+// fixed-size string (current_screen, max 96 bytes via
+// preferences.options post-Stage 51). 256 bytes is comfortably above
+// the worst-case encoding.
+static constexpr size_t PREFS_BUF_SIZE = 256;
 
 Prefs &Prefs::instance()
 {
@@ -30,7 +33,7 @@ Prefs &Prefs::instance()
 
 bool Prefs::begin()
 {
-    auto &fs = Fs::instance();
+    auto &fs = FlashFs::instance();
     size_t len = 0;
     uint8_t *data = fs.readBinary(PREFS_PATH, &len);
     if (!data) {
@@ -55,10 +58,10 @@ bool Prefs::begin()
     return true;  // never hard-fail on prefs
 }
 
-void Prefs::set_current_screen(const std::string &name)
+void Prefs::set_current_screen(const std::string &path)
 {
-    if (name == m_current_screen) return;   // no churn for repeat loads
-    m_current_screen = name;
+    if (path == m_current_screen) return;   // no churn for repeat loads
+    m_current_screen = path;
     save();
 }
 
@@ -75,7 +78,7 @@ void Prefs::save()
     pf->screen_timeout_ms = m_timeout_ms;
     // current_screen is a fixed-size char[N] in the generated struct;
     // snprintf truncates safely if the source ever exceeds the bound
-    // (which it shouldn't — the bound matches touchy.Screen.name).
+    // (which it shouldn't — the bound matches ScreenLoadCmd.path).
     snprintf(pf->current_screen, sizeof(pf->current_screen), "%s",
              m_current_screen.c_str());
 
@@ -85,7 +88,7 @@ void Prefs::save()
         ESP_LOGE(TAG, "Failed to encode prefs");
         return;
     }
-    if (!Fs::instance().writeFile(PREFS_PATH, buf, n)) {
+    if (!FlashFs::instance().writeFile(PREFS_PATH, buf, n)) {
         ESP_LOGE(TAG, "Failed to write prefs to %s", PREFS_PATH);
         return;
     }

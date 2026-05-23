@@ -22,50 +22,89 @@ interrupt-IN event mailbox.
 ### Command messages
 
 Files (screen layouts, images, fonts, or any other resource) are managed
-via a single generic pair of commands. The device inspects the file
-extension after writing to decide how to post-process it:
+via a small set of streaming commands. The device inspects the file
+extension after the writing transaction is committed to decide how to
+post-process it:
 
-* `screens/*.pb` — decoded as a `touchy.Screen` protobuf (see
+* `host/screens/*.pb` — decoded as a `touchy.Screen` protobuf (see
   [Stage 15](../docs/why-not-xml.md)) and cached for `Screen_Load`.
-* anything else — written verbatim; reachable via the LVGL `F:` drive
-  letter so image/font loaders can resolve it on demand. The firmware
-  enables `CONFIG_LV_USE_FS_POSIX` with `LV_FS_POSIX_PATH=/littlefs`,
-  so a host-uploaded `images/smiley.png` is converted by the host to
-  LVGL `.bin` and lands at `/littlefs/from_host/images/smiley.bin` on
-  disk, resolving to `F:/from_host/images/smiley.bin` from LVGL.
-  `Image` / `ImageButton` widgets store the part after `F:/from_host/`
-  (e.g. `"images/smiley.png"`) in their `asset` field; the host-side
-  DSL rewrites the extension to `.bin` at serialise time so the
-  firmware can prepend the prefix and hand the path straight to LVGL.
-
-  Image format: on the wire and on disk the firmware only understands
-  LVGL's native `.bin` container (a 12-byte header + raw pixel planes —
-  RGB565A8 by default). Hosts do **not** need to know this. The Python
-  package (`touchy_pad.client.TouchyClient.file_save`) auto-detects any
-  Pillow-readable image (BMP, PNG, JPEG, GIF, WebP) by its magic bytes,
-  converts it to LVGL `.bin`, **and rewrites the destination path's
-  extension to `.bin`** before transmitting. So
-  `file_save("images/foo.png", png_bytes)` actually writes to
-  `from_host/images/foo.bin` on flash, and the `Image` DSL applies the
-  same `.png → .bin` rewrite to the asset field — keeping host source
-  paths and on-flash names consistent. Already-converted `.bin` blobs
-  and non-image data pass through unchanged. Other host-language
-  bindings can either reuse the same on-the-fly conversion or upload
-  pre-built `.bin` files directly.
+* anything else — written verbatim; reachable via an LVGL drive letter
+  so image/font loaders can resolve it on demand. See the
+  [Filesystems](#filesystems-stage-51) section below for the path
+  layout and the streaming write protocol.
 
 Commands:
 
-* `File_Reset` — Discard all files on the device filesystem (also clears
-  the in-memory screen registry).
-* `File_Save(path, data)` — Write `data` (raw bytes — text or binary) at
-  `path`. Examples: `File_Save("screens/home.pb", screen_proto)`,
-  `File_Save("img/avatar.png", png_bytes)`.
-* `Screen_Load(screen_name)` — Activate a previously-uploaded screen.
+* `File_Delete(path)` — Delete a single file *or* a whole subtree
+  (whichever the path matches) and update the in-memory screen
+  registry. Wipe the entire host-uploaded area on flash with
+  `File_Delete("F:host")`.
+* `File_Open_Write(path) → handle` — Begin a streaming upload to
+  `path`. The firmware allocates a non-zero `uint32` handle; the
+  client must reference it on every subsequent `File_Write` and on
+  `File_Close`. Only one upload transaction is in flight at a time
+  (system-wide). Writes go to a private temp path
+  (`<path>.tmp.<handle>`) so a half-finished transfer never replaces a
+  valid file.
+* `File_Write(handle, data)` — Append up to 4 KiB of `data` to the
+  open transaction. Multiple calls accumulate.
+* `File_Close(handle, commit)` — Finish the transaction. With
+  `commit = true` the firmware atomically renames the temp path over
+  the destination and (if `path` looks like a screen file)
+  re-registers the screen. With `commit = false` the temp file is
+  discarded — used by the host as a clean abort path on exceptions.
+* `Screen_Load(path)` — Activate a previously-uploaded screen by its
+  full drive-prefixed path (e.g. `F:host/screens/home.pb`). The empty
+  string loads the device default (the first registered screen, or
+  the firmware's built-in fallback if nothing has been uploaded).
 * `Screen_Wake` — Turn backlight on.
 * `Screen_Sleep_Timeout(msec)` — Auto sleep after `msec` of inactivity.
 * `Event_Consume` — Pop an event from the device event queue.
 * `Sys_Reboot_Bootloader` — Reboot into bootloader (firmware update).
 * `Sys_Version_Get` — Get the protocol and firmware version info.
+
+### Filesystems (Stage 51)
+
+Every path the host sends to the device is **drive-prefixed**: the
+first two characters are `<letter>:` and the rest is the path within
+that filesystem, e.g. `F:host/screens/home.pb` or
+`R:host/images/avatar.bin`. The device refuses unprefixed paths
+rather than silently rebasing them.
+
+Two filesystems exist:
+
+| Letter | Backing store | Persists across reboot? | Suggested use |
+|--------|---------------|-------------------------|---------------|
+| `F:`   | LittleFS partition on flash | Yes | Screens, long-lived images, fonts. |
+| `R:`   | PSRAM hashmap (`RamFs`)     | No  | Frequently-changing assets — e.g. StreamDeck-style key icons. Avoids flash wear. |
+
+By convention every host-uploaded file lives under a `host/`
+subdirectory of its drive (`F:host/...` or `R:host/...`). On the
+device this maps to the LittleFS POSIX prefix `/littlefs/host/...`
+for `F:` and to a flat key in the PSRAM hashmap for `R:`. The
+firmware's `lv_fs_drv` for `R:` makes RAM-resident files visible to
+LVGL through the same path the host uses.
+
+Image format: on the wire and on disk the firmware only understands
+LVGL's native `.bin` container (a 12-byte header + raw pixel planes —
+RGB565A8 by default). Hosts do **not** need to know this. The Python
+package (`touchy_pad.client.TouchyClient.file_save`) auto-detects any
+Pillow-readable image (BMP, PNG, JPEG, GIF, WebP) by its magic bytes,
+converts it to LVGL `.bin`, **and rewrites the destination path's
+extension to `.bin`** before transmitting. So
+`file_save("F:host/images/foo.png", png_bytes)` actually writes
+`F:host/images/foo.bin` on flash, and the `Image` DSL applies the
+same `.png → .bin` rewrite to the asset field — keeping host source
+paths and on-flash names consistent. Already-converted `.bin` blobs
+and non-image data pass through unchanged. Other host-language
+bindings can either reuse the same on-the-fly conversion or upload
+pre-built `.bin` files directly.
+
+The Python `file_save(path, data)` API hides the streaming protocol:
+internally it splits `data` into 4 KiB chunks, drives the
+`File_Open_Write` → `File_Write*` → `File_Close(commit=True)`
+sequence, and aborts with `File_Close(commit=False)` if anything
+raises. Callers see one atomic operation.
 
 ### Command responses
 

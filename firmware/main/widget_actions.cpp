@@ -76,7 +76,7 @@ void widget_event_cb(lv_event_t *e)
                 // has fully unwound.
                 struct SwitchReq {
                     int  behavior;
-                    char name[32];
+                    char path[96];   // matches widgets.options ActionSwitchScreen.path
                 };
                 auto *req = new (std::nothrow) SwitchReq{};
                 if (!req) {
@@ -84,17 +84,17 @@ void widget_event_cb(lv_event_t *e)
                     break;
                 }
                 req->behavior = (int)ss.behavior;
-                snprintf(req->name, sizeof(req->name), "%s", ss.name);
+                snprintf(req->path, sizeof(req->path), "%s", ss.path);
                 lv_async_call(
                     [](void *p) {
                         auto *r = static_cast<SwitchReq *>(p);
                         bool ok = screens_switch(
-                            r->behavior, r->name[0] ? r->name : nullptr);
+                            r->behavior, r->path[0] ? r->path : nullptr);
                         if (!ok) {
                             ESP_LOGW(TAG,
                                      "switch_screen failed "
-                                     "(behavior=%d name='%s')",
-                                     r->behavior, r->name);
+                                     "(behavior=%d path='%s')",
+                                     r->behavior, r->path);
                         }
                         delete r;
                     },

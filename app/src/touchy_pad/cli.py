@@ -281,16 +281,29 @@ def update_cmd(ctx: click.Context, board: str | None, version: str) -> None:
 
 @cli.command("file-reset")
 def file_reset() -> None:
-    """Delete every file the host has uploaded to the device."""
+    """Delete every file the host has uploaded to the device's flash."""
     with _client() as c:
-        c.file_reset()
+        c.file_delete("F:host")
+
+
+@cli.command("file-delete")
+@click.argument("path")
+def file_delete(path: str) -> None:
+    """Delete a single file (or subtree) at PATH from the device."""
+    with _client() as c:
+        c.file_delete(path)
 
 
 @cli.command("file-save")
 @click.argument("path")
 @click.argument("file", type=click.File("rb"))
 def file_save(path: str, file) -> None:
-    """Upload a single file to the device under /from_host/<PATH>."""
+    """Upload a single file to the device under PATH.
+
+    PATH must be drive-prefixed (e.g. ``F:host/images/avatar.png`` for
+    persistent flash or ``R:host/images/avatar.bin`` for transient
+    PSRAM storage).
+    """
     with _client() as c:
         c.file_save(path, file.read())
 
@@ -304,15 +317,16 @@ def writefiles(srcdir: Path) -> None:
     """Mirror SRCDIR onto the device.
 
     First clears the host-uploaded file area, then recursively walks
-    SRCDIR and uploads every file at its relative path.
+    SRCDIR and uploads every file at its relative path under
+    ``F:host/<rel>``.
     """
     with _client() as c:
-        c.file_reset()
+        c.file_delete("F:host")
         for p in sorted(srcdir.rglob("*")):
             if not p.is_file():
                 continue
             rel = p.relative_to(srcdir).as_posix()
-            c.file_save(rel, p.read_bytes())
+            c.file_save(f"F:host/{rel}", p.read_bytes())
             click.echo(f"sent {rel} ({p.stat().st_size} bytes)")
 
 
@@ -366,11 +380,11 @@ def screen_set_timeout(seconds: float) -> None:
 
 
 @screen.command("load")
-@click.argument("name")
-def screen_load(name: str) -> None:
-    """Switch the currently displayed screen to NAME."""
+@click.argument("path")
+def screen_load(path: str) -> None:
+    """Activate the screen at PATH (drive-prefixed, e.g. F:host/screens/home.pb)."""
     with _client() as c:
-        c.screen_load(name)
+        c.screen_load(path)
 
 
 @screen.command("demo")
@@ -423,12 +437,12 @@ def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
     smiley = make_smiley_png()
 
     with _open_pad() as pad:
-        pad.file_save("images/smiley.png", smiley)
-        click.echo(f"sent images/smiley.png ({len(smiley)} bytes source)")
+        pad.file_save("F:host/images/smiley.png", smiley)
+        click.echo(f"sent F:host/images/smiley.png ({len(smiley)} bytes source)")
         for s in screens:
             pad.screen_save(s)
-            click.echo(f"sent screens/{s.name}.pb ({len(s.widgets)} widgets)")
-        pad.screen_load("home")
+            click.echo(f"sent F:host/screens/{s.name}.pb ({len(s.widgets)} widgets)")
+        pad.screen_load("F:host/screens/home.pb")
         click.echo("loaded screen 'home'")
 
         if listen:

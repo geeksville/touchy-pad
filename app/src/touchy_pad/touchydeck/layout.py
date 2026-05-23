@@ -20,6 +20,11 @@ from ..api import screens as _s
 #: Touchy screen name reserved for the active StreamDeck-emulation grid.
 SCREEN_NAME = "touchydeck"
 
+#: Full drive-prefixed device path for the touchydeck screen's encoded
+#: protobuf. Stored in flash (``F:``) so the StreamController-emulation
+#: grid survives a device reboot.
+SCREEN_PATH = f"F:host/screens/{SCREEN_NAME}.pb"
+
 #: Widget-id prefix for the per-key image buttons.
 ID_PREFIX = "sdk_key_"
 
@@ -50,11 +55,14 @@ def key_for_host_code(code: int) -> int | None:
 def asset_path_for(key: int) -> str:
     """Filesystem path on the device for cell ``key``'s image asset.
 
-    ``.bin`` is the on-device extension that LVGL's built-in decoder
-    matches; :meth:`TouchyClient.file_save` rewrites supplied
-    PNG/JPEG/etc. paths to this on upload.
+    Returned as a full drive-prefixed path. We use ``R:`` (PSRAM) since
+    the deck's images change frequently and don't need to survive a
+    reboot; this keeps flash wear down. ``.bin`` is the on-device
+    extension that LVGL's built-in decoder matches;
+    :meth:`TouchyClient.file_save` rewrites supplied PNG/JPEG/etc.
+    paths to this on upload.
     """
-    return f"images/{ID_PREFIX}{int(key)}.bin"
+    return f"R:host/images/{ID_PREFIX}{int(key)}.bin"
 
 
 def build_screen(

@@ -343,7 +343,7 @@ def transition(
 
         image_button(
             "smile",
-            asset="images/smiley.png",
+            asset="F:host/images/smiley.png",
             style=[
                 style(transition=transition(
                     props=[PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA],
@@ -452,39 +452,50 @@ def device_action(device: _proto.ActionDevice) -> _proto.Action:
 
 
 def switch_screen_action(
-    name: str | None = None,
+    path: str | None = None,
     behavior: int | None = None,
+    *,
+    name: str | None = None,
 ) -> _proto.Action:
     """Build an Action that swaps the active screen on-device.
 
     Parameters
     ----------
-    name:
-        Stem of the target screen (the ``screens/<stem>.pb`` filename),
-        matching the ``name=`` passed to :class:`Screen`. Required when
-        ``behavior`` is :attr:`ActionSwitchScreen.BY_NAME` (the default),
-        ignored otherwise.
+    path:
+        Full drive-prefixed path of the target screen (e.g.
+        ``"F:host/screens/home.pb"``), matching the path :class:`Screen`
+        uploads to. Required when ``behavior`` is
+        :attr:`ActionSwitchScreen.BY_PATH` (the default), ignored
+        otherwise.
     behavior:
-        One of :attr:`ActionSwitchScreen.BY_NAME` (0),
+        One of :attr:`ActionSwitchScreen.BY_PATH` (0),
         :attr:`ActionSwitchScreen.NEXT` (1) or
         :attr:`ActionSwitchScreen.PREVIOUS` (2). NEXT/PREVIOUS step
         through the firmware's registry in stable iteration order
         (alphabetical, because the registry is a ``std::map``) and wrap
         around at the ends.
+    name:
+        Deprecated alias for ``path``, kept so pre-stage-51 callers
+        still compile. If both are given, ``path`` wins. When only
+        ``name`` is supplied we assume the screen lives in flash and
+        construct the canonical ``F:host/screens/<name>.pb`` path.
 
     The convenience wrappers :func:`next_screen_action` and
     :func:`prev_screen_action` cover the most common case.
     """
     Behavior = _proto.ActionSwitchScreen.Behavior  # noqa: N806
     if behavior is None:
-        behavior = Behavior.BY_NAME
-    if behavior == Behavior.BY_NAME:
-        if not name:
-            raise ValueError("switch_screen_action(BY_NAME) requires name=")
-        ss = _proto.ActionSwitchScreen(behavior=behavior, name=name)
+        behavior = Behavior.BY_PATH
+    if path is None and name:
+        # Back-compat: synthesise the canonical flash path.
+        path = f"F:host/screens/{name}.pb"
+    if behavior == Behavior.BY_PATH:
+        if not path:
+            raise ValueError("switch_screen_action(BY_PATH) requires path=")
+        ss = _proto.ActionSwitchScreen(behavior=behavior, path=path)
     else:
-        # NEXT / PREVIOUS ignore `name`; we drop any value silently so
-        # callers can pass switch_screen_action(name="x", behavior=NEXT)
+        # NEXT / PREVIOUS ignore `path`; we drop any value silently so
+        # callers can pass switch_screen_action(path="x", behavior=NEXT)
         # without it being a confusing error.
         ss = _proto.ActionSwitchScreen(behavior=behavior)
     return device_action(_proto.ActionDevice(switch_screen=ss))
@@ -1278,7 +1289,7 @@ def build_demo_screens() -> list[Screen]:
     test += cell(
         image_button(
             "smile",
-            asset="images/smiley.png",
+            asset="F:host/images/smiley.png",
             on_click=host_action(0x103),
             scale=2.0,
             pressed_scale=2.5,

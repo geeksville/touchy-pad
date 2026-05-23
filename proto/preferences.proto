@@ -22,7 +22,9 @@ message PreferencesFile {
         UNSPECIFIED = 0;
         V1 = 1;       // initial format: file_version + screen_timeout_ms
         V2 = 2;       // Stage 24: + current_screen (last loaded screen name)
-        CURRENT = 2;  // alias: always equals the latest defined version
+        V3 = 3;       // Stage 51: current_screen now stores a full
+                      //           drive-letter path (e.g. "F:host/screens/home.pb")
+        CURRENT = 3;  // alias: always equals the latest defined version
     }
 
     // Written on every save so forward migrations can detect old files.
@@ -32,10 +34,13 @@ message PreferencesFile {
     // stays on indefinitely). Set via ScreenSleepTimeoutCmd from the host.
     uint32 screen_timeout_ms = 2;
 
-    // Name of the most-recently-loaded screen (the registered stem under
-    // /from_host/screens/<name>.pb). Updated by the firmware on every
+    // Full drive-letter path of the most-recently-loaded screen, e.g.
+    // "F:host/screens/home.pb". Updated by the firmware on every
     // successful `screens_load` so a reboot restores the screen the user
     // was looking at. Empty means "no preference — load the first
-    // discovered screen, then the built-in fallback".
+    // discovered screen, then the built-in fallback". If the recorded
+    // path lives on R: (RAM) it will be missing after a reboot; the
+    // firmware treats that as any other missing-screen and falls back
+    // to the default.
     string current_screen = 3;
 }

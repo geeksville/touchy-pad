@@ -53,15 +53,17 @@ Pillow-readable input — BMP, PNG, JPEG, GIF, WebP — to that format
 before upload, so callers can pass arbitrary image bytes:
 
 ```python
-client.file_save("images/avatar.png", open("avatar.png", "rb").read())
-client.file_save("images/icon.bmp",   make_smiley_bmp())
+client.file_save("F:host/images/avatar.png", open("avatar.png", "rb").read())
+client.file_save("R:host/images/icon.bmp",   make_smiley_bmp())
 ```
 
-Both end up as LVGL `.bin` payload on flash. Already-converted `.bin`
+Both end up as LVGL `.bin` payload on the chosen filesystem
+(`F:` = persistent flash, `R:` = transient PSRAM — see
+[Host API → Filesystems](host-api.md#filesystems-stage-51)). Already-converted `.bin`
 blobs and non-image data pass through unchanged. `Image` /
-`ImageButton` widgets reference these files by their on-disk path
-(e.g. `asset="images/avatar.png"`) regardless of the original source
-format. `Image` / `ImageButton` also accept `scale` (1.0 = 100 %) and
+`ImageButton` widgets reference these files by their full
+drive-prefixed path (e.g. `asset="F:host/images/avatar.png"`)
+regardless of the original source format. `Image` / `ImageButton` also accept `scale` (1.0 = 100 %) and
 `rotation` (degrees) for runtime transforms; `ImageButton` additionally
 takes `pressed_asset` / `pressed_scale` / `pressed_rotation` for a
 distinct pressed-state look. Compression
@@ -134,7 +136,7 @@ from touchy_pad.api.screens import (
 
 image_button(
     "smile",
-    asset="images/smiley.png",
+    asset="F:host/images/smiley.png",
     on_click=host_action(0x103),
     style=[
         # Default-state style binds the transition; LVGL uses it for

@@ -83,22 +83,62 @@ class TouchyClient:
             )
         )
 
-    def file_reset(self) -> None:
-        """Discard all files stored on the device filesystem."""
-        _check(self._rpc(_proto.Command(file_reset=_proto.FileResetCmd())))
+    # Maximum payload bytes per FileWriteCmd. The on-wire protobuf
+    # frame must fit inside the device's RX buffer (HOST_API_RX_MAX,
+    # 5 KiB in firmware/main/host_api.cpp after stage 51); we leave
+    # ~1 KiB of headroom for the surrounding Command / oneof overhead.
+    _FILE_WRITE_CHUNK = 4096
+
+    def file_delete(self, path: str) -> None:
+        """Delete a file or directory subtree from the device filesystem.
+
+        *path* must be drive-prefixed, e.g. ``"F:host/screens/home.pb"``
+        or ``"F:host"`` to wipe the whole host-uploaded area on flash.
+        Passing ``"R:host"`` wipes the PSRAM filesystem instead.
+        """
+        _check(self._rpc(_proto.Command(file_delete=_proto.FileDeleteCmd(path=path))))
+
+    def file_open_write(self, path: str) -> int:
+        """Begin streaming a new file. Returns an opaque write handle."""
+        reply = _check(
+            self._rpc(_proto.Command(file_open_write=_proto.FileOpenWriteCmd(path=path)))
+        )
+        return reply.file_open_write.handle
+
+    def file_write(self, handle: int, data: bytes) -> None:
+        """Append a chunk of bytes to an in-progress file write."""
+        _check(
+            self._rpc(
+                _proto.Command(file_write=_proto.FileWriteCmd(handle=handle, data=bytes(data)))
+            )
+        )
+
+    def file_close(self, handle: int, commit: bool) -> None:
+        """Finish (commit=True) or abort (commit=False) a streaming write."""
+        _check(
+            self._rpc(_proto.Command(file_close=_proto.FileCloseCmd(handle=handle, commit=commit)))
+        )
 
     def file_save(self, path: str, data: bytes | str) -> None:
-        """Write a file to the device filesystem.
+        """Write a file to the device filesystem in one logical call.
 
-        *path* is the virtual filesystem path (e.g. ``"screens/home.xml"`` or
-        ``"img/avatar.png"``).  *data* may be ``bytes`` (for binary files such
-        as images) or ``str`` (for XML layouts, encoded as UTF-8).
+        *path* is the drive-prefixed filesystem path
+        (e.g. ``"F:host/screens/home.pb"`` for persistent flash or
+        ``"R:host/images/sdk_key_0.bin"`` for transient PSRAM storage).
+        *data* may be ``bytes`` (for binary files such as images) or
+        ``str`` (for text payloads, encoded as UTF-8).
 
         Image bytes (BMP / PNG / JPEG / GIF / WebP — anything Pillow can
         decode) are transparently converted to LVGL's native ``.bin``
         format before upload, so the firmware only needs its always-on
         built-in image decoder. Already-converted ``.bin`` blobs and
         non-image payloads are passed through unchanged.
+
+        On the wire this issues a ``FileOpenWrite`` command, one or more
+        ``FileWrite`` chunks (≤ 4 KiB each so the on-wire frame fits in
+        the device RX buffer) and a ``FileClose(commit=True)``. If any
+        chunk fails we send ``FileClose(commit=False)`` so the device
+        can drop the partial file.
         """
         if isinstance(data, str):
             data = data.encode("utf-8")
@@ -110,12 +150,32 @@ class TouchyClient:
             data = to_lvgl_bin(data)
             # LVGL's bin decoder selects itself by extension, so the
             # on-device file has to be named *.bin even though the
-            # caller likely passed e.g. "images/avatar.png".
+            # caller likely passed e.g. "F:host/images/avatar.png".
             path = rewrite_to_bin_path(path)
-        _check(self._rpc(_proto.Command(file_save=_proto.FileSaveCmd(path=path, data=data))))
+        handle = self.file_open_write(path)
+        committed = False
+        try:
+            for offset in range(0, len(data), self._FILE_WRITE_CHUNK):
+                self.file_write(handle, data[offset : offset + self._FILE_WRITE_CHUNK])
+            self.file_close(handle, commit=True)
+            committed = True
+        finally:
+            if not committed:
+                # Best-effort abort; swallow any follow-up error so the
+                # original exception is what propagates.
+                try:
+                    self.file_close(handle, commit=False)
+                except Exception:  # noqa: BLE001
+                    pass
 
-    def screen_load(self, name: str) -> None:
-        _check(self._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(name=name))))
+    def screen_load(self, path: str) -> None:
+        """Activate a previously-uploaded screen.
+
+        *path* is the full drive-prefixed path the screen was uploaded
+        to (e.g. ``"F:host/screens/home.pb"``). Passing an empty string
+        loads the device's default screen.
+        """
+        _check(self._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(path=path))))
 
     def event_consume(self) -> _proto.LvEvent | None:
         """Pop one pending event from the device queue, or return ``None``.

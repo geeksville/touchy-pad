@@ -10,9 +10,12 @@ of real hardware.
 The sim deliberately implements only the subset of behavior needed for
 host-side app development:
 
-* file_save / file_reset write to a sandboxed pseudo-fs.
-* screen_load tracks the active screen by name and dispatches its
-  default-load actions in the future (Stage 30 step 5).
+* file_open_write / file_write / file_close stream new files into a
+  sandboxed pseudo-fs (one in-flight transaction at a time, matching
+  firmware constraints).
+* file_delete wipes a file or directory subtree.
+* screen_load tracks the active screen by drive-prefixed path and
+  dispatches its default-load actions in the future (Stage 30 step 5).
 * event_consume drains a queue populated by widget activations.
 * sys_version_get returns the wire protocol's CURRENT version.
 * screen_wake / screen_sleep_timeout / sys_reboot_bootloader are
@@ -93,24 +96,32 @@ class SimDevice:
         self._events: Queue[_proto.LvEvent] = Queue()
         self._on_screen_change = on_screen_change
 
-        #: Current active screen name (matches firmware's `g_active_name`).
-        self._active_name: str | None = None
+        #: Active write transactions: handle → (path, accumulated bytes).
+        #: Only one in flight at a time, matching firmware constraints,
+        #: but we key by handle so a bug-ridden client trying multiple
+        #: opens gets a clean ``RESULT_IO_ERROR`` on the second one.
+        self._writes: dict[int, tuple[str, bytearray]] = {}
+        self._next_handle: int = 1
+
+        #: Current active screen path (drive-prefixed, matching
+        #: firmware's `g_current_path`).
+        self._active_path: str | None = None
         #: Decoded active screen, or None when nothing has loaded yet.
         self._active_screen: _proto.Screen | None = None
 
         # Auto-load the lexicographically first uploaded screen on
         # startup, mirroring firmware boot behavior. Falls back to the
         # embedded default screen when the sim-fs is empty.
-        names = self._fs.list_screens()
-        if names:
+        paths = self._fs.list_screens()
+        if paths:
             try:
-                self._do_screen_load(names[0])
+                self._do_screen_load(paths[0])
             except Exception as exc:  # noqa: BLE001 — keep sim alive on bad data
-                _log.warning("auto-load of %r failed: %s", names[0], exc)
+                _log.warning("auto-load of %r failed: %s", paths[0], exc)
         if self._active_screen is None:
             default = _load_default_screen()
             if default is not None:
-                self._active_name = default.name or "default"
+                self._active_path = "<built-in>"
                 self._active_screen = default
                 self._notify_screen_change()
 
@@ -122,12 +133,19 @@ class SimDevice:
             return self._active_screen
 
     @property
+    def active_screen_path(self) -> str | None:
+        with self._lock:
+            return self._active_path
+
+    # Back-compat alias for callers that haven't migrated to the
+    # post-stage-51 ``active_screen_path`` name yet.
+    @property
     def active_screen_name(self) -> str | None:
         with self._lock:
-            return self._active_name
+            return self._active_path
 
     def list_screens(self) -> list[str]:
-        """Names of all uploaded screens, sorted (same order firmware uses)."""
+        """Paths of all uploaded screens, sorted (same order firmware uses)."""
         return self._fs.list_screens()
 
     @property
@@ -213,29 +231,64 @@ class SimDevice:
     def _cmd_screen_sleep_timeout(self, _msg: _proto.ScreenSleepTimeoutCmd) -> _proto.Response:
         return _result()
 
-    def _cmd_file_reset(self, _msg: _proto.FileResetCmd) -> _proto.Response:
-        self._fs.reset()
-        _log.info("sim: file_reset (cleared %s)", self._fs.root)
-        return _result()
-
-    def _cmd_file_save(self, msg: _proto.FileSaveCmd) -> _proto.Response:
+    def _cmd_file_delete(self, msg: _proto.FileDeleteCmd) -> _proto.Response:
         try:
-            self._fs.save(msg.path, msg.data)
+            self._fs.delete(msg.path)
         except ValueError as exc:
-            _log.warning("sim: file_save rejected %r: %s", msg.path, exc)
+            _log.warning("sim: file_delete rejected %r: %s", msg.path, exc)
             return _result(_proto.RESULT_INVALID_ARG)
         except OSError as exc:
-            _log.error("sim: file_save I/O error on %r: %s", msg.path, exc)
+            _log.error("sim: file_delete I/O error on %r: %s", msg.path, exc)
+            return _result(_proto.RESULT_IO_ERROR)
+        _log.info("sim: file_delete (%s)", msg.path)
+        return _result()
+
+    def _cmd_file_open_write(self, msg: _proto.FileOpenWriteCmd) -> _proto.Response:
+        try:
+            # Reject the path early — mirrors the firmware aborting an
+            # open() against a malformed drive prefix.
+            self._fs._resolve(msg.path)  # noqa: SLF001 — sim is intimate with SimFs
+        except ValueError as exc:
+            _log.warning("sim: file_open_write rejected %r: %s", msg.path, exc)
+            return _result(_proto.RESULT_INVALID_ARG)
+        handle = self._next_handle
+        self._next_handle += 1
+        self._writes[handle] = (msg.path, bytearray())
+        return _result(
+            file_open_write=_proto.FileOpenWriteResponse(handle=handle),
+        )
+
+    def _cmd_file_write(self, msg: _proto.FileWriteCmd) -> _proto.Response:
+        txn = self._writes.get(msg.handle)
+        if txn is None:
+            return _result(_proto.RESULT_IO_ERROR)
+        txn[1].extend(msg.data)
+        return _result()
+
+    def _cmd_file_close(self, msg: _proto.FileCloseCmd) -> _proto.Response:
+        txn = self._writes.pop(msg.handle, None)
+        if txn is None:
+            return _result(_proto.RESULT_IO_ERROR)
+        if not msg.commit:
+            return _result()
+        path, buf = txn
+        try:
+            self._fs.save(path, bytes(buf))
+        except ValueError as exc:
+            _log.warning("sim: file_close rejected %r: %s", path, exc)
+            return _result(_proto.RESULT_INVALID_ARG)
+        except OSError as exc:
+            _log.error("sim: file_close I/O error on %r: %s", path, exc)
             return _result(_proto.RESULT_IO_ERROR)
         return _result()
 
     def _cmd_screen_load(self, msg: _proto.ScreenLoadCmd) -> _proto.Response:
         try:
-            self._do_screen_load(msg.name)
+            self._do_screen_load(msg.path)
         except FileNotFoundError:
             return _result(_proto.RESULT_NOT_FOUND)
         except Exception as exc:  # noqa: BLE001 — surface protocol error
-            _log.warning("sim: screen_load(%r) failed: %s", msg.name, exc)
+            _log.warning("sim: screen_load(%r) failed: %s", msg.path, exc)
             return _result(_proto.RESULT_INVALID_ARG)
         return _result()
 
@@ -248,15 +301,32 @@ class SimDevice:
 
     # -- internal helpers -------------------------------------------------
 
-    def _do_screen_load(self, name: str) -> None:
-        path = f"screens/{name}.pb"
+    def _do_screen_load(self, path: str) -> None:
+        """Activate a previously-uploaded screen by full drive-prefixed path.
+
+        Empty path means "load the default screen" — matches firmware
+        ``screens_load(NULL)`` semantics: the first registered screen,
+        or the built-in fallback when nothing is uploaded.
+        """
+        if not path:
+            paths = self._fs.list_screens()
+            if paths:
+                path = paths[0]
+            else:
+                default = _load_default_screen()
+                if default is None:
+                    raise FileNotFoundError("no screens available")
+                self._active_path = "<built-in>"
+                self._active_screen = default
+                self._notify_screen_change()
+                return
         if not self._fs.exists(path):
-            raise FileNotFoundError(name)
+            raise FileNotFoundError(path)
         screen = _proto.Screen()
         screen.ParseFromString(self._fs.read(path))
-        self._active_name = name
+        self._active_path = path
         self._active_screen = screen
-        _log.info("sim: loaded screen %r", name)
+        _log.info("sim: loaded screen %r", path)
         self._notify_screen_change()
 
     def _notify_screen_change(self) -> None:

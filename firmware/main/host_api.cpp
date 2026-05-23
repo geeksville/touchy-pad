@@ -23,6 +23,7 @@
 #include "tusb.h"
 
 #include <string.h>
+#include <string>
 
 static const char *TAG = "host_api";
 
@@ -34,12 +35,12 @@ static const char *TAG = "host_api";
 //     of EventConsumeCmd (no dedicated interrupt-IN mailbox endpoint).
 #define TOUCHY_PROTOCOL_VERSION  touchy_SysBoardInfoResponse_ProtocolVersion_CURRENT
 
-// Largest serialised Command we accept. The decoded `touchy_Command`
-// no longer reserves the FileSaveCmd payload statically (Stage 17 moved
-// `FileSaveCmd.data` to FT_POINTER), so this cap now bounds only the
-// on-wire frame length. 32 KB matches the original FileSave budget plus
-// a small overhead for nanopb tags and the surrounding Command oneof.
-#define HOST_API_RX_MAX  (32 * 1024 + 256)
+// Largest serialised Command we accept. With streaming writes (Stage 51)
+// every individual `FileWriteCmd` carries at most ~4 KiB of payload, so
+// the on-wire frame cap shrinks from the old 32 KiB FileSave budget down
+// to roughly one USB-HS bulk transfer's worth of data plus nanopb
+// framing overhead.
+#define HOST_API_RX_MAX  (5 * 1024)
 #define HOST_API_TX_MAX  (4  * 1024)
 
 static SemaphoreHandle_t s_rx_sem;            // signalled by tud_vendor_rx_cb
@@ -61,6 +62,14 @@ static uint8_t           s_tx_buf[HOST_API_TX_MAX];
 #define EVENT_QUEUE_DEPTH  16
 
 static QueueHandle_t s_evt_queue;
+
+// Path of the file currently being streamed via FileOpenWrite/Write/Close.
+// We capture it on open so the close handler can pass the freshly-
+// committed file to screens_register_from_file() without the host
+// having to issue a separate registration command. Empty when no
+// transaction is in flight. Only one transaction is permitted system-
+// wide (see fs.cpp) so a single static string is sufficient.
+static std::string s_active_write_path;
 
 extern "C" void host_api_post_event(const struct _touchy_LvEvent *evt)
 {
@@ -165,41 +174,68 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         fill_board_info(resp);
         break;
 
-    case touchy_Command_file_reset_tag:
-        // Wipe everything the host previously uploaded. Device-local prefs
-        // under /littlefs/prefs are intentionally preserved.
-        if (Fs::instance().removeTree("from_host")) {
-            screens_clear();
-            resp->code = touchy_ResultCode_RESULT_OK;
-        } else {
-            resp->code = touchy_ResultCode_RESULT_IO_ERROR;
+    case touchy_Command_file_delete_tag: {
+        // FileDelete subsumes the old FileReset/FileSave wipe: passing
+        // "F:host" deletes the whole host directory; passing a single
+        // file path deletes just that file. Drive-letter prefix is
+        // mandatory.
+        const char  *path = cmd->cmd.file_delete.path;
+        std::string  rest;
+        Fs *fs = fs_resolve(path, &rest);
+        if (!fs) {
+            resp->code = touchy_ResultCode_RESULT_INVALID_ARG;
+            break;
         }
+        // Try as a tree first; FlashFs::removeTree falls back to a
+        // file unlink when the path doesn't refer to a directory.
+        bool ok = fs->removeTree(rest);
+        screens_clear();   // any cached screen objects may now be stale
+        resp->code = ok ? touchy_ResultCode_RESULT_OK
+                        : touchy_ResultCode_RESULT_IO_ERROR;
         break;
+    }
 
-    case touchy_Command_file_save_tag: {
-        const auto &fs_cmd = cmd->cmd.file_save;
-        // FileSaveCmd.data is FT_POINTER post-Stage 17, so a missing
-        // payload decodes to a null `pb_bytes_array_t *`. Treat that as
-        // a zero-length write rather than dereferencing null.
-        const uint8_t *bytes = fs_cmd.data ? fs_cmd.data->bytes : nullptr;
-        size_t         nbytes = fs_cmd.data ? fs_cmd.data->size  : 0;
-        // Host paths land under /littlefs/from_host/<path> so they can't
-        // collide with on-device preferences or other future namespaces.
-        std::string path = std::string("from_host/") + fs_cmd.path;
-        if (Fs::instance().writeFile(path, bytes, nbytes)) {
-            // Let the screen registry pick up "screens/*.pb" uploads. The
-            // registry reads back through Fs, so the post-write hook is
-            // the right place rather than passing bytes around.
-            screens_register_from_file(fs_cmd.path);
-            resp->code = touchy_ResultCode_RESULT_OK;
-        } else {
+    case touchy_Command_file_open_write_tag: {
+        const char *path = cmd->cmd.file_open_write.path;
+        uint32_t handle = fs_open_write(path);
+        if (handle == 0) {
             resp->code = touchy_ResultCode_RESULT_IO_ERROR;
+            s_active_write_path.clear();
+        } else {
+            resp->code          = touchy_ResultCode_RESULT_OK;
+            resp->which_payload = touchy_Response_file_open_write_tag;
+            resp->payload.file_open_write.handle = handle;
+            s_active_write_path = path ? path : "";
         }
         break;
     }
 
+    case touchy_Command_file_write_tag: {
+        const auto &fw = cmd->cmd.file_write;
+        const uint8_t *bytes = fw.data ? fw.data->bytes : nullptr;
+        size_t         nbytes = fw.data ? fw.data->size  : 0;
+        bool ok = fs_append_write(fw.handle, bytes, nbytes);
+        resp->code = ok ? touchy_ResultCode_RESULT_OK
+                        : touchy_ResultCode_RESULT_IO_ERROR;
+        break;
+    }
+
+    case touchy_Command_file_close_tag: {
+        const auto &fc = cmd->cmd.file_close;
+        bool ok = fs_close_write(fc.handle, fc.commit);
+        if (ok && fc.commit && !s_active_write_path.empty()) {
+            // Hand the freshly-committed file to the screen registry;
+            // it's a no-op for anything outside `*:host/screens/*.pb`.
+            screens_register_from_file(s_active_write_path.c_str());
+        }
+        s_active_write_path.clear();
+        resp->code = ok ? touchy_ResultCode_RESULT_OK
+                        : touchy_ResultCode_RESULT_IO_ERROR;
+        break;
+    }
+
     case touchy_Command_screen_load_tag:
-        resp->code = screens_load(cmd->cmd.screen_load.name)
+        resp->code = screens_load(cmd->cmd.screen_load.path)
                          ? touchy_ResultCode_RESULT_OK
                          : touchy_ResultCode_RESULT_NOT_FOUND;
         break;
@@ -279,8 +315,8 @@ static void host_api_task(void *)
         }
         if (!vendor_read_exact(s_rx_buf, payload_len)) continue;
 
-        // Stage 17: PbMessage owns any heap-allocated FT_POINTER fields
-        // (currently just `FileSaveCmd.data`) and calls pb_release() in
+        // Stage 51: PbMessage owns any heap-allocated FT_POINTER fields
+        // (currently just `FileWriteCmd.data`) and calls pb_release() in
         // its destructor at the bottom of the loop. The structs
         // themselves remain on the dispatcher task's stack — they're
         // small now (~few hundred bytes) since the file payload no

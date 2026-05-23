@@ -13,7 +13,7 @@ Earlier drafts of stage 15 tried to reuse LVGL's XML UI loader so layouts could 
 ## Wire & on-disk format
 
 - One protobuf message per screen, defined in `proto/touchy.proto` (extension of the existing host-api schema).
-- Encoded screens are written to LittleFS at `/littlefs/from_host/screens/<name>.pb` by the existing host-api file-upload path (stage 13). No new transport.
+- Encoded screens are written to LittleFS at `/littlefs/host/screens/<name>.pb` (drive-prefixed `F:host/screens/<name>.pb` on the wire) by the existing host-api file-upload path (stage 13, refined in stage 51 to use the streaming-write protocol). No new transport.
 - The device-side renderer (`screens.cpp`) is the only consumer; it decodes a `.pb` with nanopb and instantiates widgets one-by-one.
 
 ## Schema sketch
@@ -48,7 +48,7 @@ message Label  { string text = 1; FontRef font = 2; }
 message Slider { int32 min = 1; int32 max = 2; int32 value = 3;
                  Action on_change = 4; }
 message Switch { bool on = 1; Action on_change = 2; }
-message Image  { string asset = 1; }       // path into /littlefs/from_host/img/
+message Image  { string asset = 1; }       // drive-prefixed (`F:host/img/...` or `R:host/img/...`)
 message Arc    { int32 min = 1; int32 max = 2; int32 value = 3; }
 message Spacer { }
 
@@ -87,7 +87,7 @@ A CLI wrapper (`touchy-pad screen push synth.py`) compiles the script, uploads e
 
 ## Device-side renderer (`firmware/main/screens.cpp`)
 
-- On boot, scan `/littlefs/from_host/screens/*.pb`, decode each with nanopb, build an in-memory `std::vector<ScreenDef>`.
+- On boot, scan `/littlefs/host/screens/*.pb` (and the analogous PSRAM `R:host/screens/`), decode each with nanopb, build an in-memory `std::map<std::string, std::string>` keyed by full drive-prefixed path.
 - `screens_load(name)` looks up the def, creates an `lv_obj_t * scr = lv_obj_create(NULL)`, iterates `widgets`, dispatches on the `oneof kind` to an `lv_*_create` call, and applies `Rect`/`Style`. Widget IDs are stored via `lv_obj_set_user_data` for event routing.
 - A single `lv_event_cb` on each interactive widget posts `{screen, widget_id, action.event, value}` back through the existing host-api event channel — no new protocol bits needed.
 

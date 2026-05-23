@@ -31,7 +31,7 @@ def test_sysversion_reports_sim() -> None:
 def test_default_screen_autoloads_on_empty_fs() -> None:
     with make_tempdir_transport() as t:
         # The sim's default screen comes from proto/default_screen.json.
-        assert t.device.active_screen_name == "default"
+        assert t.device.active_screen_path == "<built-in>"
         active = t.device.active_screen
         assert active is not None
         assert active.name == "default"
@@ -43,13 +43,19 @@ def test_file_save_and_screen_load_roundtrip(tmp_path: pathlib.Path) -> None:
         with TouchyClient(t) as c:
             home, test = build_demo_screens()
             for s in (home, test):
-                c.file_save(f"screens/{s.name}.pb", s.to_proto().SerializeToString())
-            c.screen_load("test")
+                c.file_save(
+                    f"F:host/screens/{s.name}.pb",
+                    s.to_proto().SerializeToString(),
+                )
+            c.screen_load("F:host/screens/test.pb")
         active = t.device.active_screen
         assert active is not None
         assert active.name == "test"
         # The two screens should now be listed in lex order on disk.
-        assert t.device.list_screens() == ["home", "test"]
+        assert t.device.list_screens() == [
+            "F:host/screens/home.pb",
+            "F:host/screens/test.pb",
+        ]
     finally:
         t.close()
 
@@ -58,7 +64,9 @@ def test_screen_load_missing_returns_not_found() -> None:
     with make_tempdir_transport() as t:
         c = TouchyClient(t)
         # _check raises on non-OK; assert the underlying response code.
-        reply = c._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(name="nope")))
+        reply = c._rpc(
+            _proto.Command(screen_load=_proto.ScreenLoadCmd(path="F:host/screens/nope.pb"))
+        )
         assert reply.code == _proto.RESULT_NOT_FOUND
 
 
@@ -82,7 +90,7 @@ def test_image_bytes_are_not_converted_for_sim() -> None:
 
         smiley = make_smiley_png()
         with TouchyClient(t) as c:
-            c.file_save("images/smiley.png", smiley)
+            c.file_save("F:host/images/smiley.png", smiley)
         # File landed under its original name (no .bin rewrite) and
         # contents match the source PNG exactly.
-        assert t._fs.read("images/smiley.png") == smiley
+        assert t._fs.read("F:host/images/smiley.png") == smiley
