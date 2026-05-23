@@ -41,7 +41,11 @@ jobs:
   # install step entirely.
   # ---------------------------------------------------------------------------
   install-esp-idf:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     env:
       IDF_VERSION: "v6.0.1"
     steps:
@@ -62,9 +66,13 @@ jobs:
           # has a UI to manually delete cache entries by key.
           save-always: true
 
-      - name: Install libusb
-        if: steps.cache-idf.outputs.cache-hit != 'true'
+      - name: Install libusb (Linux)
+        if: steps.cache-idf.outputs.cache-hit != 'true' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
+
+      - name: Install libusb (macOS)
+        if: steps.cache-idf.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: brew install libusb
 
       - name: Install ESP-IDF toolchain
         if: steps.cache-idf.outputs.cache-hit != 'true'
@@ -87,11 +95,12 @@ jobs:
   # ---------------------------------------------------------------------------
   build-firmware:
     needs: [setup, install-esp-idf]
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         board: [jc4827w543, waveshare_s3_lcd_7b]
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     env:
       IDF_VERSION: "v6.0.1"
       FW_VERSION: ${{ needs.setup.outputs.fw-version }}
@@ -109,8 +118,13 @@ jobs:
             ~/esp/esp-idf
           key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
 
-      - name: Install libusb
+      - name: Install libusb (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0
+
+      - name: Install libusb (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libusb
 
       - name: Configure and build firmware
         working-directory: ${{ github.workspace }}
@@ -126,11 +140,13 @@ jobs:
           just firmware-build
 
       - name: Stage firmware binary
+        if: matrix.os == 'ubuntu-latest'
         env:
           BOARD: ${{ matrix.board }}
         run: cp firmware/build/touchy_pad_v2.bin "${BOARD}.bin"
 
       - name: Upload firmware artifact
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.board }}
