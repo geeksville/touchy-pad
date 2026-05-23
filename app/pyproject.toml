@@ -2,7 +2,7 @@
 name = "touchy-pad"
 # Kept in sync with the repo-root VERSION file by `just bump-version`.
 # Do not edit manually — run `just bump-version` to release a new version.
-version = "0.1.2"
+version = "0.2.0"
 description = "Host library and CLI for the Touchy-Pad USB multitouch device."
 authors = [{ name = "Touchy-Pad contributors" }]
 license = "GPL-3.0-or-later"
