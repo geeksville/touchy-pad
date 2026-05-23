@@ -64,9 +64,9 @@ class TouchyClient:
 
     # -- typed wrappers ----------------------------------------------------
 
-    def sys_version_get(self) -> _proto.SysVersionResponse:
-        reply = _check(self._rpc(_proto.Command(sys_version_get=_proto.SysVersionGetCmd())))
-        return reply.sys_version
+    def sys_board_info_get(self) -> _proto.SysBoardInfoResponse:
+        reply = _check(self._rpc(_proto.Command(sys_board_info_get=_proto.SysBoardInfoGetCmd())))
+        return reply.sys_board_info
 
     def sys_reboot_bootloader(self) -> None:
         _check(self._rpc(_proto.Command(sys_reboot_bootloader=_proto.SysRebootBootloaderCmd())))

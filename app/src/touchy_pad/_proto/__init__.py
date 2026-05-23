@@ -22,9 +22,9 @@ from .touchy_pb2 import (  # noqa: F401  (re-exported)
     ScreenSleepTimeoutCmd,
     ScreenWakeCmd,
     StreamEventsCmd,
+    SysBoardInfoGetCmd,
+    SysBoardInfoResponse,
     SysRebootBootloaderCmd,
-    SysVersionGetCmd,
-    SysVersionResponse,
 )
 from .widgets_pb2 import (  # noqa: F401  (re-exported)
     Action,

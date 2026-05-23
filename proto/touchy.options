@@ -19,7 +19,8 @@ touchy.ScreenLoadCmd.name              max_size:64
 touchy.FileSaveCmd.data                type:FT_POINTER
 
 # Version string (semver or git short hash).
-touchy.SysVersionResponse.firmware_version_str  max_size:32
+touchy.SysBoardInfoResponse.firmware_version_str  max_size:32
+touchy.SysBoardInfoResponse.board_name            max_size:32
 
 # Event payloads — the host-assigned user_data string is typically a short
 # unique identifier; widget_value scalars need no size hint.

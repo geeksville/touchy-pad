@@ -2,7 +2,7 @@
 
 Drives the sim through :class:`TouchyClient` end-to-end:
 
-* sys_version_get returns CURRENT protocol + ``firmware_version_str == 'sim'``.
+* sys_board_info_get returns CURRENT protocol + ``firmware_version_str == 'sim'``.
 * file_save persists into the sandboxed pseudo-fs.
 * screen_load decodes the uploaded screen and exposes it as the active
   screen.
@@ -22,9 +22,10 @@ from touchy_pad.sim.transport import SimDeviceTransport, make_tempdir_transport
 def test_sysversion_reports_sim() -> None:
     with make_tempdir_transport() as t:
         c = TouchyClient(t)
-        v = c.sys_version_get()
+        v = c.sys_board_info_get()
     assert v.firmware_version_str == "sim"
-    assert v.protocol_version == _proto.SysVersionResponse.ProtocolVersion.CURRENT
+    assert v.protocol_version == _proto.SysBoardInfoResponse.ProtocolVersion.CURRENT
+    assert v.board_name == "sim"
 
 
 def test_default_screen_autoloads_on_empty_fs() -> None:

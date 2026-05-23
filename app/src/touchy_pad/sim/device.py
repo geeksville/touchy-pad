@@ -39,7 +39,7 @@ _log = logging.getLogger("touchy_pad.sim")
 
 #: Wire-protocol version this sim implements. Bumped in lockstep with
 #: the firmware so existing version checks in the host pass.
-_CURRENT_PROTOCOL = _proto.SysVersionResponse.ProtocolVersion.CURRENT
+_CURRENT_PROTOCOL = _proto.SysBoardInfoResponse.ProtocolVersion.CURRENT
 
 #: Sentinel firmware version reported by the sim. Distinct from any
 #: real build number so callers can tell they're talking to a sim.
@@ -193,12 +193,13 @@ class SimDevice:
 
     # -- command handlers (one per Command.cmd oneof variant) ------------
 
-    def _cmd_sys_version_get(self, _msg: _proto.SysVersionGetCmd) -> _proto.Response:
+    def _cmd_sys_board_info_get(self, _msg: _proto.SysBoardInfoGetCmd) -> _proto.Response:
         return _result(
-            sys_version=_proto.SysVersionResponse(
+            sys_board_info=_proto.SysBoardInfoResponse(
                 protocol_version=_CURRENT_PROTOCOL,
                 firmware_version=_SIM_FW_VERSION,
                 firmware_version_str=_SIM_FW_VERSION_STR,
+                board_name="sim",
             ),
         )
 

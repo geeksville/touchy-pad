@@ -61,13 +61,14 @@ def _make_server(*, protocol_version: int = MINIMUM_FIRMWARE_VERSION):
 
     def server(cmd, _t):
         kind = cmd.WhichOneof("cmd")
-        if kind == "sys_version_get":
+        if kind == "sys_board_info_get":
             return _proto.Response(
                 code=_proto.RESULT_OK,
-                sys_version=_proto.SysVersionResponse(
+                sys_board_info=_proto.SysBoardInfoResponse(
                     protocol_version=protocol_version,
                     firmware_version=1,
                     firmware_version_str="test",
+                    board_name="test_board",
                 ),
             )
         if kind == "file_save":

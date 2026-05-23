@@ -85,8 +85,8 @@ message EventConsumeCmd {
 message SysRebootBootloaderCmd {
 }
 
-// Query device protocol/firmware version. Response is SysVersionResponse.
-message SysVersionGetCmd {
+// Query device protocol/firmware version. Response is SysBoardInfoResponse.
+message SysBoardInfoGetCmd {
 }
 
 // Top-level command envelope. Exactly one `cmd` is set per message.
@@ -99,7 +99,7 @@ message Command {
         ScreenSleepTimeoutCmd  screen_sleep_timeout  = 5;
         EventConsumeCmd        event_consume         = 6;
         SysRebootBootloaderCmd sys_reboot_bootloader = 9;
-        SysVersionGetCmd       sys_version_get       = 10;
+        SysBoardInfoGetCmd     sys_board_info_get    = 10;
     }
 }
 
@@ -107,13 +107,13 @@ message Command {
 // Responses (device -> host, on the response IN endpoint)
 // ---------------------------------------------------------------------------
 
-// Reply to SysVersionGetCmd.
-message SysVersionResponse {
+// Reply to SysBoardInfoGetCmd.
+message SysBoardInfoResponse {
     // Wire protocol version. Increment on any wire-incompatible change.
     enum ProtocolVersion {
         option allow_alias = true;
         UNSPECIFIED = 0;
-        V1 = 1;  // stage 13 baseline: SysVersionGet + file/screen ops
+        V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
                  //           LvEvent.host_code added; events via host polling
         CURRENT = 2;  // alias: always equals the latest defined version
@@ -121,6 +121,7 @@ message SysVersionResponse {
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
     string firmware_version_str = 3; // human-readable "1.2.3" or git hash
+    string board_name = 4;           // CMake BOARD name, e.g. "jc4827w543"; "sim" in simulator
 }
 
 // Reply to EventConsumeCmd. Carries the popped event, if any. When the
@@ -136,7 +137,7 @@ message EventConsumeResponse {
 message Response {
     ResultCode code = 1;
     oneof payload {
-        SysVersionResponse   sys_version    = 2;
+        SysBoardInfoResponse sys_board_info = 2;
         EventConsumeResponse event_consume  = 3;
     }
 }
@@ -222,7 +223,7 @@ service Touchy {
 
     // ----- System -----------------------------------------------------
     rpc SysRebootBootloader(SysRebootBootloaderCmd) returns (Response);
-    rpc SysVersionGet(SysVersionGetCmd) returns (Response);
+    rpc SysBoardInfoGet(SysBoardInfoGetCmd) returns (Response);
 
     // ----- Async events -----------------------------------------------
     // Single-shot drain: pops one queued event, returning RESULT_NOT_FOUND

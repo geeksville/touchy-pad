@@ -38,9 +38,9 @@ HostEventCallback = Callable[["_proto.LvEvent"], None]
 #: Minimum USB-protocol version this library understands.
 #:
 #: The firmware reports its current protocol version via
-#: ``sys_version_get()``; :func:`touchy_open` raises
+#: ``sys_board_info_get()``; :func:`touchy_open` raises
 #: :class:`IncompatibleFirmwareError` if the device is older than this.
-MINIMUM_FIRMWARE_VERSION: int = int(_proto.SysVersionResponse.ProtocolVersion.CURRENT)
+MINIMUM_FIRMWARE_VERSION: int = int(_proto.SysBoardInfoResponse.ProtocolVersion.CURRENT)
 
 
 class IncompatibleFirmwareError(RuntimeError):
@@ -307,7 +307,7 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
 
     client = TouchyClient(transport)
     try:
-        ver = client.sys_version_get()
+        ver = client.sys_board_info_get()
     except Exception:
         client.close()
         raise

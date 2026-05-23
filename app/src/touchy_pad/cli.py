@@ -226,7 +226,7 @@ def _open_pad():
 def version() -> None:
     """Print device protocol & firmware version."""
     with _client() as c:
-        v = c.sys_version_get()
+        v = c.sys_board_info_get()
         click.echo(f"protocol: {v.protocol_version}")
         click.echo(f"firmware: {v.firmware_version} ({v.firmware_version_str})")
 

@@ -321,7 +321,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
 
     def get_firmware_version(self) -> str:  # noqa: D401 - base-class API
         try:
-            v = self._rpc(self._client.sys_version_get)
+            v = self._rpc(self._client.sys_board_info_get)
         except Exception:  # pragma: no cover
             return "unknown"
         return getattr(v, "firmware_version_str", "") or str(getattr(v, "firmware_version", 0))

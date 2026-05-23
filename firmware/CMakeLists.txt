@@ -48,6 +48,7 @@ set(SDKCONFIG "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig.${BOARD}")
 
 # Tell main/ what we picked, so it can `#ifdef` if it ever needs to.
 add_compile_definitions(TOUCHY_BOARD_${BOARD}=1)
+add_compile_definitions(TOUCHY_BOARD_NAME="${BOARD}")
 
 # ---- Firmware versioning (reads VERSION + git state, emits build/version.h) --
 include(version.cmake)

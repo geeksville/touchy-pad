@@ -44,19 +44,20 @@ def make_client():
 
 def test_sys_version_get(make_client):
     def server(cmd, _t):
-        assert cmd.WhichOneof("cmd") == "sys_version_get"
+        assert cmd.WhichOneof("cmd") == "sys_board_info_get"
         return _proto.Response(
             code=_proto.RESULT_OK,
-            sys_version=_proto.SysVersionResponse(
-                protocol_version=_proto.SysVersionResponse.CURRENT,
+            sys_board_info=_proto.SysBoardInfoResponse(
+                protocol_version=_proto.SysBoardInfoResponse.CURRENT,
                 firmware_version=42,
                 firmware_version_str="0.0.42-test",
+                board_name="test_board",
             ),
         )
 
     with make_client(server) as c:
-        v = c.sys_version_get()
-        assert v.protocol_version == _proto.SysVersionResponse.CURRENT
+        v = c.sys_board_info_get()
+        assert v.protocol_version == _proto.SysBoardInfoResponse.CURRENT
         assert v.firmware_version == 42
         assert v.firmware_version_str == "0.0.42-test"
 

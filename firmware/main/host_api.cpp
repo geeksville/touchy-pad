@@ -32,7 +32,7 @@ static const char *TAG = "host_api";
 // v2: stage 16 — Action repeated + ActionHost/ActionMacro variants,
 //     LvEvent.host_code field added; events delivered via host polling
 //     of EventConsumeCmd (no dedicated interrupt-IN mailbox endpoint).
-#define TOUCHY_PROTOCOL_VERSION  touchy_SysVersionResponse_ProtocolVersion_CURRENT
+#define TOUCHY_PROTOCOL_VERSION  touchy_SysBoardInfoResponse_ProtocolVersion_CURRENT
 
 // Largest serialised Command we accept. The decoded `touchy_Command`
 // no longer reserves the FileSaveCmd payload statically (Stage 17 moved
@@ -138,17 +138,19 @@ static bool vendor_write_frame(const uint8_t *payload, size_t len)
 // Command handlers
 // ---------------------------------------------------------------------------
 
-static void fill_sys_version(touchy_Response *resp)
+static void fill_board_info(touchy_Response *resp)
 {
     resp->code = touchy_ResultCode_RESULT_OK;
-    resp->which_payload = touchy_Response_sys_version_tag;
-    touchy_SysVersionResponse *v = &resp->payload.sys_version;
+    resp->which_payload = touchy_Response_sys_board_info_tag;
+    touchy_SysBoardInfoResponse *v = &resp->payload.sys_board_info;
     v->protocol_version = TOUCHY_PROTOCOL_VERSION;
 
     v->firmware_version = FIRMWARE_BUILD_NUMBER;
     strncpy(v->firmware_version_str, FIRMWARE_VERSION_STR,
             sizeof(v->firmware_version_str) - 1);
     v->firmware_version_str[sizeof(v->firmware_version_str) - 1] = '\0';
+    strncpy(v->board_name, TOUCHY_BOARD_NAME, sizeof(v->board_name) - 1);
+    v->board_name[sizeof(v->board_name) - 1] = '\0';
 }
 
 static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
@@ -159,8 +161,8 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
     resp->which_payload = 0;
 
     switch (cmd->which_cmd) {
-    case touchy_Command_sys_version_get_tag:
-        fill_sys_version(resp);
+    case touchy_Command_sys_board_info_get_tag:
+        fill_board_info(resp);
         break;
 
     case touchy_Command_file_reset_tag:
