@@ -11,7 +11,9 @@ idf_component_register(
         "main.cpp"
         "usb_hid.cpp"
         "host_api.cpp"
-        "fs.cpp"
+        "fs/fs.cpp"
+        "fs/flash_fs.cpp"
+        "fs/ram_fs.cpp"
         "prefs.cpp"
         "backlight.cpp"
         "debug.cpp"
@@ -32,6 +34,7 @@ idf_component_register(
         "proto/preferences.pb.c"
     INCLUDE_DIRS
         "."
+        "fs"
         "proto"
         "${CMAKE_BINARY_DIR}"
     REQUIRES
