@@ -72,6 +72,8 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/esp"
           if [ -d "$HOME/esp/esp-idf" ] && [ ! -f "$HOME/esp/esp-idf/export.sh" ]; then
+            # Keep ~/.espressif in sync with esp-idf; stale Python/tool refs can
+            # survive there and break activation on the next restore.
             rm -rf "$HOME/esp/esp-idf" "$HOME/.espressif"
           fi
           git clone --branch "${IDF_VERSION}" --single-branch \
