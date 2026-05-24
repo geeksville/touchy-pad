@@ -147,5 +147,12 @@ void fs_abort_open_transaction()
 void fs_init()
 {
     FlashFs::instance().begin();
-    RamFs::instance().begin();   // also registers the LVGL 'R:' driver
+    RamFs::instance().begin();
+}
+
+void fs_register_lvgl_drivers()
+{
+    // lv_init() clears LVGL's FS driver linked list, so we must
+    // (re)register after display_init() has run lv_init().
+    RamFs::instance().registerLvglDriver();
 }

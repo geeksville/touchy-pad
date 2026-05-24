@@ -157,9 +157,13 @@ bool RamFs::begin()
 {
     if (_ready) return true;
     _ready = true;
-    register_lvgl_driver();
     ESP_LOGI(TAG, "RamFs ready");
     return true;
+}
+
+void RamFs::registerLvglDriver()
+{
+    register_lvgl_driver();
 }
 
 const uint8_t *RamFs::peek(const std::string &path, size_t *len_out) const

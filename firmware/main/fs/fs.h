@@ -135,7 +135,12 @@ bool     fs_close_write(uint32_t handle, bool commit);
 void     fs_abort_open_transaction();
 
 // ---------------------------------------------------------------------------
-// One-shot bring-up. Mounts both filesystems and registers the RamFs
-// LVGL driver.
+// One-shot bring-up. Mounts both filesystems (does NOT register LVGL
+// FS drivers — call fs_register_lvgl_drivers() after lv_init() for
+// that, since lv_init resets LVGL's driver list).
 // ---------------------------------------------------------------------------
 void fs_init();
+
+// Register custom LVGL FS drivers (currently just the 'R:' RamFs
+// driver). Must be called after lv_init() / display_init().
+void fs_register_lvgl_drivers();

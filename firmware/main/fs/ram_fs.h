@@ -16,6 +16,11 @@ public:
     char letter() const override { return 'R'; }
     bool begin() override;
 
+    // Register the read-only LVGL 'R:' filesystem driver. Must be
+    // called *after* lv_init() — lv_init resets LVGL's internal FS
+    // driver linked list, so registering earlier has no effect.
+    void registerLvglDriver();
+
     uint8_t *readBinary(const std::string &path, size_t *len_out) override;
     bool     remove(const std::string &path) override;
     bool     removeTree(const std::string &path) override;

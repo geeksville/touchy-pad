@@ -21,9 +21,11 @@ from ..api import screens as _s
 SCREEN_NAME = "touchydeck"
 
 #: Full drive-prefixed device path for the touchydeck screen's encoded
-#: protobuf. Stored in flash (``F:``) so the StreamController-emulation
-#: grid survives a device reboot.
-SCREEN_PATH = f"F:host/screens/{SCREEN_NAME}.pb"
+#: protobuf. Stored in PSRAM (``R:``) since the StreamController-style
+#: grid is rewritten by the host on every connect anyway — putting it
+#: in flash would just wear the flash for no benefit, and RAM rewrites
+#: are much faster.
+SCREEN_PATH = f"R:host/screens/{SCREEN_NAME}.pb"
 
 #: Widget-id prefix for the per-key image buttons.
 ID_PREFIX = "sdk_key_"

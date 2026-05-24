@@ -63,6 +63,11 @@ extern "C" void app_main(void)
     lv_display_t *disp = display_init();
     esp_lcd_touch_handle_t tp = touch_init(disp);
 
+    // display_init() calls lv_init() which clears LVGL's FS driver
+    // linked list. (Re)register our 'R:' driver now so host-uploaded
+    // images in PSRAM are reachable via lv_image_set_src("R:...").
+    fs_register_lvgl_drivers();
+
     // Register a lightweight LVGL indev callback so any touch event resets
     // the backlight sleep timer and turns the backlight back on if it was off.
     lv_indev_t *indev = touch_get_indev();
