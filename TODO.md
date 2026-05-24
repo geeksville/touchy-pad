@@ -16,7 +16,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 * !Make platformio shell
 * !Make python helper app (share code with my streamdeck project)
 * !make a CLAUDE.md file
-* test reverse engineer tool with latest sim firmware, make sure it is storing images in ram
+* !test reverse engineer tool with latest sim firmware, make sure it is storing images in ram
 * Add credits for BSD licenced https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp
 * add AI statement
 * Make README not suck
@@ -24,6 +24,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 * !build in esp installer based on automated hw model name
 * Make nice easy install instructions
 * Make streamcontroller support proof of concept
+  * test current POC
   * make a little video
   * explain plans wrt 3d printing and knobs on the screen
   * request feedback/propose distribution
@@ -36,6 +37,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 
 Main new features: Works with StreamController app to provide arbitrary user buttons
 
+* Add support for F:widgets/foo.pb widget files.  This would allow TouchyDeck to own a R:widgets/deck.pb.  Which could be nested into a F: screen.  So that dynamic StreamDeck emulated stuff could be updated independently of the configurable screens the user has selected.  Probably should add a way for the host to see dimensions of arbitary widgets in screens/walk the screen list? 
 * Stylus support for 'paintbrush mode'
 * Implement multitouch hid to support multitouch native apps
 * Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
@@ -47,6 +49,6 @@ Main new features: Works with StreamController app to provide arbitrary user but
 
 Main new features? Much easier scripting than through streamcontroller - allow arbitrary python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
-* tactile precut sticker for screen overlay?
+* tactile precut sticker/3d printable case for screen overlay?
 * figure out best way to mount haptics for best effect
 * Increase CPU, FLASH and RAM speeds to the max.  currently the firmware picks slow/safe defaults
