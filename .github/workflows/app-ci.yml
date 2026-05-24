@@ -48,7 +48,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       IDF_VERSION: "v6.0.1"
-      IDF_CACHE_REV: "2"
+      IDF_PYTHON_CACHE_TAG: "py3.12"
+      IDF_CACHE_REV: "3"
     steps:
       - name: Cache ESP-IDF toolchain
         id: cache-idf
@@ -57,7 +58,7 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-${{ env.IDF_CACHE_REV }}
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-${{ env.IDF_PYTHON_CACHE_TAG }}-${{ env.IDF_CACHE_REV }}
 
       - name: Install libusb (Linux)
         if: steps.cache-idf.outputs.cache-hit != 'true' && runner.os == 'Linux'
@@ -99,7 +100,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       IDF_VERSION: "v6.0.1"
-      IDF_CACHE_REV: "2"
+      IDF_PYTHON_CACHE_TAG: "py3.12"
+      IDF_CACHE_REV: "3"
       FW_VERSION: ${{ needs.setup.outputs.fw-version }}
     steps:
       - uses: actions/checkout@v6
@@ -113,7 +115,7 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-${{ env.IDF_CACHE_REV }}
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-${{ env.IDF_PYTHON_CACHE_TAG }}-${{ env.IDF_CACHE_REV }}
 
       - name: Install libusb (Linux)
         if: runner.os == 'Linux'
