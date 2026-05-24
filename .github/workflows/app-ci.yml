@@ -57,14 +57,6 @@ jobs:
             ~/.espressif
             ~/esp/esp-idf
           key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
-          # This item is very expensive to fetch, so try to always keep it cached
-          # One caveat worth knowing: save-always: true means if the ESP-IDF install step itself 
-          # fails partway through (corrupted clone, network blip), the broken partial installation 
-          # gets cached. The existing validity check ([ -f export.sh ] || exit 1) guards against 
-          # this — a broken install fails fast before the post-job save runs, so the bad state 
-          # never makes it into cache. If you ever get a mysteriously broken cache, actions/cache 
-          # has a UI to manually delete cache entries by key.
-          save-always: true
 
       - name: Install libusb (Linux)
         if: steps.cache-idf.outputs.cache-hit != 'true' && runner.os == 'Linux'
@@ -87,6 +79,9 @@ jobs:
           ./install.sh esp32s3
           [ -f "$HOME/esp/esp-idf/export.sh" ] || \
             { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
+          source "$HOME/esp/esp-idf/export.sh"
+          command -v idf.py >/dev/null 2>&1 || \
+            { echo "error: ESP-IDF installation incomplete - idf.py unavailable after export.sh" >&2; exit 1; }
 
   # ---------------------------------------------------------------------------
   # build-firmware: matrix over all supported boards.  Runs in parallel once
@@ -133,8 +128,12 @@ jobs:
         run: |
           SYS_PYTHON="$(command -v python3)"
           export SYS_PYTHON
-          just build-proto-c
+          [ -f "$HOME/esp/esp-idf/export.sh" ] || \
+            { echo "error: ESP-IDF cache invalid - export.sh not found at $HOME/esp/esp-idf/export.sh" >&2; exit 1; }
           source "$HOME/esp/esp-idf/export.sh"
+          command -v idf.py >/dev/null 2>&1 || \
+            { echo "error: ESP-IDF cache invalid - idf.py unavailable after sourcing export.sh" >&2; exit 1; }
+          just build-proto-c
           idf.py -C firmware set-target esp32s3
           idf.py -C firmware -DBOARD="${BOARD}" reconfigure
           just firmware-build
