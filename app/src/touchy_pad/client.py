@@ -109,6 +109,7 @@ class TouchyClient:
         or ``"F:host"`` to wipe the whole host-uploaded area on flash.
         Passing ``"R:host"`` wipes the PSRAM filesystem instead.
         """
+        logger.debug("file_delete: %s", path)
         _check(self._rpc(_proto.Command(file_delete=_proto.FileDeleteCmd(path=path))))
 
     def file_open_write(self, path: str) -> int:
@@ -160,11 +161,20 @@ class TouchyClient:
         from .api.lvgl_image import looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin
 
         if looks_like_supported_image(data) and self._t.needs_image_conversion:
+            original_len = len(data)
             data = to_lvgl_bin(data)
             # LVGL's bin decoder selects itself by extension, so the
             # on-device file has to be named *.bin even though the
             # caller likely passed e.g. "F:host/images/avatar.png".
             path = rewrite_to_bin_path(path)
+            logger.debug(
+                "file_save: %s (%d bytes source → %d bytes LVGL bin)",
+                path,
+                original_len,
+                len(data),
+            )
+        else:
+            logger.debug("file_save: %s (%d bytes)", path, len(data))
         handle = self.file_open_write(path)
         committed = False
         try:
@@ -188,6 +198,7 @@ class TouchyClient:
         to (e.g. ``"F:host/screens/home.pb"``). Passing an empty string
         loads the device's default screen.
         """
+        logger.debug("screen_load: %s", path or "(default)")
         _check(self._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(path=path))))
 
     def event_consume(self) -> _proto.LvEvent | None:

@@ -22,6 +22,7 @@ inside a ``with`` block::
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -32,6 +33,8 @@ from ..client import TouchyClient
 from ..transport import PID, VID, Transport
 from . import protobuf
 from .screens import Screen as _DslScreen
+
+logger = logging.getLogger(__name__)
 
 HostEventCallback = Callable[["_proto.LvEvent"], None]
 
@@ -213,8 +216,37 @@ class Touchy:
         if not final_name:
             raise ValueError("screen_save: screen has no name and no explicit name= given")
         msg.name = final_name
+        # Count widgets in all layers (active + optional top/sys/bottom).
+        # Each layer is a Widget, and layout-kind widgets hold children
+        # in their repeated `widgets` field (relative to the oneof).
+        widget_count = self._count_widgets(msg.active)
+        if msg.HasField("top"):
+            widget_count += self._count_widgets(msg.top)
+        if msg.HasField("sys"):
+            widget_count += self._count_widgets(msg.sys)
+        if msg.HasField("bottom"):
+            widget_count += self._count_widgets(msg.bottom)
+        logger.debug(
+            "screen_save: %s (%d widgets)",
+            final_name,
+            widget_count,
+        )
         self._client.file_save(f"F:host/screens/{final_name}.pb", msg.SerializeToString())
         return final_name
+
+    @staticmethod
+    def _count_widgets(widget: _proto.Widget) -> int:
+        """Recursively count widgets in a tree."""
+        count = 1  # the widget itself
+        kind = widget.WhichOneof("kind")
+        if kind in ("layout_absolute", "layout_flex", "layout_grid"):
+            layout_msg = getattr(widget, kind)
+            # Each layout kind has a `.layout` field which is a `Layout`
+            # message containing `repeated Widget children`.
+            for child in layout_msg.layout.children:
+                count += Touchy._count_widgets(child)
+        # Non-layout widgets (button, label, etc.) are leaves.
+        return count
 
     @staticmethod
     def _coerce_screen(screen: ScreenLike) -> _proto.Screen:
