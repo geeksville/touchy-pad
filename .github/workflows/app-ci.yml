@@ -57,14 +57,6 @@ jobs:
             ~/.espressif
             ~/esp/esp-idf
           key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
-          # This item is very expensive to fetch, so try to always keep it cached
-          # One caveat worth knowing: save-always: true means if the ESP-IDF install step itself 
-          # fails partway through (corrupted clone, network blip), the broken partial installation 
-          # gets cached. The existing validity check ([ -f export.sh ] || exit 1) guards against 
-          # this — a broken install fails fast before the post-job save runs, so the bad state 
-          # never makes it into cache. If you ever get a mysteriously broken cache, actions/cache 
-          # has a UI to manually delete cache entries by key.
-          save-always: true
 
       - name: Install libusb (Linux)
         if: steps.cache-idf.outputs.cache-hit != 'true' && runner.os == 'Linux'
@@ -77,16 +69,24 @@ jobs:
       - name: Install ESP-IDF toolchain
         if: steps.cache-idf.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           mkdir -p "$HOME/esp"
           if [ -d "$HOME/esp/esp-idf" ] && [ ! -f "$HOME/esp/esp-idf/export.sh" ]; then
-            rm -rf "$HOME/esp/esp-idf"
+            rm -rf "$HOME/esp/esp-idf" "$HOME/.espressif"
           fi
           git clone --branch "${IDF_VERSION}" --single-branch \
             https://github.com/espressif/esp-idf.git "$HOME/esp/esp-idf"
           cd "$HOME/esp/esp-idf"
           ./install.sh esp32s3
+
+      - name: Validate ESP-IDF toolchain
+        run: |
+          set -euo pipefail
           [ -f "$HOME/esp/esp-idf/export.sh" ] || \
             { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
+          source "$HOME/esp/esp-idf/export.sh"
+          command -v idf.py >/dev/null 2>&1 || \
+            { echo "error: ESP-IDF installation incomplete - idf.py unavailable after export" >&2; exit 1; }
 
   # ---------------------------------------------------------------------------
   # build-firmware: matrix over all supported boards.  Runs in parallel once
@@ -117,6 +117,15 @@ jobs:
             ~/.espressif
             ~/esp/esp-idf
           key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
+
+      - name: Validate restored ESP-IDF toolchain
+        run: |
+          set -euo pipefail
+          [ -f "$HOME/esp/esp-idf/export.sh" ] || \
+            { echo "error: restored ESP-IDF cache is missing export.sh" >&2; exit 1; }
+          source "$HOME/esp/esp-idf/export.sh"
+          command -v idf.py >/dev/null 2>&1 || \
+            { echo "error: restored ESP-IDF cache is invalid - idf.py unavailable after export" >&2; exit 1; }
 
       - name: Install libusb (Linux)
         if: runner.os == 'Linux'
