@@ -48,6 +48,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       IDF_VERSION: "v6.0.1"
+      IDF_CACHE_REV: "2"
     steps:
       - name: Cache ESP-IDF toolchain
         id: cache-idf
@@ -56,7 +57,7 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-${{ env.IDF_CACHE_REV }}
 
       - name: Install libusb (Linux)
         if: steps.cache-idf.outputs.cache-hit != 'true' && runner.os == 'Linux'
@@ -80,8 +81,8 @@ jobs:
           [ -f "$HOME/esp/esp-idf/export.sh" ] || \
             { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
           source "$HOME/esp/esp-idf/export.sh"
-          command -v idf.py >/dev/null 2>&1 || \
-            { echo "error: ESP-IDF installation incomplete - idf.py unavailable after export.sh" >&2; exit 1; }
+          idf.py --version >/dev/null 2>&1 || \
+            { echo "error: ESP-IDF installation incomplete - idf.py failed after export.sh" >&2; exit 1; }
 
   # ---------------------------------------------------------------------------
   # build-firmware: matrix over all supported boards.  Runs in parallel once
@@ -98,6 +99,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       IDF_VERSION: "v6.0.1"
+      IDF_CACHE_REV: "2"
       FW_VERSION: ${{ needs.setup.outputs.fw-version }}
     steps:
       - uses: actions/checkout@v6
@@ -111,7 +113,7 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-${{ env.IDF_CACHE_REV }}
 
       - name: Install libusb (Linux)
         if: runner.os == 'Linux'
@@ -131,8 +133,8 @@ jobs:
           [ -f "$HOME/esp/esp-idf/export.sh" ] || \
             { echo "error: ESP-IDF cache invalid - export.sh not found at $HOME/esp/esp-idf/export.sh" >&2; exit 1; }
           source "$HOME/esp/esp-idf/export.sh"
-          command -v idf.py >/dev/null 2>&1 || \
-            { echo "error: ESP-IDF cache invalid - idf.py unavailable after sourcing export.sh" >&2; exit 1; }
+          idf.py --version >/dev/null 2>&1 || \
+            { echo "error: ESP-IDF cache invalid - idf.py failed after sourcing export.sh" >&2; exit 1; }
           just build-proto-c
           idf.py -C firmware set-target esp32s3
           idf.py -C firmware -DBOARD="${BOARD}" reconfigure
