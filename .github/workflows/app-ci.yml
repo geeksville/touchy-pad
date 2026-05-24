@@ -81,8 +81,8 @@ jobs:
           [ -f "$HOME/esp/esp-idf/export.sh" ] || \
             { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
           source "$HOME/esp/esp-idf/export.sh"
-          idf.py --version >/dev/null 2>&1 || \
-            { echo "error: ESP-IDF installation incomplete - idf.py failed after export.sh" >&2; exit 1; }
+          idf.py --list-targets >/dev/null 2>&1 || \
+            { echo "error: ESP-IDF installation incomplete - idf.py environment unusable after export.sh" >&2; exit 1; }
 
   # ---------------------------------------------------------------------------
   # build-firmware: matrix over all supported boards.  Runs in parallel once
@@ -133,8 +133,14 @@ jobs:
           [ -f "$HOME/esp/esp-idf/export.sh" ] || \
             { echo "error: ESP-IDF cache invalid - export.sh not found at $HOME/esp/esp-idf/export.sh" >&2; exit 1; }
           source "$HOME/esp/esp-idf/export.sh"
-          idf.py --version >/dev/null 2>&1 || \
-            { echo "error: ESP-IDF cache invalid - idf.py failed after sourcing export.sh" >&2; exit 1; }
+          if ! idf.py --list-targets >/dev/null 2>&1; then
+            echo "warning: ESP-IDF cache incomplete - reinstalling esp32s3 toolchain"
+            cd "$HOME/esp/esp-idf"
+            ./install.sh esp32s3
+            source "$HOME/esp/esp-idf/export.sh"
+          fi
+          idf.py --list-targets >/dev/null 2>&1 || \
+            { echo "error: ESP-IDF cache invalid - idf.py environment unusable after restore/reinstall" >&2; exit 1; }
           just build-proto-c
           idf.py -C firmware set-target esp32s3
           idf.py -C firmware -DBOARD="${BOARD}" reconfigure
