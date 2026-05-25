@@ -25,13 +25,14 @@ init:
     # active virtualenv (which might be the ESP-IDF venv from our .zshrc).
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry install --no-interaction --extras sim
+    _repo="$(pwd)"
+    cd app && poetry install --no-interaction --extras sim
     # streamdeck-probe: Poetry 2.x ignores [tool.poetry.dependencies] path deps
     # when a [project] table is present, so force-install the editable touchy-pad
     # link via pip after the normal poetry install.
-    cd {{justfile_directory()}}/tools/streamdeck-probe && poetry install --no-interaction
-    poetry run pip install -q -e {{justfile_directory()}}/app[sim]
-    cd {{justfile_directory()}}/app && poetry run pre-commit install
+    cd "$_repo/tools/streamdeck-probe" && poetry install --no-interaction
+    poetry run pip install -q -e "$_repo/app[sim]"
+    cd "$_repo/app" && poetry run pre-commit install
     poetry run pre-commit install --hook-type pre-push
     
     # Install shell completions for just command
@@ -108,54 +109,60 @@ build-proto: build-proto-py build-proto-c build-default-screen
 build-proto-py:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Use relative paths — Just always sets cwd to the justfile dir (repo root),
+    # so this is safe and avoids Windows backslash-expansion in bash scripts.
+    _py="${SYS_PYTHON:-/usr/bin/python3}"
+    _py_out="app/src/touchy_pad/_proto"
     touchy_stale=0
     widgets_stale=0
     prefs_stale=0
-    [ ! -f "{{py_touchy_out}}"  ] && touchy_stale=1
-    [ ! -f "{{py_widgets_out}}" ] && widgets_stale=1
-    [ ! -f "{{py_prefs_out}}"   ] && prefs_stale=1
-    [ "{{touchy_proto}}"  -nt "{{py_touchy_out}}"  ] && touchy_stale=1  || true
-    [ "{{widgets_proto}}" -nt "{{py_widgets_out}}" ] && widgets_stale=1 || true
-    [ "{{prefs_proto}}"   -nt "{{py_prefs_out}}"   ] && prefs_stale=1   || true
+    [ ! -f "${_py_out}/touchy_pb2.py"      ] && touchy_stale=1
+    [ ! -f "${_py_out}/widgets_pb2.py"     ] && widgets_stale=1
+    [ ! -f "${_py_out}/preferences_pb2.py" ] && prefs_stale=1
+    [ "proto/touchy.proto"      -nt "${_py_out}/touchy_pb2.py"      ] && touchy_stale=1  || true
+    [ "proto/widgets.proto"     -nt "${_py_out}/widgets_pb2.py"     ] && widgets_stale=1 || true
+    [ "proto/preferences.proto" -nt "${_py_out}/preferences_pb2.py" ] && prefs_stale=1   || true
     if [ $touchy_stale -eq 0 ] && [ $widgets_stale -eq 0 ] && [ $prefs_stale -eq 0 ]; then
         echo "build-proto-py: up to date"
         exit 0
     fi
-    mkdir -p {{py_proto_dst}}
-    {{sys_python}} -m grpc_tools.protoc \
-        -I{{justfile_directory()}}/proto \
-        --python_out={{py_proto_dst}} \
-        {{touchy_proto}} {{widgets_proto}} {{prefs_proto}}
-    echo "wrote {{py_touchy_out}} {{py_widgets_out}} {{py_prefs_out}}"
+    mkdir -p "${_py_out}"
+    "${_py}" -m grpc_tools.protoc \
+        -Iproto \
+        --python_out="${_py_out}" \
+        proto/touchy.proto proto/widgets.proto proto/preferences.proto
+    echo "wrote ${_py_out}/touchy_pb2.py ${_py_out}/widgets_pb2.py ${_py_out}/preferences_pb2.py"
 
 # Regenerate the embedded C bindings via nanopb iff any proto or options
 # file is newer than the generated .pb.c files.
 build-proto-c:
     #!/usr/bin/env bash
     set -euo pipefail
+    _py="${SYS_PYTHON:-/usr/bin/python3}"
+    _c_out="firmware/main/proto"
     touchy_stale=0
     widgets_stale=0
     prefs_stale=0
-    [ ! -f "{{c_touchy_out}}"  ] && touchy_stale=1
-    [ ! -f "{{c_widgets_out}}" ] && widgets_stale=1
-    [ ! -f "{{c_prefs_out}}"   ] && prefs_stale=1
-    [ "{{touchy_proto}}"  -nt "{{c_touchy_out}}"  ] && touchy_stale=1  || true
-    [ "{{touchy_opts}}"   -nt "{{c_touchy_out}}"  ] && touchy_stale=1  || true
-    [ "{{widgets_proto}}" -nt "{{c_widgets_out}}" ] && widgets_stale=1 || true
-    [ "{{widgets_opts}}"  -nt "{{c_widgets_out}}" ] && widgets_stale=1 || true
-    [ "{{prefs_proto}}"   -nt "{{c_prefs_out}}"   ] && prefs_stale=1   || true
-    [ "{{prefs_opts}}"    -nt "{{c_prefs_out}}"   ] && prefs_stale=1   || true
+    [ ! -f "${_c_out}/touchy.pb.c"        ] && touchy_stale=1
+    [ ! -f "${_c_out}/widgets.pb.c"       ] && widgets_stale=1
+    [ ! -f "${_c_out}/preferences.pb.c"   ] && prefs_stale=1
+    [ "proto/touchy.proto"        -nt "${_c_out}/touchy.pb.c"      ] && touchy_stale=1  || true
+    [ "proto/touchy.options"      -nt "${_c_out}/touchy.pb.c"      ] && touchy_stale=1  || true
+    [ "proto/widgets.proto"       -nt "${_c_out}/widgets.pb.c"     ] && widgets_stale=1 || true
+    [ "proto/widgets.options"     -nt "${_c_out}/widgets.pb.c"     ] && widgets_stale=1 || true
+    [ "proto/preferences.proto"   -nt "${_c_out}/preferences.pb.c" ] && prefs_stale=1   || true
+    [ "proto/preferences.options" -nt "${_c_out}/preferences.pb.c" ] && prefs_stale=1   || true
     if [ $touchy_stale -eq 0 ] && [ $widgets_stale -eq 0 ] && [ $prefs_stale -eq 0 ]; then
         echo "build-proto-c:  up to date"
         exit 0
     fi
     # nanopb's generator wants to run from a directory that contains the
     # .proto file so its --proto_path defaults line up.
-    mkdir -p {{c_proto_dst}}
-    cd {{justfile_directory()}}/proto && {{sys_python}} -m nanopb.generator.nanopb_generator \
-        --output-dir={{c_proto_dst}} \
+    mkdir -p "${_c_out}"
+    cd proto && "${_py}" -m nanopb.generator.nanopb_generator \
+        --output-dir="../${_c_out}" \
         touchy.proto widgets.proto preferences.proto
-    echo "wrote {{c_touchy_out}} {{c_widgets_out}} {{c_prefs_out}}"
+    echo "wrote ${_c_out}/touchy.pb.c ${_c_out}/widgets.pb.c ${_c_out}/preferences.pb.c"
 
 # Compile proto/default_screen.json (the firmware's built-in fallback
 # screen, shown when no host-uploaded screens are present) into a C++
@@ -166,16 +173,20 @@ default_screen_out  := justfile_directory() + "/firmware/main/default_screen_pb.
 build-default-screen: build-proto-py
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -f "{{default_screen_out}}" ] \
-        && [ "{{default_screen_out}}" -nt "{{default_screen_json}}" ] \
-        && [ "{{default_screen_out}}" -nt "proto/embed_screen_json.py" ] \
-        && [ "{{default_screen_out}}" -nt "{{py_touchy_out}}" ] \
-        && [ "{{default_screen_out}}" -nt "{{py_widgets_out}}" ]; then
+    _py="${SYS_PYTHON:-/usr/bin/python3}"
+    _out="firmware/main/default_screen_pb.h"
+    _json="proto/default_screen.json"
+    _py_out="app/src/touchy_pad/_proto"
+    if [ -f "${_out}" ] \
+        && [ "${_out}" -nt "${_json}" ] \
+        && [ "${_out}" -nt "proto/embed_screen_json.py" ] \
+        && [ "${_out}" -nt "${_py_out}/touchy_pb2.py" ] \
+        && [ "${_out}" -nt "${_py_out}/widgets_pb2.py" ]; then
         echo "build-default-screen: up to date"
         exit 0
     fi
-    {{sys_python}} {{justfile_directory()}}/proto/embed_screen_json.py \
-        {{default_screen_json}} {{default_screen_out}} default_screen_pb
+    "${_py}" proto/embed_screen_json.py \
+        "${_json}" "${_out}" default_screen_pb
 
 # ---------------------------------------------------------------------------
 # Host app (app/) — Poetry-driven, but the proto module is a build-time
@@ -191,7 +202,7 @@ app-install:
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry install --no-interaction
+    cd app && poetry install --no-interaction
 
 # Run the test suite. Ensures the generated proto module is present first.
 app-test: build-proto-py
@@ -201,7 +212,7 @@ app-test: build-proto-py
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry run pytest
+    cd app && poetry run pytest
 
 # Run the linter.
 app-lint: build-proto-py
@@ -211,7 +222,7 @@ app-lint: build-proto-py
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry lock && poetry run ruff format src tests
+    cd app && poetry lock && poetry run ruff format src tests
 
 # Build the public-API HTML docs into docs/python-api/ (commit-friendly).
 # Requires the optional `docs` Poetry group: `poetry install --with docs`.
@@ -222,7 +233,7 @@ build-docs: build-proto-py
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry run mkdocs build --site-dir {{justfile_directory()}}/docs/python-api
+    cd app && poetry run mkdocs build --site-dir ../docs/python-api
 
 # Build wheel + sdist into app/dist/. Regenerates proto first so the
 # wheel always contains an up-to-date touchy_pb2.py.
@@ -233,7 +244,7 @@ app-build: build-proto-py
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry build
+    cd app && poetry build
 
 # Run the touchy CLI inside the Poetry venv. Forward extra args:
 #   just app-run -- version
@@ -244,7 +255,7 @@ app-run *ARGS: build-proto-py
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry run touchy {{ARGS}}
+    cd app && poetry run touchy {{ARGS}}
 
 # ---------------------------------------------------------------------------
 # Versioning
@@ -385,7 +396,7 @@ test-interactive:
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd {{justfile_directory()}}/app && poetry run touchy screens demo --listen
+    cd app && poetry run touchy screens demo --listen
 
 # Lint + test everything (currently just the host app).
 test: app-lint app-test
@@ -403,8 +414,8 @@ streamdeck-probe *ARGS:
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     # Ensure the editable touchy-pad link is present (Poetry 2.x drops path
     # deps from [tool.poetry.dependencies] when a [project] table exists).
-    cd {{justfile_directory()}}/tools/streamdeck-probe
-    poetry run pip install -q -e {{justfile_directory()}}/app[sim]
+    cd tools/streamdeck-probe
+    poetry run pip install -q -e ../../app[sim]
     poetry run streamdeck-probe {{ARGS}}
 
 # ---------------------------------------------------------------------------
