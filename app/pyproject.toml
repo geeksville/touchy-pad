@@ -39,6 +39,9 @@ dependencies = [
     "esptool>=4.8,<6",
     "requests>=2.32,<3",
     "rich>=13.7,<15",
+    # StreamController/StreamDeck compatibility shim. Our 'TouchyDeck' patches this library
+    # to add our devices as simulated StreamDecks
+    "streamcontroller-streamdeck>=0.1.5,<1",
 ]
 
 [project.optional-dependencies]
@@ -53,13 +56,7 @@ sim = [
     "platformdirs>=4",
 ]
 
-# Optional StreamController/StreamDeck compatibility shim. Install with:
-#   pip install 'touchy-pad[streamdeck]'
-# Pulls in the upstream Python library that the `touchy_pad.touchydeck`
-# package subclasses; without it `TouchyDeck` raises at construction time.
-streamdeck = [
-    "streamcontroller-streamdeck>=0.1.5,<1",
-]
+
 
 [project.urls]
 Homepage = "https://github.com/geeksville/touchy-pad"

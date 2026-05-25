@@ -19,7 +19,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 * !test reverse engineer tool with latest sim firmware, make sure it is storing images in ram
 * Add credits for BSD licenced https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp
 * add AI statement
-* Make README not suck
+* Make README not suck, mention goals, simulator, api, TouchyDeck, next steps
 * Make a nice demo video
 * !build in esp installer based on automated hw model name
 * Make nice easy install instructions

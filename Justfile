@@ -308,6 +308,49 @@ test-interactive:
 # Lint + test everything (currently just the host app).
 test: app-lint app-test
 
+# ---------------------------------------------------------------------------
+# streamdeck-probe
+# ---------------------------------------------------------------------------
+
+# Run streamdeck-probe via its Poetry venv. Extra args are forwarded:
+#   just streamdeck-probe -- --sim --sim-headless
+streamdeck-probe *ARGS:
+    cd tools/streamdeck-probe && poetry run streamdeck-probe {{ARGS}}
+
+# ---------------------------------------------------------------------------
+# StreamController
+# ---------------------------------------------------------------------------
+
+sc_dir  := justfile_directory() + "/tools/StreamController"
+sc_venv := sc_dir + "/.venv"
+sc_pip  := sc_venv + "/bin/pip"
+sc_py   := sc_venv + "/bin/python3"
+
+# Create the StreamController venv and install requirements if needed,
+# then launch main.py.  The esp32ulp cross-linker is stripped from PATH
+# so meson can detect the native host linker when building dbus-python.
+streamcontroller-run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Strip ALL ESP-IDF cross-toolchains from PATH so the native ld is found.
+    CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | tr '\n' ':')
+    CLEAN_PATH="${CLEAN_PATH%:}"
+    if [ ! -f "{{sc_pip}}" ]; then
+        echo "Creating StreamController venv…"
+        PATH="$CLEAN_PATH" python3 -m venv {{sc_venv}}
+    fi
+    stamp="{{sc_venv}}/.requirements_installed"
+    if [ ! -f "$stamp" ] || [ "{{sc_dir}}/requirements.txt" -nt "$stamp" ]; then
+        echo "Installing StreamController requirements…"
+        PATH="$CLEAN_PATH" {{sc_pip}} install --upgrade pip
+        PATH="$CLEAN_PATH" {{sc_pip}} install -r {{sc_dir}}/requirements.txt
+        touch "$stamp"
+    fi
+    # Always (re-)install the local app/ in editable mode so the live source
+    # tree is used instead of whatever PyPI version requirements.txt pulled in.
+    PATH="$CLEAN_PATH" {{sc_pip}} install -q -e {{justfile_directory()}}/app
+    cd {{sc_dir}} && PATH="$CLEAN_PATH" {{sc_py}} main.py
+
 # Remove generated artifacts. The proto outputs are rebuilt on the next
 # `just build-proto*` invocation.
 clean:

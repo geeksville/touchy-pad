@@ -2173,10 +2173,9 @@ files = [
 name = "streamcontroller-streamdeck"
 version = "0.1.5"
 description = "Library to control Elgato StreamDeck devices."
-optional = true
+optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"streamdeck\""
 files = [
     {file = "streamcontroller_streamdeck-0.1.5-py3-none-any.whl", hash = "sha256:21a2bc4d2cc0c2b0216c080663fe507ef2274f54f9c9bbf9ac0b48729fb5b210"},
     {file = "streamcontroller_streamdeck-0.1.5.tar.gz", hash = "sha256:2520c283d3cb0eac4cd4a7680849d8cc98a9ef5adeeab752fe62e7e9fb069fd1"},
@@ -2319,9 +2318,8 @@ watchmedo = ["PyYAML (>=3.10)"]
 
 [extras]
 sim = ["PySide6", "platformdirs"]
-streamdeck = ["streamcontroller-streamdeck"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "f14e512860bb1c0905d4ebbf1f80e6a6f7da9fa35d81c0e8f63fe456b21268d1"
+content-hash = "ba6a25b832f8c2c4485c47107daa6b0baa057dd112ac90cbc88564cfa0db7fb7"
