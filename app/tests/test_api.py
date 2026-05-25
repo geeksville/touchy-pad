@@ -176,21 +176,21 @@ def test_screen_save_accepts_host_dsl(open_pad):
 
 def test_screen_save_accepts_protobuf_message(open_pad):
     pad, server = open_pad()
-    msg = protobuf.Screen(name="raw", version=protobuf.Screen.Version.CURRENT)
+    msg = protobuf.Screen(path="F:host/screens/raw.pb", version=protobuf.Screen.Version.CURRENT)
     pad.screen_save(msg)
     assert "F:host/screens/raw.pb" in server.saved
 
 
 def test_screen_save_accepts_dict(open_pad):
     pad, server = open_pad()
-    pad.screen_save({"name": "dictish", "version": "CURRENT"})
+    pad.screen_save({"path": "F:host/screens/dictish.pb", "version": "CURRENT"})
     assert "F:host/screens/dictish.pb" in server.saved
 
 
 def test_screen_save_accepts_json_path(open_pad, tmp_path: Path):
     pad, server = open_pad()
     p = tmp_path / "pathish.json"
-    p.write_text(json.dumps({"name": "pathish", "version": "CURRENT"}))
+    p.write_text(json.dumps({"path": "F:host/screens/pathish.pb", "version": "CURRENT"}))
     pad.screen_save(p)
     assert "F:host/screens/pathish.pb" in server.saved
 

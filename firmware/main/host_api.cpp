@@ -237,6 +237,12 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
             // Hand the freshly-committed file to the screen registry;
             // it's a no-op for anything outside `*:host/screens/*.pb`.
             screens_register_from_file(s_active_write_path.c_str());
+            // Stage 55: poke the active screen so any widget that
+            // references this path picks up the new bytes. Cheap when
+            // nothing references it (a path-comparison walk over the
+            // currently-displayed widget tree), expensive — one full
+            // screen reload — when something does.
+            screens_notify_file_changed(s_active_write_path.c_str());
         }
         s_active_write_path.clear();
         resp->code = ok ? touchy_ResultCode_RESULT_OK

@@ -59,3 +59,12 @@ void widget_build_layer(lv_obj_t *parent, const touchy_Widget &root);
 
 void widget_refs_reset_pending();
 void widget_refs_commit();
+
+// Stage 55 — number of currently-active WidgetRef holders and access
+// to their decoded paths. Used by `screens_notify_file_changed` to
+// decide whether a file overwrite affects the active screen via the
+// indirection layer. `widget_refs_active_path(i)` returns the
+// drive-prefixed path of the `i`-th active ref (the same string that
+// appeared in the parent screen's `widget_ref.path` field).
+size_t widget_refs_active_count();
+const char *widget_refs_active_path(size_t i);

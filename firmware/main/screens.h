@@ -83,6 +83,16 @@ bool screens_switch(int behavior, const char *path);
 // persist the last-viewed screen across reboots.
 const char *screens_current_path(void);
 
+// Stage 55: notify the screen system that a file at `path` has just
+// been written (or deleted). When the currently-loaded screen
+// references `path` — directly (`g_current_path == path`), via an
+// `Image` / `ImageButton` asset, or via a `WidgetRef` — the active
+// screen is reloaded so the new bytes take effect. Files that no
+// active widget references are silently ignored: this keeps host
+// uploads of unrelated assets from causing visible redraws. Safe to
+// call from any task; takes the LVGL port lock internally.
+void screens_notify_file_changed(const char *path);
+
 #ifdef __cplusplus
 }
 #endif

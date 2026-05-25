@@ -132,7 +132,7 @@ class SimWindow(QtWidgets.QMainWindow):
         if screen is None:
             self.setWindowTitle("touchy-pad sim — (no screen)")
             return
-        self.setWindowTitle(f"touchy-pad sim — {screen.name or '(unnamed)'}")
+        self.setWindowTitle(f"touchy-pad sim — {screen.path or '(unnamed)'}")
         # Bottom → active → top → sys (LVGL z-order).
         for attr in ("bottom", "active", "top", "sys"):
             if attr == "active":

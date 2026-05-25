@@ -36,6 +36,19 @@ from .screens import Screen as _DslScreen
 
 logger = logging.getLogger(__name__)
 
+
+def _stem_from_screen_path(path: str) -> str:
+    """Extract the screen stem from a drive-prefixed ``Screen.path``.
+
+    Accepts paths like ``"F:host/screens/home.pb"`` and returns ``"home"``.
+    Returns an empty string for unrecognised inputs.
+    """
+    if not path:
+        return ""
+    base = path.rsplit("/", 1)[-1]
+    return base[:-3] if base.endswith(".pb") else base
+
+
 HostEventCallback = Callable[["_proto.LvEvent"], None]
 
 #: Minimum USB-protocol version this library understands.
@@ -218,10 +231,16 @@ class Touchy:
         Returns the final name used.
         """
         msg = self._coerce_screen(screen)
-        final_name = name if name is not None else msg.name
+        # `msg.path` is a drive-prefixed LVGL path
+        # ("F:host/screens/<stem>.pb"). If the caller overrides with
+        # `name=`, rewrite the path to match.
+        if name is not None:
+            final_name = name
+            msg.path = f"F:host/screens/{name}.pb"
+        else:
+            final_name = _stem_from_screen_path(msg.path)
         if not final_name:
             raise ValueError("screen_save: screen has no name and no explicit name= given")
-        msg.name = final_name
         # Count widgets in all layers (active + optional top/sys/bottom).
         # Each layer is a Widget, and layout-kind widgets hold children
         # in their repeated `widgets` field (relative to the oneof).
@@ -237,7 +256,7 @@ class Touchy:
             final_name,
             widget_count,
         )
-        self._client.file_save(f"F:host/screens/{final_name}.pb", msg.SerializeToString())
+        self._client.file_save(msg.path, msg.SerializeToString())
         return final_name
 
     @staticmethod

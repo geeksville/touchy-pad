@@ -8,6 +8,10 @@
 #include "esp_log.h"
 #include "lvgl.h"
 
+#if CONFIG_SPIRAM
+#include "esp_cache.h"
+#endif
+
 #include <cstring>
 #include <new>
 #include <string>
@@ -301,6 +305,22 @@ bool RamFs::closeWrite(uint32_t handle, bool commit)
                 ok = false;
             } else {
                 memcpy(entry.data, g_txn.staging.data(), entry.len);
+#if CONFIG_SPIRAM
+                // Stage 55 / Stage 52 belt-and-braces: when the entry
+                // lives in PSRAM and any future consumer reads it via
+                // DMA (LCD frame-buffer, JPEG decoder, etc.) the data
+                // cache must be flushed back to physical PSRAM before
+                // that DMA peripheral can see the freshly-written
+                // bytes. Today's consumers are CPU-only (LVGL image
+                // decode via fread or mmap), which the data cache
+                // serves transparently, so this msync is technically
+                // unnecessary for them; flushing unconditionally
+                // costs a few µs and keeps the invariant simple as
+                // we add DMA-based decoders later.
+                esp_cache_msync(entry.data, entry.len,
+                                ESP_CACHE_MSYNC_FLAG_DIR_C2M |
+                                ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+#endif
             }
         }
         if (ok) {

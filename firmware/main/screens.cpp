@@ -29,7 +29,6 @@
 #include "touchy.pb.h"
 #include "widget_builders.h"
 #include "widgets.pb.h"
-
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
@@ -427,4 +426,120 @@ void screens_clear(void)
     registry().clear();
     g_default_screen_path.clear();
     ESP_LOGI(TAG, "screen registry cleared");
+}
+
+// ---------------------------------------------------------------------------
+// Stage 55 — file-change notification.
+// ---------------------------------------------------------------------------
+//
+// The host sends a stream of FileWrite/FileClose commands as it pushes
+// images, widgets, and screens. Most of those uploads are unrelated to
+// whatever the device is currently displaying — e.g. uploading the next
+// twenty TouchyDeck icons while a totally different screen is active.
+// Re-reading and re-rendering the active screen on every commit
+// produces a visible "flash" each time. Stage 55's contract:
+//
+//   * If the overwritten file IS the currently-loaded screen, or is
+//     reachable through any `WidgetRef` resolved during that screen's
+//     build, or is referenced by any `Image` / `ImageButton.released`
+//     / `ImageButton.pressed` widget in the decoded tree, reload the
+//     active screen so the new bytes take effect.
+//   * Otherwise no-op.
+//
+// We accept the cost of a full reload for the affirmative case: it is
+// simple, correct, and produces exactly one redraw. A per-image
+// invalidation pass would be a future optimisation; the cache-drop
+// + lv_obj_invalidate path needs an LVGL-object↔widget map we don't
+// currently build, and the gain over a single rebuild is marginal.
+
+namespace {
+
+// Recursively scan `w` and any nested `Layout.children` looking for a
+// widget that references `path`. Returns true on first hit.
+bool widget_tree_references_path(const touchy_Widget &w,
+                                 const std::string &path)
+{
+    switch (w.which_kind) {
+    case touchy_Widget_image_tag:
+        return path == w.kind.image.path;
+    case touchy_Widget_image_button_tag: {
+        const touchy_ImageButton &ib = w.kind.image_button;
+        if (path == ib.released.path) return true;
+        if (ib.has_pressed && path == ib.pressed.path) return true;
+        return false;
+    }
+    case touchy_Widget_widget_ref_tag:
+        // WidgetRef.path is also covered by widget_refs_active_path()
+        // below, but check here too in case a brand-new ref appears in
+        // a tree that hasn't been built yet (shouldn't happen for the
+        // active screen, but cheap).
+        return path == w.kind.widget_ref.path;
+    case touchy_Widget_layout_flex_tag:
+    case touchy_Widget_layout_grid_tag:
+    case touchy_Widget_layout_absolute_tag: {
+        const touchy_Layout *L = nullptr;
+        if (w.which_kind == touchy_Widget_layout_flex_tag)
+            L = &w.kind.layout_flex.layout;
+        else if (w.which_kind == touchy_Widget_layout_grid_tag)
+            L = &w.kind.layout_grid.layout;
+        else
+            L = &w.kind.layout_absolute.layout;
+        for (pb_size_t i = 0; i < L->children_count; i++) {
+            if (widget_tree_references_path(L->children[i], path)) return true;
+        }
+        return false;
+    }
+    default:
+        return false;
+    }
+}
+
+bool active_screen_references_path(const std::string &path)
+{
+    if (!g_active_screen) return false;
+    const touchy_Screen &S = **g_active_screen;
+    if (S.has_active && widget_tree_references_path(S.active, path)) return true;
+    if (S.has_top    && widget_tree_references_path(S.top, path))    return true;
+    if (S.has_sys    && widget_tree_references_path(S.sys, path))    return true;
+    if (S.has_bottom && widget_tree_references_path(S.bottom, path)) return true;
+    // Also check transitive widget_ref-loaded subtrees, since those
+    // were already expanded inline above only when reachable from the
+    // active screen — but the *source* paths live here. (A change to
+    // the WidgetRef file itself must trigger a reload too.)
+    for (size_t i = 0; i < widget_refs_active_count(); i++) {
+        if (path == widget_refs_active_path(i)) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
+void screens_notify_file_changed(const char *path)
+{
+    if (!path || !*path) return;
+    std::string key(path);
+
+    // The active screen's own .pb file is the obvious case; check it
+    // first so we don't have to traverse on a screen-file overwrite.
+    bool reload = (key == g_current_path) ||
+                  active_screen_references_path(key);
+    if (!reload) {
+        ESP_LOGD(TAG, "notify_file_changed: '%s' is not referenced by active screen",
+                 path);
+        return;
+    }
+    ESP_LOGI(TAG, "notify_file_changed: '%s' affects active screen — reloading",
+             path);
+    // Re-load whatever's currently active. If the changed file is itself
+    // the active screen, its cached bytes were just refreshed by
+    // screens_register_from_file() ahead of this call, so the reload
+    // picks up the new content. For asset/widget-ref changes,
+    // re-running screens_load() rebuilds the LVGL tree against the
+    // now-updated on-disk files (images mmap fresh; widget refs read
+    // fresh).
+    if (g_current_path.empty()) return;
+    // Defensive copy because screens_load() may eventually mutate
+    // g_current_path under the lock.
+    std::string p = g_current_path;
+    screens_load(p.c_str());
 }

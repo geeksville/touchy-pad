@@ -202,12 +202,12 @@ def _build_leaf(
 
     if kind == "image_button":
         btn = QtWidgets.QPushButton()
-        pix = _load_pixmap(w.image_button.released.asset, fs)
+        pix = _load_pixmap(w.image_button.released.path, fs)
         if pix is not None:
             btn.setIcon(QtGui.QIcon(pix))
             btn.setIconSize(pix.size())
         else:
-            btn.setText(w.image_button.released.asset or "(img)")
+            btn.setText(w.image_button.released.path or "(img)")
         _wire_click(btn, w, on_event)
         return btn
 
@@ -296,9 +296,9 @@ def _wire_click(
 def _build_image(img: _proto.Image, fs: SimFs) -> QtWidgets.QWidget:
     lbl = QtWidgets.QLabel()
     lbl.setAlignment(QtCore.Qt.AlignCenter)
-    pix = _load_pixmap(img.asset, fs)
+    pix = _load_pixmap(img.path, fs)
     if pix is None:
-        lbl.setText(f"(missing: {img.asset})")
+        lbl.setText(f"(missing: {img.path})")
         lbl.setStyleSheet("QLabel { color: #aaa; font-style: italic; }")
         return lbl
     if img.HasField("scale") and img.scale and img.scale != 256:

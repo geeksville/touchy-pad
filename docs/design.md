@@ -783,25 +783,77 @@ Firmware changes (`firmware/main/widgets/widget_builders.{h,cpp}` +
 
 Open follow-ups deferred to Stage 55:
 
-* Refs are resolved once at screen-load time. Rewriting a referenced
+* ~~Refs are resolved once at screen-load time. Rewriting a referenced
   widget file via host upload does **not** trigger a redraw — the new
-  bytes only take effect on the next `Screen_load`. Stage 55's
-  `screen_update_as_needed(path)` proposal addresses this and will
-  let widget files act as live-update slots.
+  bytes only take effect on the next `Screen_load`.~~ Resolved in
+  Stage 55 via `screens_notify_file_changed`, which reloads the
+  active screen whenever any referenced file (image, widget-ref, or
+  the screen itself) is overwritten.
 
-## Stage 55: minimize redraws
+## Stage 55: minimize redraws (DONE)
 
-The current implementation is very expensive if we change image file contents or widget file contents.  The only way we can force those new contents to redraw is by calling Screen_load() which redraws everything.
+The Stage 54 implementation reloaded the whole screen on every host
+file commit, which was both expensive and visually noisy when the
+host streamed unrelated uploads (e.g. the next twenty TouchyDeck
+icons while a settings screen was on display). Stage 55 makes
+redraws conditional on whether the changed file actually feeds the
+currently-displayed widget tree.
 
-Change this to:
+Shipped:
 
-* any time a file is written by the host (at file close time, after the file has been 'comitted').  Call a new screen_update_as_needed(filepath_of_changed_file) function (approximate name, pick something better).  Redraw ONLY any lvgl widgets that are directly or indirectly based on that file.
+* **Field rename (wire-format bump 14 → 15)**: `Image.asset` →
+  `Image.path` and `Screen.name` → `Screen.path` so all three
+  file-reference messages (`Image`, `WidgetRef`, `Screen`) share a
+  single field name and the on-wire string uniformly carries a
+  drive-prefixed LVGL path. `Screen.path` now stores the full
+  ``F:host/screens/<stem>.pb`` rather than just `<stem>`. The
+  host-side DSL still accepts ``Screen("home")`` and ``image(asset=…)``
+  for ergonomics; the path is computed on serialise. Firmware
+  deletes screens carrying an older `version` field, so on-device
+  ``.pb`` files written before Stage 55 are silently dropped on the
+  next boot.
+* **`screens_notify_file_changed(path)`** (firmware/main/screens.h):
+  called by `host_api.cpp` after every successful `FileClose(commit=true)`,
+  alongside the existing `screens_register_from_file` hook. Walks the
+  currently-decoded `touchy_Screen` (active + the three persistent
+  layers) plus the Stage 54 active-`WidgetRef` path list looking for a
+  reference to `path`. On a hit (or when `path == g_current_path`)
+  it kicks `screens_load(g_current_path)` to rebuild the active
+  screen against the now-updated on-disk bytes. On a miss it returns
+  silently — the common case when the host is bulk-uploading
+  unrelated assets.
+* **Reload granularity**: we deliberately do *not* try per-image
+  cache-drop + `lv_obj_invalidate` here. The mapping from
+  `touchy_Widget *` to its `lv_obj_t *` isn't built by the current
+  builders (each builder allocates its own LVGL object pointer and
+  doesn't surface it), and a single screen-rebuild is fast enough on
+  the S3 (≈ tens of ms) that the saved work isn't worth the extra
+  state. The thing that mattered — *not* reloading on uploads that
+  don't affect the screen — is now in place.
+* **Threading**: the notify path runs on whichever task processed the
+  USB command (today the host_api task). `screens_load` already takes
+  `lvgl_port_lock()` internally, which is the same lock LVGL's timer
+  handler honours, so the rebuild is serialised against rendering
+  exactly the way an explicit `Screen_load` is.
+* **PSRAM cache-flush in `RamFs::closeWrite`** (firmware/main/fs/ram_fs.cpp):
+  when ``CONFIG_SPIRAM`` is set we `esp_cache_msync(…, DIR_C2M)` the
+  freshly-committed bytes before publishing the entry. Today's
+  consumers (LVGL `fread` + Stage 52 mmap) are CPU-only and the data
+  cache would serve them transparently, but we add the msync as a
+  future-proofing measure for DMA decoders.
+* **Simulator**: the sim re-renders the whole canvas on every screen
+  update (it does that anyway), so no per-file change tracking was
+  added there. Performance isn't a goal in the sim.
 
-(I suspect that the best way to do this will be by sharing code with screen_load(), recursively going through the current screen and (in the case of screen_load) drawing everything.  But if we are in an update_as_needed check each widget to see if the filename matches before bothering to redraw that widget (or its children) - but tell me what you think is best lvgl practice)
+Not done (deferred):
 
-Though be thoughtful about threads.  If file operations are happening in our USB message thread, you might need to instead bump the gui thread to do the redraws it might need to do.
-
-You'll also need to make the python simulator smarter about doing these redraws (though I don't care about performance in that case).  also the simulator needs to cope with widget files/widget ref like in stage 54
+* Per-image invalidation (`lv_image_cache_drop` + `lv_obj_invalidate`)
+  in place of a full reload when only `Image` / `ImageButton` assets
+  change. Would need either a widget→LVGL-object side-channel map
+  built during `widget_build_layer`, or `lv_obj_set_user_data` tagging
+  on every built object (which collides with trackpad's existing
+  user-data use). Cheap follow-up if a real workload reveals the
+  full-reload cost matters.
 
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?

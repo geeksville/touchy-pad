@@ -89,7 +89,7 @@ def test_button_round_trip():
     s += label("title", text="Hello", font_size=24)
 
     decoded = _proto.Screen.FromString(s.to_bytes())
-    assert decoded.name == "home"
+    assert decoded.path == "F:host/screens/home.pb"
     assert _layer_kind(decoded.active) == "layout_flex"
     assert decoded.active.layout_flex.flow == _proto.LayoutFlex.COLUMN
     assert decoded.active.layout_flex.gap == 4
@@ -445,7 +445,7 @@ def test_write_to_disk_and_reload(tmp_path: Path):
     p = s.write(tmp_path / "sub" / "disk.pb")
     assert p.exists()
     decoded = _proto.Screen.FromString(p.read_bytes())
-    assert decoded.name == "disk"
+    assert decoded.path == "F:host/screens/disk.pb"
     assert _children(decoded.active)[0].label.text == "hi"
 
 

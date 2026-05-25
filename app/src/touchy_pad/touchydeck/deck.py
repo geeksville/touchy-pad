@@ -340,7 +340,8 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         # RPC would be friendlier; tracked separately.
         if not self._screen_pushed:
             self.reset()  # Push the screen layout if we haven't already
-        self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
+        # No longer needed, the device now auto redraws image files that are updated
+        # self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
 
     def set_key_color(self, key: int, r: int, g: int, b: int) -> None:  # noqa: D401 - base-class API
         """Solid-colour key fill — not implemented for Touchy yet."""

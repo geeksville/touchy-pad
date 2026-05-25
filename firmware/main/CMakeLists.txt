@@ -42,6 +42,7 @@ idf_component_register(
     REQUIRES
         board
         esp_lcd
+        esp_mm
         esp_timer
         esp_app_format
         joltwallet__littlefs

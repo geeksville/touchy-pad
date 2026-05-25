@@ -744,7 +744,7 @@ def _fill_image(
     # to track that rename or LVGL won't find the file on flash.
     from .lvgl_image import rewrite_to_bin_path
 
-    msg.asset = rewrite_to_bin_path(asset)
+    msg.path = rewrite_to_bin_path(asset)
     if scale is not None:
         msg.scale = _encode_scale(scale)
     if rotation is not None:
@@ -1150,7 +1150,10 @@ class Screen:
     # -- serialisation ------------------------------------------------------
 
     def to_proto(self) -> _proto.Screen:
-        msg = _proto.Screen(name=self.name, version=_proto.Screen.Version.CURRENT)
+        msg = _proto.Screen(
+            path=f"F:host/screens/{self.name}.pb",
+            version=_proto.Screen.Version.CURRENT,
+        )
         self.active.copy_into(msg.active)
         if self.top is not None:
             self.top.copy_into(msg.top)

@@ -413,7 +413,12 @@ message Image {
     // `lv_image_set_src`. The firmware always supports its native LVGL
     // `.bin` format; other decoders (BMP/PNG/JPG) require the matching
     // `LV_USE_*` flag in sdkconfig.
-    string asset = 1;
+    //
+    // Stage 55: renamed from `asset` for uniformity with `WidgetRef.path`
+    // and `Screen.path`. The reverse-index built at screen-load time
+    // keys off this field to know which LVGL objects need invalidating
+    // when this image file is overwritten by the host.
+    string path = 1;
     // Scale factor in 1/256 units (256 = 100%, 512 = 2x, 128 = 50%).
     // Mapped to `lv_image_set_scale`. When unset, the image is rendered
     // at its native size.
@@ -650,14 +655,18 @@ message Screen {
     // from the device filesystem so the host re-uploads a fresh copy.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default — any file without a version field
-        CURRENT         = 14;  // Stage 54: added Widget.widget_ref
+        CURRENT         = 15;  // Stage 55: renamed Image.asset→path, Screen.name→path
     }
 
     // Must equal `CURRENT`; the firmware deletes and ignores files that
     // carry a different value (including the proto3 default of 0, which
     // is produced by old host code that did not set this field).
     Version version = 6;
-    string name = 1;   // must match the filename stem
+    // Drive-prefixed LVGL path; matches the filename stem of the on-device
+    // `.pb` file. Stage 55: renamed from `name` for uniformity with
+    // `Image.path` and `WidgetRef.path` (and so the reverse-index keys
+    // off a single field name across all three file-reference messages).
+    string path = 1;
 
     // The active LVGL screen (what `lv_screen_load` swaps in). Authoring
     // code that doesn't think about LVGL layers should put everything

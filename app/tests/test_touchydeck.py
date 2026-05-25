@@ -55,7 +55,7 @@ def test_build_screen_emits_image_buttons_with_dual_edges() -> None:
         assert ib.on_release[0].host.code == code
         # Asset path matches the convention TouchyDeck.set_key_image uses.
         # Note _fill_image rewrites the .png suffix; here we already pass .bin.
-        assert ib.released.asset == asset_path_for(idx)
+        assert ib.released.path == asset_path_for(idx)
 
 
 def test_touchydeck_constructs_with_default_geometry() -> None:

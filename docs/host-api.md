@@ -60,7 +60,12 @@ Commands:
 * `File_Close(handle, commit)` — Finish the transaction. With
   `commit = true` the firmware atomically renames the temp path over
   the destination and (if `path` looks like a screen file)
-  re-registers the screen. With `commit = false` the temp file is
+  re-registers the screen. After a successful commit the firmware
+  also runs `screens_notify_file_changed(path)`, which reloads the
+  active screen iff it directly or indirectly references the
+  just-overwritten file (image asset, widget-ref source, or the
+  screen file itself). Uploads of unrelated assets cause no visible
+  redraw. With `commit = false` the temp file is
   discarded — used by the host as a clean abort path on exceptions.
 * `Screen_Load(path)` — Activate a previously-uploaded screen by its
   full drive-prefixed path (e.g. `F:host/screens/home.pb`). The empty

@@ -50,10 +50,17 @@ using WidgetMsg = PbMessage<touchy_Widget>;
 // into heap arrays must remain valid for the lifetime of the LVGL tree.
 std::vector<std::unique_ptr<WidgetMsg>> g_pending_refs;
 
+// Stage 55 — drive-prefixed paths that produced each entry in
+// `g_pending_refs`, in matching order. Lets `screens_notify_file_changed`
+// detect whether an overwritten file feeds the active screen via a
+// `WidgetRef`.
+std::vector<std::string> g_pending_ref_paths;
+
 // Decoded refs backing the currently-displayed screen. Their memory is
 // pointed at by action slots, action steps, etc. Released only after
 // the next successful screen build replaces them.
 std::vector<std::unique_ptr<WidgetMsg>> g_active_refs;
+std::vector<std::string>                g_active_ref_paths;
 
 // Paths currently being expanded — guards against ref cycles within a
 // single resolve_widget_ref() chain.
@@ -119,6 +126,7 @@ const touchy_Widget *resolve_widget_ref(const touchy_Widget &w)
     // recursive call). Always push so the chain of refs lives as long
     // as the resulting LVGL subtree.
     g_pending_refs.push_back(std::move(holder));
+    g_pending_ref_paths.push_back(key);
     return resolved;
 }
 
@@ -253,7 +261,7 @@ void image_dsc_delete_cb(lv_event_t *e)
 
 void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
 {
-    if (im.asset[0] != '\0') {
+    if (im.path[0] != '\0') {
         // Stage 52 fast path: if the asset lives on a mmappable FS
         // (R:) and its on-disk pixel format matches the display
         // native, alias the bytes directly via an lv_image_dsc_t —
@@ -261,7 +269,7 @@ void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
         // widget's LV_EVENT_DELETE.
         auto *dsc = new (std::nothrow) lv_image_dsc_t{};
         const char *why = nullptr;
-        if (dsc && try_mmap_image(im.asset, dsc, &why)) {
+        if (dsc && try_mmap_image(im.path, dsc, &why)) {
             lv_image_set_src(img, dsc);
             lv_obj_add_event_cb(img, image_dsc_delete_cb,
                                 LV_EVENT_DELETE, dsc);
@@ -269,9 +277,9 @@ void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
             if (dsc) delete dsc;
             if (why && *why) {
                 ESP_LOGW(TAG, "image %s: mmap declined (%s); using file read",
-                         im.asset, why);
+                         im.path, why);
             }
-            std::string lv_path = to_lvgl_path(im.asset);
+            std::string lv_path = to_lvgl_path(im.path);
             lv_image_set_src(img, lv_path.c_str());
         }
     }
@@ -290,7 +298,7 @@ lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
     // from the in-memory RamFs. The LVGL native `.bin` decoder is
     // always built in; BMP/PNG/JPG require their respective
     // `LV_USE_*` flag in sdkconfig.
-    ESP_LOGI(TAG, "build_image id='%s' src='%s'", w.id, w.kind.image.asset);
+    ESP_LOGI(TAG, "build_image id='%s' src='%s'", w.id, w.kind.image.path);
     apply_image_attrs(img, w.kind.image);
     return img;
 }
@@ -355,7 +363,7 @@ void image_button_state_delete_cb(lv_event_t *e)
 void image_button_src_init(ImageButtonSrc &dst, const touchy_Image &im)
 {
     dst = {};
-    if (im.asset[0] == '\0') return;
+    if (im.path[0] == '\0') return;
     dst.has_scale    = im.has_scale;
     dst.scale        = (uint16_t)im.scale;
     dst.has_rotation = im.has_rotation;
@@ -363,16 +371,16 @@ void image_button_src_init(ImageButtonSrc &dst, const touchy_Image &im)
 
     auto *dsc = new (std::nothrow) lv_image_dsc_t{};
     const char *why = nullptr;
-    if (dsc && try_mmap_image(im.asset, dsc, &why)) {
+    if (dsc && try_mmap_image(im.path, dsc, &why)) {
         dst.dsc = dsc;
         return;
     }
     delete dsc;
     if (why && *why) {
         ESP_LOGW(TAG, "image_button %s: mmap declined (%s); using file read",
-                 im.asset, why);
+                 im.path, why);
     }
-    std::string lv_path = to_lvgl_path(im.asset);
+    std::string lv_path = to_lvgl_path(im.path);
     dst.path = strdup(lv_path.c_str());
 }
 
@@ -421,18 +429,18 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
 
     const touchy_ImageButton &ib = w.kind.image_button;
     const touchy_Image &released = ib.released;
-    if (released.asset[0] == '\0') return btn;
+    if (released.path[0] == '\0') return btn;
 
     auto *st = new (std::nothrow) ImageButtonState{};
     if (!st) return btn;
     st->img_child = img;
 
     image_button_src_init(st->released, released);
-    if (ib.has_pressed && ib.pressed.asset[0] != '\0') {
+    if (ib.has_pressed && ib.pressed.path[0] != '\0') {
         image_button_src_init(st->pressed, ib.pressed);
     }
     ESP_LOGI(TAG, "build_image_button id='%s' released='%s' has_pressed=%d",
-             w.id, released.asset, (int)ib.has_pressed);
+             w.id, released.path, (int)ib.has_pressed);
 
     // Apply released-state attrs immediately.
     image_button_apply(img, st->released, st->released);
@@ -623,12 +631,26 @@ void widget_build_layer(lv_obj_t *parent, const touchy_Widget &root_in)
 void widget_refs_reset_pending()
 {
     g_pending_refs.clear();
+    g_pending_ref_paths.clear();
     g_ref_expansion.clear();
 }
 
 void widget_refs_commit()
 {
-    g_active_refs = std::move(g_pending_refs);
+    g_active_refs      = std::move(g_pending_refs);
+    g_active_ref_paths = std::move(g_pending_ref_paths);
     g_pending_refs.clear();
+    g_pending_ref_paths.clear();
     g_ref_expansion.clear();
+}
+
+size_t widget_refs_active_count()
+{
+    return g_active_ref_paths.size();
+}
+
+const char *widget_refs_active_path(size_t i)
+{
+    if (i >= g_active_ref_paths.size()) return "";
+    return g_active_ref_paths[i].c_str();
 }
