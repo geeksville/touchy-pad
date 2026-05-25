@@ -78,7 +78,13 @@ def touchy_get_pad_ids() -> list[str]:
     except ImportError:  # pragma: no cover — handled by libusb install docs.
         pass
     else:
-        for dev in usb.core.find(idVendor=VID, idProduct=PID, find_all=True) or []:
+        try:
+            # NoBackendError is raised on systems where pyusb is installed but
+            # libusb is not (e.g. Windows CI runners). Treat it like "no devices".
+            usb_devs = usb.core.find(idVendor=VID, idProduct=PID, find_all=True) or []
+        except Exception:
+            usb_devs = []
+        for dev in usb_devs:
             try:
                 serials.append(usb.util.get_string(dev, dev.iSerialNumber) or "")  # type: ignore[attr-defined]
             except Exception:
