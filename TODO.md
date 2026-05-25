@@ -37,7 +37,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 
 Main new features: Works with StreamController app to provide arbitrary user buttons
 
-* [ ] remove Screen.path?  I don't think we need it
+* [x] remove Screen.path?  I don't think we need it
 * [ ] test https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/lcd/index.html to see if it could help rendering performance
 * [ ] investigate [opendeck](docs/opendeck.md) and possibly do a plugin for that instead-of or in-addition-to StreamController.
 * [ ] add some of the example JSON to the API docs

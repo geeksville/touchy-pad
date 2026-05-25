@@ -34,7 +34,6 @@ def test_default_screen_autoloads_on_empty_fs() -> None:
         assert t.device.active_screen_path == "<built-in>"
         active = t.device.active_screen
         assert active is not None
-        assert active.path == "F:host/screens/default.pb"
 
 
 def test_file_save_and_screen_load_roundtrip(tmp_path: pathlib.Path) -> None:
@@ -50,7 +49,6 @@ def test_file_save_and_screen_load_roundtrip(tmp_path: pathlib.Path) -> None:
             c.screen_load("F:host/screens/test.pb")
         active = t.device.active_screen
         assert active is not None
-        assert active.path == "F:host/screens/test.pb"
         # The two screens should now be listed in lex order on disk.
         assert t.device.list_screens() == [
             "F:host/screens/home.pb",

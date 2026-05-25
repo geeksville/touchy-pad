@@ -801,17 +801,16 @@ currently-displayed widget tree.
 
 Shipped:
 
-* **Field rename (wire-format bump 14 → 15)**: `Image.asset` →
-  `Image.path` and `Screen.name` → `Screen.path` so all three
-  file-reference messages (`Image`, `WidgetRef`, `Screen`) share a
-  single field name and the on-wire string uniformly carries a
-  drive-prefixed LVGL path. `Screen.path` now stores the full
-  ``F:host/screens/<stem>.pb`` rather than just `<stem>`. The
-  host-side DSL still accepts ``Screen("home")`` and ``image(asset=…)``
-  for ergonomics; the path is computed on serialise. Firmware
-  deletes screens carrying an older `version` field, so on-device
-  ``.pb`` files written before Stage 55 are silently dropped on the
-  next boot.
+* **Field rename + drop (wire-format bump 14 → 15)**: `Image.asset` →
+  `Image.path` for consistency with `WidgetRef.path`. `Screen.name`
+  was briefly renamed to `Screen.path` but then removed entirely:
+  the firmware never reads that field from the decoded proto (it
+  tracks the active path separately as `g_current_path`), and the
+  host derives the upload destination from the DSL `Screen.name`
+  attribute directly. Dropping the field keeps the wire format
+  lean and removes a potential source of confusion. Wire-format
+  version bumped to 15; the firmware deletes any `.pb` carrying an
+  older version on next boot.
 * **`screens_notify_file_changed(path)`** (firmware/main/screens.h):
   called by `host_api.cpp` after every successful `FileClose(commit=true)`,
   alongside the existing `screens_register_from_file` hook. Walks the

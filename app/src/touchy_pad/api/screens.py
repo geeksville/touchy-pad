@@ -1151,7 +1151,6 @@ class Screen:
 
     def to_proto(self) -> _proto.Screen:
         msg = _proto.Screen(
-            path=f"F:host/screens/{self.name}.pb",
             version=_proto.Screen.Version.CURRENT,
         )
         self.active.copy_into(msg.active)

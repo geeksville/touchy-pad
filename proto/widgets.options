@@ -19,7 +19,6 @@ touchy.Label.text                      max_size:128
 touchy.Checkbox.text                   max_size:64
 touchy.Image.path                      max_size:96
 touchy.Widget.id                       max_size:32
-touchy.Screen.path                     max_size:96
 touchy.ActionSwitchScreen.path         max_size:96
 touchy.WidgetRef.path                  max_size:96
 
