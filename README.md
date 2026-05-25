@@ -14,6 +14,8 @@ More installation instructions [here](docs/installing.md).
 
 ## Current features
 
+(Note: the first public alpha release is not yet out - this project is **young**.  But the python tool and firmware are out on pypi/github if you are very brave.  The first public 'user' alpha will be the first week of June)
+
 * A "premium feel" open-source multitouch USB touchpad with built-in customizable screen (for use with Mac/Linux/Windows/Android).  Even if you don't want to run our sister app.
 * Works with cheap ESP32 based display boards ($15-$30 USD depending on features) - no soldering required, just connect USB, run the installer and go.
 * When used as a touchpad provides a pretty water droplet touch/grab/turn/gesture visualization.
@@ -65,7 +67,7 @@ There are [lots](docs/hardware.md) of $15-ish USD "Cheap Yellow Displays" that w
 * Current rough [TODO list](TODO.md).
 
 ## AI slop and development
-I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (as one of my first experiments with not writing all my code 'by hand').  So far it has been pretty fun.
+I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (one of my first experiments with not writing all my code 'by hand').  So far it has been pretty fun.
 
 However, in some of my other open-source projects, I've seen the current hell PR management is becoming.  So I'd **love** any code contributions y'all want to make (and I promise to be kind) but:
 
