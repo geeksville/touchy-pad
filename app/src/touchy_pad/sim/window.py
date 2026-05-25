@@ -154,6 +154,28 @@ class SimWindow(QtWidgets.QMainWindow):
             # clickable.
             self._canvas.add_layer(qw, transparent_to_mouse=attr != "active")
 
+    # -- shutdown ---------------------------------------------------------
+
+    def closeEvent(self, event) -> None:  # noqa: N802 — Qt override
+        """Detach the device callback before the window is destroyed.
+
+        The :class:`SimDevice` worker thread calls our screen-change
+        callback (which emits ``_screen_changed`` across threads) every
+        time a screen is loaded. Without this teardown, the worker can
+        emit a queued signal into a half-destroyed ``QObject`` — that
+        manifests as a coredump on window close. The crash itself is
+        bad enough, but it also tends to leave the host X server with
+        an outstanding pointer/keyboard grab (the XCB connection isn't
+        closed cleanly), freezing input on the host until suspend/resume
+        resets the grab state. Clearing the callback first prevents the
+        race entirely.
+        """
+        try:
+            self._device.set_screen_change_callback(None)
+        except Exception:  # noqa: BLE001 — never block window close
+            _log.exception("sim: failed to detach device callback on close")
+        super().closeEvent(event)
+
     # -- click / change dispatch ------------------------------------------
 
     def _on_widget_event(self, w: _proto.Widget, kind: str, state: dict) -> None:
