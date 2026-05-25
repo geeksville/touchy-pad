@@ -196,11 +196,13 @@ def test_set_key_image_rejects_out_of_range() -> None:
             deck.set_key_image(5, b"x")
 
 
-def test_set_key_color_not_implemented() -> None:
+def test_set_key_color_not_implemented(caplog) -> None:
     with make_tempdir_transport() as t, TouchyClient(t) as c:
         deck = TouchyDeck(c, cols=2, rows=1)
-        with pytest.raises(NotImplementedError):
-            deck.set_key_color(0, 255, 0, 0)
+        # set_key_color logs ERROR instead of raising NotImplementedError.
+        deck.set_key_color(0, 255, 0, 0)
+        assert "set_key_color: not implemented" in caplog.text
+        assert "ERROR" in caplog.text
 
 
 def test_create_sim_device_surfaces_via_enumerate(tmp_path) -> None:

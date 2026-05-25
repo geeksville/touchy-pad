@@ -279,9 +279,11 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
 
     def _reset_key_stream(self) -> None:  # noqa: D401 - base-class API
         """No-op: Touchy has no streaming-image HID protocol to abort."""
+        _LOG.debug("_reset_key_stream: no-op")
 
     def reset(self) -> None:  # noqa: D401 - base-class API
         """Push the grid screen and clear cached key state."""
+        _LOG.debug("reset: pushing %dx%d grid screen", self.KEY_COLS, self.KEY_ROWS)
         screen = _layout.build_screen(cols=self.KEY_COLS, rows=self.KEY_ROWS)
         self._rpc(
             self._client.file_save,
@@ -301,6 +303,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         before calling it sees the method as available (matching real
         StreamDecks) without hitting an exception.
         """
+        _LOG.debug("set_brightness: %d%%", percent)
         percent = max(0, min(100, int(percent)))
         self._brightness_pct = percent
         if percent == 0:
@@ -322,6 +325,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         delete in the public API yet, so we just skip the upload; the
         existing asset (if any) stays until the next call.
         """
+        _LOG.debug("set_key_image: key=%d, image=%s", key, "present" if image else "None")
         if key < 0 or key >= self.KEY_COUNT:
             raise IndexError(f"key {key} out of range (0..{self.KEY_COUNT - 1})")
         if image is None:
@@ -339,23 +343,36 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
 
     def set_key_color(self, key: int, r: int, g: int, b: int) -> None:  # noqa: D401 - base-class API
         """Solid-colour key fill — not implemented for Touchy yet."""
-        raise NotImplementedError(
-            "TouchyDeck has no solid-colour key path; use set_key_image() with a "
-            "PNG of the desired colour instead."
+        _LOG.error(
+            "set_key_color: not implemented (key=%d, rgb=(%d,%d,%d)); "
+            "use set_key_image() with a PNG instead",
+            key,
+            r,
+            g,
+            b,
         )
 
     def set_screen_image(self, image: bytes | None) -> None:  # noqa: D401 - base-class API
-        raise NotImplementedError("TouchyDeck does not expose a single full-screen image slot")
+        _LOG.error(
+            "set_screen_image: not implemented; TouchyDeck does not expose a "
+            "single full-screen image slot"
+        )
 
     def set_touchscreen_image(  # noqa: D401 - base-class API
         self, image: bytes | None, x_pos: int = 0, y_pos: int = 0, width: int = 0, height: int = 0
     ) -> None:
-        raise NotImplementedError(
+        _LOG.error(
+            "set_touchscreen_image: not implemented (x=%d, y=%d, w=%d, h=%d); "
             "TouchyDeck routes touchscreen pixels through Screen widgets, not the "
-            "StreamDeck Plus touchscreen-strip API."
+            "StreamDeck Plus touchscreen-strip API",
+            x_pos,
+            y_pos,
+            width,
+            height,
         )
 
     def get_firmware_version(self) -> str:  # noqa: D401 - base-class API
+        _LOG.debug("get_firmware_version: querying device")
         try:
             v = self._rpc(self._client.sys_board_info_get)
         except Exception:  # pragma: no cover
@@ -363,6 +380,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         return getattr(v, "firmware_version_str", "") or str(getattr(v, "firmware_version", 0))
 
     def get_serial_number(self) -> str:  # noqa: D401 - base-class API
+        _LOG.debug("get_serial_number: %s", self._serial)
         return self._serial
 
     # -- identity --------------------------------------------------------
