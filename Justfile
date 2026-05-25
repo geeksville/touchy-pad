@@ -21,6 +21,10 @@ init:
     # and native meson/pip builds find the host linker instead of xtensa-ld.
     unset VIRTUAL_ENV
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    # Force Poetry to create its own isolated venvs rather than reusing any
+    # active virtualenv (which might be the ESP-IDF venv from our .zshrc).
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry install --no-interaction --extras sim
     # streamdeck-probe: Poetry 2.x ignores [tool.poetry.dependencies] path deps
     # when a [project] table is present, so force-install the editable touchy-pad
@@ -181,29 +185,65 @@ build-default-screen: build-proto-py
 
 # Install dependencies into the Poetry-managed venv.
 app-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry install --no-interaction
 
 # Run the test suite. Ensures the generated proto module is present first.
 app-test: build-proto-py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry run pytest
 
 # Run the linter.
 app-lint: build-proto-py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry lock && poetry run ruff format src tests
 
 # Build the public-API HTML docs into docs/python-api/ (commit-friendly).
 # Requires the optional `docs` Poetry group: `poetry install --with docs`.
 build-docs: build-proto-py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry run mkdocs build --site-dir {{justfile_directory()}}/docs/python-api
 
 # Build wheel + sdist into app/dist/. Regenerates proto first so the
 # wheel always contains an up-to-date touchy_pb2.py.
 app-build: build-proto-py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry build
 
 # Run the touchy CLI inside the Poetry venv. Forward extra args:
 #   just app-run -- version
 app-run *ARGS: build-proto-py
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry run touchy {{ARGS}}
 
 # ---------------------------------------------------------------------------
@@ -339,6 +379,12 @@ flash-merged: merge-bin
 build-all: firmware-build app-build
 
 test-interactive: 
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    export POETRY_VIRTUALENVS_CREATE=true
+    export POETRY_VIRTUALENVS_IN_PROJECT=false
     cd {{justfile_directory()}}/app && poetry run touchy screens demo --listen
 
 # Lint + test everything (currently just the host app).

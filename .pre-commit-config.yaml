@@ -18,7 +18,7 @@ repos:
       - id: poetry-lock-check
         name: poetry check
         language: system
-        entry: sh -c 'cd app && poetry check'
+        entry: bash -c 'unset VIRTUAL_ENV; export PATH="$(echo "$PATH" | tr ":" "\n" | grep -v "\.espressif" | paste -sd:)"; export POETRY_VIRTUALENVS_CREATE=true; export POETRY_VIRTUALENVS_IN_PROJECT=false; cd app && poetry check'
         pass_filenames: false
         stages: [pre-commit]
         files: ^app/(pyproject\.toml|poetry\.lock)$
@@ -27,7 +27,7 @@ repos:
       - id: ruff-format
         name: ruff format
         language: system
-        entry: sh -c 'cd app && poetry run ruff format src tests'
+        entry: bash -c 'unset VIRTUAL_ENV; export PATH="$(echo "$PATH" | tr ":" "\n" | grep -v "\.espressif" | paste -sd:)"; export POETRY_VIRTUALENVS_CREATE=true; export POETRY_VIRTUALENVS_IN_PROJECT=false; cd app && poetry run ruff format src tests'
         pass_filenames: false
         stages: [pre-commit]
         types: [python]
@@ -36,7 +36,7 @@ repos:
       - id: ruff-check
         name: ruff lint
         language: system
-        entry: sh -c 'cd app && poetry run ruff check src tests --fix'
+        entry: bash -c 'unset VIRTUAL_ENV; export PATH="$(echo "$PATH" | tr ":" "\n" | grep -v "\.espressif" | paste -sd:)"; export POETRY_VIRTUALENVS_CREATE=true; export POETRY_VIRTUALENVS_IN_PROJECT=false; cd app && poetry run ruff check src tests --fix'
         pass_filenames: false
         stages: [pre-push, pre-commit]
         types: [python]
@@ -45,7 +45,7 @@ repos:
       - id: pytest
         name: pytest
         language: system
-        entry: sh -c 'cd app && poetry run pytest'
+        entry: bash -c 'unset VIRTUAL_ENV; export PATH="$(echo "$PATH" | tr ":" "\n" | grep -v "\.espressif" | paste -sd:)"; export POETRY_VIRTUALENVS_CREATE=true; export POETRY_VIRTUALENVS_IN_PROJECT=false; cd app && poetry run pytest'
         pass_filenames: false
         stages: [pre-push]
         always_run: true
