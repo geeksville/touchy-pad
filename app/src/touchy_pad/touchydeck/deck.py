@@ -338,8 +338,9 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         # Re-load the screen so LVGL picks up the freshly-written asset.
         # NOTE: this flashes the whole grid. A widget-targeted refresh
         # RPC would be friendlier; tracked separately.
-        if self._screen_pushed:
-            self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
+        if not self._screen_pushed:
+            self.reset()  # Push the screen layout if we haven't already
+        self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
 
     def set_key_color(self, key: int, r: int, g: int, b: int) -> None:  # noqa: D401 - base-class API
         """Solid-colour key fill — not implemented for Touchy yet."""
