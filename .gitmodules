@@ -1,0 +1,4 @@
+[submodule "tools/StreamController"]
+	path = tools/StreamController
+	url = https://github.com/geeksville/StreamController.git
+	branch = pr-touchypad

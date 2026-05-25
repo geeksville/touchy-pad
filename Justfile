@@ -417,11 +417,25 @@ sc_pip  := sc_venv + "/bin/pip"
 sc_py   := sc_venv + "/bin/python3"
 
 # Create the StreamController venv and install requirements if needed,
-# then launch main.py.  The esp32ulp cross-linker is stripped from PATH
-# so meson can detect the native host linker when building dbus-python.
-streamcontroller-run:
+# then launch StreamController via the touchy_bootstrap shim so any
+# attached TouchyPads (or, with --sim, an in-process simulated one)
+# show up in StreamController's device list. The esp32ulp cross-linker
+# is stripped from PATH so meson can detect the native host linker when
+# building dbus-python.
+#
+# StreamController is tracked as a git submodule; this recipe ensures
+# it's initialized and up-to-date on the pr-touchypad branch before
+# running.
+#
+# Flags forwarded as env vars to touchy_bootstrap:
+#   --sim          : spin up an in-process sim device (TOUCHY_SIM=1)
+#   --sim-headless : with --sim, skip the PySide6 SimWindow
+streamcontroller-run *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Ensure the StreamController submodule is initialized and updated
+    # to the latest pr-touchypad branch.
+    git submodule update --init --remote tools/StreamController
     # Strip ALL ESP-IDF cross-toolchains from PATH so the native ld is found.
     CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | tr '\n' ':')
     CLEAN_PATH="${CLEAN_PATH%:}"
@@ -438,8 +452,20 @@ streamcontroller-run:
     fi
     # Always (re-)install the local app/ in editable mode so the live source
     # tree is used instead of whatever PyPI version requirements.txt pulled in.
-    PATH="$CLEAN_PATH" {{sc_pip}} install -q -e {{justfile_directory()}}/app
-    cd {{sc_dir}} && PATH="$CLEAN_PATH" {{sc_py}} main.py
+    # Include the [sim] extra so PySide6 is available when --sim is passed.
+    PATH="$CLEAN_PATH" {{sc_pip}} install -q -e {{justfile_directory()}}/app[sim]
+    # Parse our own flags out of ARGS so the rest can be forwarded to main.py.
+    export TOUCHY_SIM=0
+    export TOUCHY_SIM_HEADLESS=0
+    forward_args=()
+    for arg in {{ARGS}}; do
+        case "$arg" in
+            --sim) TOUCHY_SIM=1 ;;
+            --sim-headless) TOUCHY_SIM=1; TOUCHY_SIM_HEADLESS=1 ;;
+            *) forward_args+=("$arg") ;;
+        esac
+    done
+    cd {{sc_dir}} && PATH="$CLEAN_PATH" {{sc_py}} touchy_bootstrap.py "${forward_args[@]}"
 
 # Remove generated artifacts. The proto outputs are rebuilt on the next
 # `just build-proto*` invocation.
