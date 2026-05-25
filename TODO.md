@@ -18,7 +18,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 * !make a CLAUDE.md file
 * !test reverse engineer tool with latest sim firmware, make sure it is storing images in ram
 * Add credits for BSD licenced https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp
-* add AI statement
+* a!dd AI statement
 * Make README not suck, mention goals, simulator, api, TouchyDeck, next steps
 * Make a nice demo video
 * !build in esp installer based on automated hw model name
@@ -39,6 +39,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 
 Main new features: Works with StreamController app to provide arbitrary user buttons
 
+* add some of the example JSON to the API docs
 * add a widget handle concept so host can say to just redraw one particular widget (only need to implement for screens/layouts/image)
 * make screen sleep default timeout
 * Add support for F:widgets/foo.pb widget files.  This would allow TouchyDeck to own a R:widgets/deck.pb.  Which could be nested into a F: screen.  So that dynamic StreamDeck emulated stuff could be updated independently of the configurable screens the user has selected.  Probably should add a way for the host to see dimensions of arbitary widgets in screens/walk the screen list? 

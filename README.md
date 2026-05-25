@@ -1,13 +1,33 @@
 # Touchy-pad
 
+If you have python installed and a [suitable device](docs/hardware.md), you can have this running on your hardware in less than a minute:
+```bash
+pip install touchy-pad
+touchy update # This will automatically install the firmware on your board - prompting you as needed
+```
+More installation instructions [here](docs/installing.md).
+
 ## Current features
 
 * A "premium feel" open-source multitouch USB touchpad with built in customizable screen (for use with Mac/Linux/Windows/Android).  Even if you don't want to run our sister app.
 * Works with cheap ESP32 based display boards ($15-$30USD depending on features) - no soldering required, just connect USB, run the installer and go.
 * When used as a touchpad providea a cute water droplet touch/grab/turn/gesture visualization
-* Customizable screen layouts (define with JSON or a python API), bind controls to built-in keyboard/mouse macros or host side python behaviors.  A full set of widgets are available (based on [LVGL](https://lvgl.io/)).
 * Allows simple key/mouse shortcut/macros without need for leaving the stream-controller app running.  Generated entirely natively as USB events from our device.
 * Automated installer provides 'one-click' install for boards you purchased from wherever.
+* Linux, Mac-OS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [github issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
+
+## For developers
+
+This project is intended to be 'open' to make it easy for host side code to manage little widgets/behaviors on these great little devices.  No embedded development experience needed.
+
+* A toolkit/API so that other projects can easily put custom widgets/screens on these little devices (with python or some other host-side language).  Customizable screen layouts (define with JSON or a python API), bind controls to built-in keyboard/mouse macros or host side python behaviors.  A full set of widgets are available (based on [LVGL](https://lvgl.io/)).
+* There is a full python simulator of the device code - so you can test and develop a fair amount code without having to reflash your device.
+* This project is young and more details will be here soon - hopefully...  If you have questions just open a [github issue](https://github.com/geeksville/touchy-pad/issues) where we can chat.
+
+If you'd like to see a demo of what you can do run:
+```
+touchy screen demo --listen
+```
 
 ## Features coming soon
 
@@ -16,6 +36,7 @@
 
 ## Eventual features
 
+* For fun I kinda wanna put a CYD with this software into a custom [Steam Machine](docs/images/steam.png).
 * Stylus recognition (on suitable device), for brush effects etc...
 * Multitouch is currently supported entirely in the device (by emulating appropriate USB HID actions), but for some art applications we should also expose a multitouch HID endpoint
 * A lasercut or 3d printed template to allow those critical buttons to have physical 'feel' separating them from the touchpad/other buttons.
@@ -29,20 +50,24 @@ There are [lots](docs/hardware.md) of $15 USD ish "Cheap Yellow Displays" that w
 
 ## Documentation
 
-FIXME add install guide
+* Installing on [devices](docs/installing.md).
 * Current [design documents](docs/README.md).
 * [Developer setup](docs/development.md) — new-machine setup, `just` recipes, git hooks.
 * Current rough [TODO list](TODO.md).
 
-## Doc links
+## AI slop and development
+I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (as one of my first experiment with not writing all my code 'by hand').  So far it has been pretty fun.
 
-* [platform io config](https://community.home-assistant.io/t/esp32-8048s050-sunton-5-0-cyd-config/782740) - seems to use gt911 touch controller which seems quite nice
-* [general info](https://www.espboards.dev/esp32/cyd-esp32-8048s050/) on these boards
-* [great platform io repo](https://github.com/rzeldent/platformio-espressif32-sunton)
+However, In some of my other open-source projects I've seen the current hell PR management is becoming.  So I'd **love** any code contributions ya'll want to make (and I promise to be kind) but:
 
-## Development and AI slop
+* Please only send in PRs **you** are willing to sign off as 'nicely written' (using your experience as a software engineer).  If your little AI buddy made something a bit ugly, please iterate with it first to make it not ugly.
+* Send in PRs that are fairly 'atomic' (touch just the code they need to touch for one nicely defined feature or bug-fix)
+* Only send in tested code you've run on real hardware (not just the simulator)
 
 ## Credits/Thanks
+
+* ESP-IDF LVGL didn't have a NV3041A driver, so I (with the help of my AI buddy) cribbed a lot from [Arduno_GFX](https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp) - huge thanks to [@moononournation](https://github.com/moononournation)(?) for writing it.
+* So far the main dev is [@geeksville](https://github.com/geeksville/).  However if this seems interesting/fun to you please join me! 
 
 ## License
 Copyright © 2026 Kevin Hester.
