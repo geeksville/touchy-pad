@@ -24,6 +24,9 @@ More installation instructions [here](docs/installing.md).
 * Provides a [Stream-controller](https://streamcontroller.github.io/docs/latest/) compatible API so that a graphical button array can be selected instead of touchpad.  
 * Support for more devices (including little tiny 3 or 4" displays - suitable for building into custom keyboards or PC cases)
 
+I made this little video for the streamcontroller devs showing the current proof-of-concept:
+![streamcontroller vid](docs/videos/streamcontroller.mp4)
+
 ## For developers
 
 This project is intended to be 'open' to make it easy for host side code to manage little widgets/behaviors on these great little devices.  No embedded development experience needed.
