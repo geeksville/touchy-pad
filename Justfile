@@ -10,6 +10,22 @@ default:
 # Developer setup
 # ---------------------------------------------------------------------------
 
+# One-time devcontainer bootstrap, invoked from devcontainer.json's
+# postCreateCommand. Restores per-workspace state that doesn't live in the
+# container image (notably the app/ Poetry venv, since Poetry stores its
+# venvs under ~/.cache/pypoetry which is wiped on container rebuilds).
+container-init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The ESP-IDF activate script (sourced from .bashrc/.zshrc) leaves us
+    # inside its own Python venv and prepends cross-toolchain paths. Poetry
+    # would otherwise install into that venv and native builds would pick
+    # up the cross 'ld'. Strip both before running poetry.
+    unset VIRTUAL_ENV
+    export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd:)"
+    cd app && poetry install --no-interaction --extras sim
+    echo "✓ container-init complete"
+
 # Set up a fresh clone: install Python deps and register git hooks.
 # Run once after cloning; safe to re-run at any time.
 init:

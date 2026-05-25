@@ -5,7 +5,7 @@
 		"context": ".",
 		"args": {
 			"FEDORA_COMPAT" : "1", // enables fedora compatibility mode (extra dialout group with gid 18)
-			"VARIANT": "bookworm"
+			"VARIANT": "noble"
 		}
 	},
 	"customizations": {
@@ -15,7 +15,8 @@
 			},
 			"extensions": [
 				"ms-vscode.cpptools",
-				"ms-python.python"
+				"ms-python.python",
+				"ms-vscode.cmake-tools"
 			]
 		}
 	},
@@ -86,6 +87,11 @@
 	},
 	// "postAttachCommand": "sudo service udev restart",
 	"initializeCommand": "sudo chown -R 1000 /dev/bus/usb",
+	// Runs once after the container is created (and after every rebuild).
+	// Restores per-workspace state that doesn't live in the image: the
+	// app/ Poetry venv (Poetry stores venvs in ~/.cache/pypoetry, which
+	// is wiped on rebuild). See `just container-init`.
+	"postCreateCommand": "just container-init",
 	// X11 forwarding: use the host display directly via the mounted /tmp/.X11-unix sockets.
 	// XAUTHORITY points to the mounted host auth file (kept up to date by fix-xauth.sh on the host).
 	// DISPLAY :0 is the host display; VSCode may override with its own tunnel but Qt needs the real one.
