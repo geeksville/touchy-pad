@@ -3,7 +3,7 @@
 ![cyd](docs/images/jc4827w543.jpg)
 
 
-If you have python installed and a [suitable device](docs/hardware.md), you can have this running on your hardware in less than a minute:
+If you have Python installed and a [suitable device](docs/hardware.md), you can have this running on your hardware in less than a minute:
 ```bash
 pip install touchy-pad
 touchy update # This will automatically install the firmware on your board - prompting you as needed
@@ -12,12 +12,12 @@ More installation instructions [here](docs/installing.md).
 
 ## Current features
 
-* A "premium feel" open-source multitouch USB touchpad with built in customizable screen (for use with Mac/Linux/Windows/Android).  Even if you don't want to run our sister app.
+* A "premium feel" open-source multitouch USB touchpad with built-in customizable screen (for use with Mac/Linux/Windows/Android).  Even if you don't want to run our sister app.
 * Works with cheap ESP32 based display boards ($15-$30 USD depending on features) - no soldering required, just connect USB, run the installer and go.
 * When used as a touchpad provides a pretty water droplet touch/grab/turn/gesture visualization.
-* Allows simple key/mouse shortcut/macros without need for leaving the (optional) stream-controller app running.  Generated entirely natively as USB events from our device.
+* Allows simple key/mouse shortcut/macros without the need for leaving the (optional) stream-controller app running.  Generated entirely natively as USB events from our device.
 * Automated installer provides 'one-click' install for boards you purchased from wherever.
-* Linux, Mac-OS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [github issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
+* Linux, macOS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
 
 ## Features coming soon
 
@@ -30,7 +30,7 @@ This project is intended to be 'open' to make it easy for host side code to mana
 
 * A toolkit/API so that other projects can easily put custom widgets/screens on these little devices (with python or some other host-side language).  Customizable screen layouts (define with JSON or a python API), bind controls to built-in keyboard/mouse macros or host side python behaviors.  A full set of widgets are available (based on [LVGL](https://lvgl.io/)).
 * There is a full [python simulator](docs/simulator.md) of the device code - so you can test and develop a fair amount code without having to reflash your device.
-* This project is young and more details will be here soon - hopefully...  If you have questions just open a [github issue](https://github.com/geeksville/touchy-pad/issues) where we can chat.
+* This project is young and more details will be here soon - hopefully...  If you have questions just open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues) where we can chat.
 
 If you'd like to see a demo of what you can do run:
 ```
@@ -50,7 +50,7 @@ touchy screen demo --listen
 
 ## Supported hardware
 
-There are [lots](docs/hardware.md) of $15 USD ish "Cheap Yellow Displays" that work with this project.  See below for how to run the installer (it will flash the firmware onto your device).  After installing, just connect the device to USB and you should be good to go.
+There are [lots](docs/hardware.md) of $15-ish USD "Cheap Yellow Displays" that work with this project.  See below for how to run the installer (it will flash the firmware onto your device).  After installing, just connect the device to USB and you should be good to go.
 
 ## Documentation
 
@@ -62,7 +62,7 @@ There are [lots](docs/hardware.md) of $15 USD ish "Cheap Yellow Displays" that w
 ## AI slop and development
 I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (as one of my first experiment with not writing all my code 'by hand').  So far it has been pretty fun.
 
-However, In some of my other open-source projects I've seen the current hell PR management is becoming.  So I'd **love** any code contributions ya'll want to make (and I promise to be kind) but:
+However, in some of my other open-source projects, I've seen the current hell PR management is becoming.  So I'd **love** any code contributions y'all want to make (and I promise to be kind) but:
 
 * Please only send in PRs **you** are willing to sign off as 'nicely written' (using your experience as a software engineer).  If your little AI buddy made something a bit ugly, please iterate with it first to make it not ugly.
 * Send in PRs that are fairly 'atomic' (touch just the code they need to touch for one nicely defined feature or bug-fix)
@@ -71,7 +71,7 @@ However, In some of my other open-source projects I've seen the current hell PR 
 ## Credits/Thanks
 
 * ESP-IDF LVGL didn't have a NV3041A driver, so I (with the help of my AI buddy) cribbed a lot from [Arduno_GFX](https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp) - huge thanks to [@moononournation](https://github.com/moononournation)(?) for writing it.
-* So far the main dev is [@geeksville](https://github.com/geeksville/).  However if this seems interesting/fun to you please join me! 
+* So far the main dev is [@geeksville](https://github.com/geeksville/). However if this seems interesting/fun to you please join me! 
 
 ## License
 Copyright © 2026 Kevin Hester.
