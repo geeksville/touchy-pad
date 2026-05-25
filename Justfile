@@ -29,7 +29,30 @@ init:
     poetry run pip install -q -e {{justfile_directory()}}/app[sim]
     cd {{justfile_directory()}}/app && poetry run pre-commit install
     poetry run pre-commit install --hook-type pre-push
+    
+    # Install shell completions for just command
+    echo "Installing just shell completions..."
+    mkdir -p ~/.bash_completion.d ~/.zfunc
+    just --completions bash > ~/.bash_completion.d/just
+    just --completions zsh > ~/.zfunc/_just
+    
+    # For bash: source the completion in bashrc if not already present
+    if [ -f ~/.bashrc ] && ! grep -q 'bash_completion.d/just' ~/.bashrc; then
+        echo '[ -f ~/.bash_completion.d/just ] && source ~/.bash_completion.d/just' >> ~/.bashrc
+    fi
+    
+    # For zsh: ensure completion directory is in fpath and compinit is set up
+    if [ -f ~/.zshrc ]; then
+        if ! grep -q 'fpath=(~/.zfunc' ~/.zshrc; then
+            echo 'fpath=(~/.zfunc $fpath)' >> ~/.zshrc
+        fi
+        if ! grep -q 'autoload -Uz compinit' ~/.zshrc; then
+            echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+        fi
+    fi
+    
     echo "✓ Dev environment ready. Run 'just build-proto' to generate bindings."
+    echo "✓ Shell completions installed. Restart your shell or run 'exec \$SHELL' to activate."
 
 # Where generated proto outputs land.
 #  - Python output is dropped directly into the host package so `poetry build`

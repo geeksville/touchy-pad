@@ -1,11 +1,20 @@
-ARG VARIANT=noble
-FROM mcr.microsoft.com/vscode/devcontainers/base:${VARIANT}
+ARG VARIANT=25.04
+FROM ubuntu:${VARIANT}
 
 ENV DEBIAN_FRONTEND=noninteractive
-# We use 'user' as the name to match what the zhephyr-build image already created
-ARG USERNAME=vscode
+# Ubuntu 23.04+ pre-creates an `ubuntu` user at uid/gid 1000; reuse it as
+# our dev user rather than creating a separate `vscode`. The host bind
+# mounts assume uid 1000 either way.
+ARG USERNAME=ubuntu
 
-RUN sudo apt-get update \
+# The plain ubuntu image doesn't ship sudo, curl, zsh, or git out of the box,
+# but every later step in this Containerfile assumes they're present.
+RUN apt-get update \
+ && apt-get -y install --no-install-recommends \
+      sudo curl ca-certificates zsh git locales gnupg \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update \
  && sudo apt-get -y install --no-install-recommends \
       clang \
       python3-venv \
@@ -61,24 +70,25 @@ RUN sudo apt-get update \
       dbus \
       dbus-x11
 
-# Create a non-root user if one doesn't exist, and give it sudo rights
+# Ensure the dev user exists (it does on ubuntu:23.04+, but stay defensive
+# in case the base ever drops it) and give it passwordless sudo.
 RUN if ! id -u ${USERNAME} > /dev/null 2>&1; then \
         groupadd --gid 1000 ${USERNAME} && \
-        useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash ${USERNAME} && \
-        echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}-nopasswd; \
-        fi
+        useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash ${USERNAME}; \
+    fi \
+ && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}-nopasswd
 
 ## Set up udev rules for PlatformIO
 RUN curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/system/99-platformio-udev.rules | sudo tee /etc/udev/rules.d/99-platformio-udev.rules
-RUN usermod -a -G dialout vscode
-RUN usermod -a -G plugdev vscode
+RUN usermod -a -G dialout ${USERNAME}
+RUN usermod -a -G plugdev ${USERNAME}
 
 ARG FEDORA_COMPAT=0
 ### Set up compatibility with Fedora host (if needed)
 ### Since Fedora uses `18` as the group for dialout, we need to add it to the container
 RUN if [ "$FEDORA_COMPAT" = "1" ]; then \
   groupadd -g 18 compat_dialout; \
-  usermod -a -G compat_dialout vscode; \
+  usermod -a -G compat_dialout ${USERNAME}; \
 fi
 
 # use the host's USB devices instead of the container's
@@ -90,12 +100,20 @@ RUN echo "deb [trusted=yes] https://dl.espressif.com/dl/eim/apt/ stable main" | 
 RUN apt update
 RUN apt install -y eim-cli
 RUN eim install
-RUN chown -R vscode /root/.espressif && chmod a+rx /root
+RUN chown -R ${USERNAME} /root/.espressif && chmod a+rx /root
 
 # Put the ESP tools in my path
-USER vscode
+USER ${USERNAME}
 RUN ln -s /root/.espressif $HOME
-RUN echo 'source ~/.espressif/tools/activate_idf_v6.0.1.sh' | tee -a /home/vscode/.bashrc /home/vscode/.zshrc
+# Seed a sane zsh PROMPT before sourcing the ESP-IDF activate script — that
+# script uses bash-style PS1 escapes (\u\h\w\$) which zsh prints literally.
+# Setting PROMPT here means the prefix the activate script prepends is added
+# to a string zsh actually understands.
+RUN printf '%s\n' \
+        'autoload -U colors && colors' \
+        'PROMPT="%n@%m:%~%# "' \
+      >> $HOME/.zshrc
+RUN echo 'source ~/.espressif/tools/activate_idf_v6.0.1.sh' | tee -a $HOME/.bashrc $HOME/.zshrc
 
 # Python tooling for the host-side protobuf workflow (touchy.proto) and the
 # embedded-side nanopb generator. Installed system-wide via --break-system-packages
@@ -110,6 +128,6 @@ RUN sudo pip install --break-system-packages \
 # Install via the official installer rather than pip so it lives in its own
 # venv and doesn't interfere with the system / IDF Python environments.
 RUN curl -sSL https://install.python-poetry.org | python3 - \
- && echo 'export PATH="$HOME/.local/bin:$PATH"' | tee -a /home/vscode/.bashrc /home/vscode/.zshrc
+ && echo 'export PATH="$HOME/.local/bin:$PATH"' | tee -a $HOME/.bashrc $HOME/.zshrc
 
 
