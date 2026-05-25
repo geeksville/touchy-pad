@@ -65,7 +65,7 @@ There are [lots](docs/hardware.md) of $15-ish USD "Cheap Yellow Displays" that w
 * Current rough [TODO list](TODO.md).
 
 ## AI slop and development
-I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (as one of my first experiment with not writing all my code 'by hand').  So far it has been pretty fun.
+I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (as one of my first experiments with not writing all my code 'by hand').  So far it has been pretty fun.
 
 However, in some of my other open-source projects, I've seen the current hell PR management is becoming.  So I'd **love** any code contributions y'all want to make (and I promise to be kind) but:
 

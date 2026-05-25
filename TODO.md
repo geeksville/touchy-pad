@@ -27,7 +27,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
   * [x] test current POC
   * [x] make a little video
   * [ ] explain plans w.r.t. 3d printing and knobs on the screen
-  * [ ] request feedback/propose distribution
+  * [x] request feedback/propose distribution
 * [x] ensure no 10ms delay on loop polling
 * [ ] Pick a real USB VID/PID for our device via https://github.com/espressif/usb-pids/pull/315
 * [x] fix multitouch gestures - the change to lvgl instead of polling broke them
@@ -41,8 +41,6 @@ Main new features: Works with StreamController app to provide arbitrary user but
 * [ ] add a widget handle concept so host can say to just redraw one particular widget (only need to implement for screens/layouts/image)
 * [ ] make screen sleep default timeout
 * [ ] Add support for F:widgets/foo.pb widget files.  This would allow TouchyDeck to own a R:widgets/deck.pb.  Which could be nested into a F: screen.  So that dynamic StreamDeck emulated stuff could be updated independently of the configurable screens the user has selected.  Probably should add a way for the host to see dimensions of arbitrary widgets in screens/walk the screen list?
-* [ ] Stylus support for 'paintbrush mode'
-* [ ] Implement multitouch HID to support multitouch native apps
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] Turn off "Expensive debugging flags!" in sdkconfig.defaults
 * [ ] Support a few more board types
@@ -52,6 +50,8 @@ Main new features: Works with StreamController app to provide arbitrary user but
 
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] Implement multitouch HID to support multitouch native apps
+* [ ] Stylus support for 'paintbrush mode'
 * [ ] support turn, back, forward, up gestures natively
 * [ ] tactile precut sticker/3d printable case for screen overlay?
 * [ ] figure out best way to mount haptics for best effect
