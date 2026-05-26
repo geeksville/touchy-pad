@@ -4,6 +4,7 @@
 
 #include "screen_layout.h"
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "lvgl.h"
 
@@ -98,28 +99,44 @@ void apply_layout(lv_obj_t *parent, const touchy_Widget &w)
         //
         // The descriptor arrays must outlive the call to
         // lv_obj_set_grid_dsc_array — LVGL only stores the pointer.
-        // Since we have one active screen at a time we keep them as
-        // static buffers; the next screen_load just rewrites them.
-        static int32_t col_dsc[17];
-        static int32_t row_dsc[17];
-        static int32_t row_dsc_content[2] = { LV_GRID_CONTENT,
-                                              LV_GRID_TEMPLATE_LAST };
+        // Stage 57: heap-allocate per obj and free on LV_EVENT_DELETE.
+        // (Earlier code used `static` buffers, which corrupted any
+        //  outer grid as soon as an inner widget_ref expanded into a
+        //  sub-grid and overwrote the shared template.)
         int cols = g.cols > 0 ? (int)g.cols : 1;
-        if (cols > 16) cols = 16;
+        if (cols > 64) cols = 64;
+        int rows = (int)g.rows;
+        if (rows > 64) rows = 64;
+
+        const size_t col_n = (size_t)cols + 1;
+        const size_t row_n = (rows > 0) ? (size_t)rows + 1 : 2;
+        int32_t *col_dsc = (int32_t *)heap_caps_malloc(
+            sizeof(int32_t) * (col_n + row_n), MALLOC_CAP_DEFAULT);
+        if (!col_dsc) {
+            ESP_LOGE(TAG, "apply_layout: OOM allocating grid template");
+            break;
+        }
+        int32_t *row_dsc = col_dsc + col_n;
         for (int i = 0; i < cols; i++) col_dsc[i] = LV_GRID_FR(1);
         col_dsc[cols] = LV_GRID_TEMPLATE_LAST;
-
-        int32_t *row_ptr;
-        int rows = (int)g.rows;
         if (rows > 0) {
-            if (rows > 16) rows = 16;
             for (int i = 0; i < rows; i++) row_dsc[i] = LV_GRID_FR(1);
             row_dsc[rows] = LV_GRID_TEMPLATE_LAST;
-            row_ptr = row_dsc;
         } else {
-            row_ptr = row_dsc_content;
+            row_dsc[0] = LV_GRID_CONTENT;
+            row_dsc[1] = LV_GRID_TEMPLATE_LAST;
         }
-        lv_obj_set_grid_dsc_array(parent, col_dsc, row_ptr);
+        lv_obj_set_grid_dsc_array(parent, col_dsc, row_dsc);
+        // Free the joint allocation when the obj is destroyed. The
+        // single `col_dsc` pointer owns both halves.
+        lv_obj_add_event_cb(
+            parent,
+            [](lv_event_t *e) {
+                int32_t *p = (int32_t *)lv_event_get_user_data(e);
+                if (p) heap_caps_free(p);
+            },
+            LV_EVENT_DELETE,
+            col_dsc);
         lv_obj_set_layout(parent, LV_LAYOUT_GRID);
         if (g.gap > 0) {
             lv_obj_set_style_pad_column(parent, g.gap, 0);

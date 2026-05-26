@@ -429,16 +429,18 @@ def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
     screen on-device with the ``Next >`` button).
     """
     from .api.images import make_smiley_png
-    from .api.screens import build_demo_screens
+    from .api.screens import build_demo
 
-    screens = build_demo_screens()
+    screen, widgets = build_demo()
 
     if as_json:
         from google.protobuf import json_format
 
-        for s in screens:
-            click.echo(f"// screen: {s.name}")
-            click.echo(json_format.MessageToJson(s.to_proto(), indent=2))
+        click.echo(f"// screen: {screen.name}")
+        click.echo(json_format.MessageToJson(screen.to_proto(), indent=2))
+        for name, w in widgets:
+            click.echo(f"// widget: {name}")
+            click.echo(json_format.MessageToJson(w, indent=2))
         return
 
     smiley = make_smiley_png()
@@ -454,11 +456,13 @@ def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
             )
         pad.file_save("F:host/images/smiley.png", smiley)
         logger.info("sent F:host/images/smiley.png (%d bytes source)", len(smiley))
-        for s in screens:
-            pad.screen_save(s)
-            logger.info("sent F:host/screens/%s.pb (%d widgets)", s.name, len(s.widgets))
-        pad.screen_load("F:host/screens/home.pb")
-        logger.info("loaded screen 'home'")
+        for name, w in widgets:
+            pad.widget_save(name, w)
+            logger.info("sent F:host/w/%s.pb", name)
+        pad.screen_save(screen)
+        logger.info("sent F:host/screens/%s.pb (%d widgets)", screen.name, len(screen.widgets))
+        pad.screen_load(f"F:host/screens/{screen.name}.pb")
+        logger.info("loaded screen %r", screen.name)
 
         if listen:
 

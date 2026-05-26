@@ -15,7 +15,7 @@ from __future__ import annotations
 import pathlib
 
 from touchy_pad import TouchyClient, _proto
-from touchy_pad.api.screens import build_demo_screens
+from touchy_pad.api.screens import build_demo
 from touchy_pad.sim.transport import SimDeviceTransport, make_tempdir_transport
 
 
@@ -40,19 +40,18 @@ def test_file_save_and_screen_load_roundtrip(tmp_path: pathlib.Path) -> None:
     t = SimDeviceTransport(headless=True, fs_root=tmp_path)
     try:
         with TouchyClient(t) as c:
-            home, test = build_demo_screens()
-            for s in (home, test):
-                c.file_save(
-                    f"F:host/screens/{s.name}.pb",
-                    s.to_proto().SerializeToString(),
-                )
-            c.screen_load("F:host/screens/test.pb")
+            screen, widgets = build_demo()
+            c.file_save(
+                f"F:host/screens/{screen.name}.pb",
+                screen.to_proto().SerializeToString(),
+            )
+            for name, w in widgets:
+                c.file_save(f"F:host/w/{name}.pb", w.SerializeToString())
+            c.screen_load(f"F:host/screens/{screen.name}.pb")
         active = t.device.active_screen
         assert active is not None
-        # The two screens should now be listed in lex order on disk.
         assert t.device.list_screens() == [
-            "F:host/screens/home.pb",
-            "F:host/screens/test.pb",
+            "F:host/screens/demo.pb",
         ]
     finally:
         t.close()

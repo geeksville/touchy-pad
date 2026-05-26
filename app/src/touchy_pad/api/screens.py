@@ -47,9 +47,9 @@ __all__ = [
     "host_action",
     "macro_action",
     "device_action",
-    "switch_screen_action",
-    "next_screen_action",
-    "prev_screen_action",
+    "change_widget_ref_action",
+    "next_widget_action",
+    "prev_widget_action",
     "button",
     "label",
     "slider",
@@ -66,7 +66,7 @@ __all__ = [
     "fps",
     "force_render",
     "build_demo_screen",
-    "build_demo_screens",
+    "build_demo",
     # LvState / LvPart selector bits (see widgets.proto:LvState).
     "STATE_DEFAULT",
     "STATE_CHECKED",
@@ -435,81 +435,76 @@ def macro_action(steps) -> _proto.Action:
 #
 # ``ActionDevice`` is the third Action subtype, alongside ``ActionHost`` and
 # ``ActionMacro``. Unlike ``ActionMacro`` (which only replays HID events)
-# device actions ask the firmware to change its own state — currently only
-# *which* screen is loaded, via ``ActionSwitchScreen``. They run entirely
-# on-device with no host round-trip, so paged UIs keep responding when
-# the host computer is asleep or unplugged.
+# device actions ask the firmware to change its own state — currently
+# rebinding a ``WidgetRef`` to a different widget file, via Stage 57's
+# ``ActionChangeWidgetRef``. They run entirely on-device with no host
+# round-trip, so paged UIs keep responding when the host computer is
+# asleep or unplugged.
 
 
 def device_action(device: _proto.ActionDevice) -> _proto.Action:
     """Wrap a pre-built :class:`_proto.ActionDevice` as an :class:`Action`.
 
-    Most callers want the higher-level :func:`switch_screen_action` /
-    :func:`next_screen_action` / :func:`prev_screen_action` helpers
+    Most callers want the higher-level :func:`change_widget_ref_action` /
+    :func:`next_widget_action` / :func:`prev_widget_action` helpers
     instead; this exists for forward-compatibility with new
     ``ActionDevice`` sub-kinds the firmware may add later.
     """
     return _proto.Action(device=device)
 
 
-def switch_screen_action(
-    path: str | None = None,
-    behavior: int | None = None,
+def change_widget_ref_action(
+    target_id: str,
+    path: str,
     *,
-    name: str | None = None,
+    behavior: int | None = None,
 ) -> _proto.Action:
-    """Build an Action that swaps the active screen on-device.
+    """Build an Action that rebinds an on-screen ``WidgetRef`` (Stage 57).
 
     Parameters
     ----------
+    target_id:
+        ``Widget.id`` of the *outer* widget whose ``kind`` is
+        ``widget_ref``. The firmware finds the matching ref in the
+        currently-loaded screen and rebinds it. Required.
     path:
-        Full drive-prefixed path of the target screen (e.g.
-        ``"F:host/screens/home.pb"``), matching the path :class:`Screen`
-        uploads to. Required when ``behavior`` is
-        :attr:`ActionSwitchScreen.BY_PATH` (the default), ignored
-        otherwise.
+        For ``BY_PATH`` (default): full drive-prefixed path to a widget
+        ``.pb`` file (e.g. ``"F:host/w/trackpad.pb"``).
+        For ``NEXT`` / ``PREVIOUS``: drive-prefixed *directory* (e.g.
+        ``"F:host/w/"``) — the firmware enumerates ``*.pb`` files and
+        steps ±1 from the ref's current path.
     behavior:
-        One of :attr:`ActionSwitchScreen.BY_PATH` (0),
-        :attr:`ActionSwitchScreen.NEXT` (1) or
-        :attr:`ActionSwitchScreen.PREVIOUS` (2). NEXT/PREVIOUS step
-        through the firmware's registry in stable iteration order
-        (alphabetical, because the registry is a ``std::map``) and wrap
-        around at the ends.
-    name:
-        Deprecated alias for ``path``, kept so pre-stage-51 callers
-        still compile. If both are given, ``path`` wins. When only
-        ``name`` is supplied we assume the screen lives in flash and
-        construct the canonical ``F:host/screens/<name>.pb`` path.
+        One of :attr:`ActionChangeWidgetRef.BY_PATH` (0),
+        :attr:`ActionChangeWidgetRef.NEXT` (1) or
+        :attr:`ActionChangeWidgetRef.PREVIOUS` (2).
 
-    The convenience wrappers :func:`next_screen_action` and
-    :func:`prev_screen_action` cover the most common case.
+    Changes are RAM-only; reloading the screen reverts to the originally
+    encoded path. See also :func:`next_widget_action` /
+    :func:`prev_widget_action`.
     """
-    Behavior = _proto.ActionSwitchScreen.Behavior  # noqa: N806
+    Behavior = _proto.ActionChangeWidgetRef.Behavior  # noqa: N806
     if behavior is None:
         behavior = Behavior.BY_PATH
-    if path is None and name:
-        # Back-compat: synthesise the canonical flash path.
-        path = f"F:host/screens/{name}.pb"
-    if behavior == Behavior.BY_PATH:
-        if not path:
-            raise ValueError("switch_screen_action(BY_PATH) requires path=")
-        ss = _proto.ActionSwitchScreen(behavior=behavior, path=path)
-    else:
-        # NEXT / PREVIOUS ignore `path`; we drop any value silently so
-        # callers can pass switch_screen_action(path="x", behavior=NEXT)
-        # without it being a confusing error.
-        ss = _proto.ActionSwitchScreen(behavior=behavior)
-    return device_action(_proto.ActionDevice(switch_screen=ss))
+    if not target_id:
+        raise ValueError("change_widget_ref_action requires target_id=")
+    if not path:
+        raise ValueError("change_widget_ref_action requires path=")
+    msg = _proto.ActionChangeWidgetRef(behavior=behavior, path=path, target_id=target_id)
+    return device_action(_proto.ActionDevice(change_widget_ref=msg))
 
 
-def next_screen_action() -> _proto.Action:
-    """Step to the next screen in the device registry (wraps around)."""
-    return switch_screen_action(behavior=_proto.ActionSwitchScreen.NEXT)
+def next_widget_action(target_id: str, directory: str) -> _proto.Action:
+    """Step a ``WidgetRef`` to the next file in *directory* (wraps around)."""
+    return change_widget_ref_action(
+        target_id, directory, behavior=_proto.ActionChangeWidgetRef.NEXT
+    )
 
 
-def prev_screen_action() -> _proto.Action:
-    """Step to the previous screen in the device registry (wraps around)."""
-    return switch_screen_action(behavior=_proto.ActionSwitchScreen.PREVIOUS)
+def prev_widget_action(target_id: str, directory: str) -> _proto.Action:
+    """Step a ``WidgetRef`` to the previous file in *directory* (wraps around)."""
+    return change_widget_ref_action(
+        target_id, directory, behavior=_proto.ActionChangeWidgetRef.PREVIOUS
+    )
 
 
 def _normalise_actions(actions) -> list[_proto.Action]:
@@ -814,25 +809,30 @@ def widget_ref(
     """Stage 54 — embed a `Widget` stored in a separate ``.pb`` file.
 
     *path* is the drive-prefixed device path to a serialized
-    :class:`touchy.Widget` (e.g. ``"R:host/widgets/key0.pb"``). At
+    :class:`touchy.Widget` (e.g. ``"R:host/w/key0.pb"``). At
     screen-build time the firmware reads, decodes, and splices the
     referenced widget into the parent layout in place of this ref —
     semantically equivalent to inlining the widget here.
 
-    *path* is the only piece of data carried on the wire; the *id*,
-    *rect* / *cell*, and *style* arguments are intentionally **not**
-    serialized: they belong to the referenced widget itself. They are
-    accepted for symmetry with other DSL helpers but produce a
-    ``ValueError`` if used.
+    *path* is the only payload of the ref itself; *rect* / *cell* /
+    *style* are intentionally **not** serialized — those belong to the
+    referenced widget. They are rejected with ``ValueError`` if passed.
+
+    Stage 57 — *id* **is** accepted and stamped on the outer ref widget.
+    Set it when you want :func:`change_widget_ref_action` to address
+    this ref at runtime (firmware looks up refs by their outer
+    ``Widget.id``). Defaults to the empty string when omitted.
     """
     if not path:
         raise ValueError("widget_ref requires a non-empty path")
-    if id or rect is not None or cell is not None or style is not None:
+    if rect is not None or cell is not None or style is not None:
         raise ValueError(
-            "widget_ref does not accept id/rect/cell/style — those belong "
+            "widget_ref does not accept rect/cell/style — those belong "
             "to the referenced widget itself"
         )
     w = _proto.Widget()
+    if id:
+        w.id = id
     w.widget_ref.path = path
     return w
 
@@ -1177,105 +1177,91 @@ class Screen:
         return f"Screen(name={self.name!r}, widgets={len(self.active.widgets)})"
 
 
-def build_demo_screens() -> list[Screen]:
-    """Build the demo screen set exercising stages 16 / 18 / 20 / 24.
+def build_demo() -> tuple[Screen, list[tuple[str, _proto.Widget]]]:
+    """Build the Stage-57 demo: one screen + a directory of widget pages.
 
-    Returns two ``Screen`` instances meant to be uploaded together (the
-    ``touchy screens demo`` CLI subcommand does this). They share a
-    common header row of navigation controls so the user can flip
-    between them on-device with no host involvement:
+    Returns ``(screen, widgets)`` where:
 
-      ``[ Prev | FPS | Next ]``
+    * ``screen`` is the single "demo" screen — a persistent Prev / Next
+      chrome row plus a Stage-54 :func:`widget_ref` (``id="page"``)
+      pointing into ``F:host/w/`` for the body. The Prev / Next buttons
+      use :func:`prev_widget_action` / :func:`next_widget_action` so
+      paging happens entirely on-device.
+    * ``widgets`` is a list of ``(name, Widget)`` pairs that the caller
+      uploads to ``F:host/w/<name>.pb`` (CLI: ``touchy screens demo``):
 
-    using Stage-24 ``ActionSwitchScreen``-typed actions on the Prev/Next
-    buttons. The :func:`fps` widget in the middle is a live frames-per-
-    second readout courtesy of the same stage.
+      - ``"trackpad"`` — full-bleed multitouch trackpad (USB HID mouse).
+      - ``"test"`` — Stage 16 / 18 / 20 widget showcase wrapped in a
+        4x7 grid: hello / ping / force / fps / slider / checkbox /
+        smiley image-button / log line.
 
-    Screens:
-
-    * ``home`` — full-bleed :func:`trackpad` for USB HID mouse output,
-      so the device is immediately useful after the demo upload.
-    * ``test`` — the original Stage-16/18/20 widget showcase: hello
-      macro button, ping/slider/checkbox emitting host actions, the
-      Stage-20 image button, and a :func:`log_line` at the bottom that
-      mirrors the device's most recent log message.
-
-    The first screen returned (``home``) becomes the boot default
-    because the firmware autoloads the registry's lexicographically
-    first entry on first boot; subsequent boots restore whichever
-    screen was last viewed (Stage-24 prefs persistence).
+    Lexicographic order in that directory is ``test`` then ``trackpad``,
+    so Next/Prev wrap predictably.
     """
     from . import hid_keys as k
     from . import macros as m
 
-    def header(screen: Screen) -> None:
-        """Push the shared Prev/Next navigation strip into the active
-        layer's top row.
+    # ── chrome screen ─────────────────────────────────────────────────
+    PAGE_ID = "page"
+    PAGE_DIR = "F:host/w/"
+    PAGE_INITIAL = "F:host/w/trackpad.pb"
 
-        The buttons live in the same grid as the rest of the screen
-        (row 0 is reserved for them) so the sim and the firmware
-        render them identically — keeping the navigation chrome in the
-        active layer matches what the C++ firmware does. If the C++
-        code ever moves the chrome to a persistent overlay (top /
-        bottom / sys), update this helper at the same time.
-        """
-        screen += cell(button("prev", text="< Prev", on_click=prev_screen_action()), col=0, row=0)
-        screen += cell(button("next", text="Next >", on_click=next_screen_action()), col=3, row=0)
-
-    # ── home: trackpad-only ───────────────────────────────────────────
-    home = Screen("home", layout=grid(cols=4, rows=8, gap=8))
-    header(home)
-    home += cell(
-        trackpad(
-            "pad",
-            # dual_tap_window_ms=100,
-            # tap_max_ms=100,
-            # Cyan / orange / magenta map to 1- / 2- / 3-finger gestures
-            # so the user can see which click the firmware is about to
-            # synthesise as their fingers land.
-            left_touch_color=0x00BFFF,
-            right_touch_color=0xFFA500,
-            middle_touch_color=0xFF44FF,
-            scrollbar_color=0xADD8E6,
-            touch_ripple=ripple_animation(
-                start_opa=180,
-                max_radius=45,
-                duration_ms=400,
-                path=ANIM_PATH_EASE_OUT,
-            ),
-            tap_ripple=ripple_animation(
-                start_opa=255,
-                max_radius=70,
-                duration_ms=300,
-                path=ANIM_PATH_EASE_OUT,
-                border_width=4,
-            ),
+    screen = Screen("demo", layout=grid(cols=2, rows=8, gap=8))
+    screen += cell(
+        button(
+            "prev",
+            text="< Prev",
+            on_click=prev_widget_action(PAGE_ID, PAGE_DIR),
         ),
         col=0,
+        row=0,
+    )
+    screen += cell(
+        button(
+            "next",
+            text="Next >",
+            on_click=next_widget_action(PAGE_ID, PAGE_DIR),
+        ),
+        col=1,
+        row=0,
+    )
+    screen += cell(
+        widget_ref(PAGE_INITIAL, id=PAGE_ID),
+        col=0,
         row=1,
-        col_span=4,
+        col_span=2,
         row_span=7,
     )
 
-    # ── test: widget showcase + log line ──────────────────────────────
-    # Same 3-col grid for header continuity; 8 rows so each widget gets
-    # its own track and the log line still has full width at the bottom.
-    test = Screen("test", layout=grid(cols=4, rows=8, gap=8))
-    header(test)
+    # ── trackpad page widget ──────────────────────────────────────────
+    pad = trackpad(
+        "pad",
+        left_touch_color=0x00BFFF,
+        right_touch_color=0xFFA500,
+        middle_touch_color=0xFF44FF,
+        scrollbar_color=0xADD8E6,
+        touch_ripple=ripple_animation(
+            start_opa=180,
+            max_radius=45,
+            duration_ms=400,
+            path=ANIM_PATH_EASE_OUT,
+        ),
+        tap_ripple=ripple_animation(
+            start_opa=255,
+            max_radius=70,
+            duration_ms=300,
+            path=ANIM_PATH_EASE_OUT,
+            border_width=4,
+        ),
+    )
 
-    # Type-"hi" macro button on the left (mirrors the smiley's transition
-    # pattern on a non-image widget so we can tell whether transitions
-    # work in general or only on image buttons).
-    test += cell(
+    # ── test page widget (grid container) ─────────────────────────────
+    showcase = Layer(layout=grid(cols=4, rows=7, gap=8))
+    showcase += cell(
         button(
             "hello",
             text="Type 'hi'",
-            on_click=macro_action(
-                [
-                    m.key_tap(k.KEY_H, k.MOD_LSHIFT),
-                    m.key_tap(k.KEY_I),
-                ]
-            ),
+            on_click=macro_action([m.key_tap(k.KEY_H, k.MOD_LSHIFT), m.key_tap(k.KEY_I)]),
             style=[
                 style(
                     transition=transition(
@@ -1284,43 +1270,30 @@ def build_demo_screens() -> list[Screen]:
                         duration_ms=200,
                     )
                 ),
-                style(
-                    transform_width=20,
-                    bg_color=0xCC2222,
-                    for_state=STATE_PRESSED,
-                ),
+                style(transform_width=20, bg_color=0xCC2222, for_state=STATE_PRESSED),
             ],
         ),
         col=0,
-        row=1,
+        row=0,
     )
-    test += cell(
+    showcase += cell(
         button("ping", text="Ping host", on_click=host_action(0x100)),
         col=1,
-        row=1,
-    )
-    # Dev-only force-render checkbox, kept next to the FPS readout in
-    # the header so a benchmarker can watch the number while toggling.
-    test += cell(
-        force_render("force"),
-        col=2,
-        row=1,
-    )
-    test += cell(fps("fps"), col=3, row=1)
-    test += cell(
-        slider("level", min=0, max=100, value=42, on_change=host_action(0x101)),
-        col=0,
-        row=2,
+        row=0,
         col_span=3,
     )
-    test += cell(
+    showcase += cell(
+        slider("level", min=0, max=100, value=42, on_change=host_action(0x101)),
+        col=0,
+        row=1,
+        col_span=3,
+    )
+    showcase += cell(
         checkbox("enable", text="Enabled", checked=True, on_change=host_action(0x102)),
         col=0,
-        row=3,
+        row=2,
     )
-
-    # Stage-20.2 smiley image-button with cranked-up press feedback.
-    test += cell(
+    showcase += cell(
         image_button(
             "smile",
             asset="F:host/images/smiley.png",
@@ -1345,26 +1318,21 @@ def build_demo_screens() -> list[Screen]:
             ],
         ),
         col=1,
-        row=3,
+        row=2,
         col_span=2,
     )
+    showcase += cell(force_render("force"), col=3, row=1)
+    showcase += cell(fps("fps"), col=3, row=2)
+    showcase += cell(log_line("log"), col=0, row=3, col_span=4, row_span=4)
 
-    # Log strip spans the bottom 4 rows so multi-line wrapped messages
-    # stay readable.
-    test += cell(log_line("log"), col=0, row=4, col_span=4, row_span=4)
+    test_widget = _proto.Widget()
+    showcase.copy_into(test_widget)
 
-    return [home, test]
+    return screen, [("test", test_widget), ("trackpad", pad)]
 
 
 def build_demo_screen(name: str = "demo") -> Screen:
-    """Back-compat shim returning the trackpad-bearing demo screen.
-
-    Pre-Stage-24 callers expected one screen; the demo is now split
-    into two. We return the ``home`` screen because it carries the
-    multitouch trackpad ("pad") that the previous demo led with, and
-    that's what existing tests / docs key off.
-    """
-    screens = build_demo_screens()
-    target = next(s for s in screens if s.name == "home")
-    target.name = name
-    return target
+    """Back-compat shim returning the Stage-57 demo chrome screen."""
+    screen, _ = build_demo()
+    screen.name = name
+    return screen

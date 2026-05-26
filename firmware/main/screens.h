@@ -69,15 +69,6 @@ void screens_clear(void);
 // Returns NULL until `screens_set_touch()` has been called.
 esp_lcd_touch_handle_t screens_get_touch(void);
 
-// Stage 24: jump to another registered screen by behaviour code.
-//   * 0 = BY_PATH   — load `path`.
-//   * 1 = NEXT      — advance one entry in registry iteration order.
-//   * 2 = PREVIOUS  — step back one entry.
-// NEXT/PREVIOUS wrap around at the registry ends; `path` is ignored.
-// Returns false if no screen could be loaded (empty registry, unknown
-// path, etc.).
-bool screens_switch(int behavior, const char *path);
-
 // Stage 24: drive-prefixed path of the currently-loaded screen, or ""
 // before any successful `screens_load`. Used by the prefs subsystem to
 // persist the last-viewed screen across reboots.

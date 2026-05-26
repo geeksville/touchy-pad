@@ -387,41 +387,6 @@ bool screens_load(const char *path)
     return load_decoded(std::move(holder), path);
 }
 
-bool screens_switch(int behavior, const char *path)
-{
-    // BY_PATH == 0 (per ActionSwitchScreen.Behavior); just forward.
-    if (behavior == 0) {
-        return screens_load(path);
-    }
-
-    auto &reg = registry();
-    if (reg.empty()) {
-        ESP_LOGW(TAG, "screens_switch: registry empty");
-        return false;
-    }
-
-    // Find the current screen in the registry's iteration order (stable
-    // because std::map sorts by key). When `g_current_path` is empty or
-    // refers to something that's no longer registered (e.g. after a
-    // clear+re-upload) we anchor at begin() so NEXT advances to the 2nd
-    // entry and PREVIOUS wraps to the last — matching what a user would
-    // expect after the registry was rebuilt.
-    auto it = g_current_path.empty() ? reg.end()
-                                     : reg.find(g_current_path);
-    if (it == reg.end()) it = reg.begin();
-
-    if (behavior == 1) {           // NEXT
-        ++it;
-        if (it == reg.end()) it = reg.begin();
-    } else if (behavior == 2) {    // PREVIOUS
-        if (it == reg.begin()) it = reg.end();
-        --it;
-    } else {
-        ESP_LOGW(TAG, "screens_switch: unknown behavior %d", behavior);
-        return false;
-    }
-    return screens_load(it->first.c_str());
-}
 
 const char *screens_current_path(void)
 {

@@ -31,10 +31,10 @@ from .touchy_pb2 import (  # noqa: F401  (re-exported)
 )
 from .widgets_pb2 import (  # noqa: F401  (re-exported)
     Action,
+    ActionChangeWidgetRef,
     ActionDevice,
     ActionHost,
     ActionMacro,
-    ActionSwitchScreen,
     AnimPath,
     Arc,
     Button,

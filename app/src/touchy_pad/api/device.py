@@ -289,8 +289,8 @@ class Touchy:
         """Upload a standalone :class:`Widget` (Stage 54).
 
         Writes the serialized widget to
-        ``{drive}:host/widgets/{name}.pb`` so a screen elsewhere may
-        reference it via ``widget_ref("{drive}:host/widgets/{name}.pb")``.
+        ``{drive}:host/w/{name}.pb`` so a screen elsewhere may
+        reference it via ``widget_ref("{drive}:host/w/{name}.pb")``.
 
         *drive* defaults to ``"F"`` (persistent flash); pass ``"R"`` for
         the volatile PSRAM ramdisk.
@@ -304,7 +304,7 @@ class Touchy:
                 f"widget_save: widget must be touchy_pad.api.protobuf.Widget, "
                 f"got {type(widget).__name__}"
             )
-        path = f"{drive}:host/widgets/{name}.pb"
+        path = f"{drive}:host/w/{name}.pb"
         # Stage 56: stamp the wire-format version on the root widget
         # so the firmware can validate (and delete on mismatch) the
         # same way it does for screen files.

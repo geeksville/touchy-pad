@@ -5,17 +5,22 @@
 
 #include "widget_actions.h"
 
+#include "fs/fs.h"
 #include "host_api.h"
 #include "macros.h"
 #include "screens.h"
+#include "widget_builders.h"
 #include "widgets.pb.h"
 
 #include "esp_log.h"
 #include "lvgl.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <new>
+#include <string>
+#include <vector>
 
 static const char *TAG = "screens.actions";
 
@@ -58,43 +63,103 @@ void widget_event_cb(lv_event_t *e)
         case touchy_Action_device_tag: {
             const touchy_ActionDevice &dev = act.kind.device;
             switch (dev.which_kind) {
-            case touchy_ActionDevice_switch_screen_tag: {
-                const touchy_ActionSwitchScreen &ss = dev.kind.switch_screen;
-                // ActionSwitchScreen.Behavior values match the int code
-                // expected by screens_switch() 1:1.
-                //
-                // CRITICAL: defer to `lv_async_call`. We're being called
-                // from the middle of LVGL's event dispatch on a widget
-                // whose owning screen would be torn down by
-                // `screens_switch()` (it calls `lv_obj_delete(old_scr)`
-                // on the current screen). Deleting LVGL objects while
-                // their event chain is still being walked is a
-                // use-after-free — LVGL's standard remedy is to defer
-                // such "destroy myself" actions via `lv_async_call`,
-                // which runs the callback at the start of the next
-                // `lv_timer_handler` tick, after every in-flight event
-                // has fully unwound.
-                struct SwitchReq {
-                    int  behavior;
-                    char path[96];   // matches widgets.options ActionSwitchScreen.path
-                };
-                auto *req = new (std::nothrow) SwitchReq{};
-                if (!req) {
-                    ESP_LOGE(TAG, "OOM scheduling switch_screen");
+            case touchy_ActionDevice_change_widget_ref_tag: {
+                const touchy_ActionChangeWidgetRef &cw = dev.kind.change_widget_ref;
+                // Resolve target path. For BY_PATH (0) we honour the
+                // configured `path` verbatim. For NEXT (1) / PREVIOUS
+                // (2) we treat `path` as a directory and enumerate its
+                // `*.pb` entries; the current ref's path determines
+                // where in the list we step.
+                std::string target_path;
+                const int   behavior   = (int)cw.behavior;
+                const char *target_id  = cw.target_id;
+                const char *dir_or_pth = cw.path;
+                if (!target_id[0]) {
+                    ESP_LOGW(TAG, "change_widget_ref: missing target_id");
                     break;
                 }
-                req->behavior = (int)ss.behavior;
-                snprintf(req->path, sizeof(req->path), "%s", ss.path);
+                if (behavior == 0) {  // BY_PATH
+                    if (!dir_or_pth[0]) {
+                        ESP_LOGW(TAG, "change_widget_ref(BY_PATH): empty path");
+                        break;
+                    }
+                    target_path = dir_or_pth;
+                } else if (behavior == 1 || behavior == 2) {  // NEXT / PREVIOUS
+                    const char *dir = dir_or_pth[0] ? dir_or_pth : "F:host/w/";
+                    std::string                 rest;
+                    Fs *fs = fs_resolve(dir, &rest);
+                    if (!fs) {
+                        ESP_LOGW(TAG,
+                                 "change_widget_ref: bad drive in '%s'", dir);
+                        break;
+                    }
+                    std::vector<std::string> files;
+                    // Drive prefix string for stitching paths back together.
+                    char         drive_letter = (dir[0] & ~0x20);
+                    std::string  prefix(1, drive_letter);
+                    prefix += ":";
+                    if (!rest.empty() && rest.back() != '/') rest += '/';
+                    fs->list(rest, [&](const std::string &name, bool is_dir) {
+                        if (is_dir) return true;
+                        if (name.size() < 4) return true;
+                        if (name.compare(name.size() - 3, 3, ".pb") != 0) return true;
+                        files.push_back(prefix + rest + name);
+                        return true;
+                    });
+                    if (files.empty()) {
+                        ESP_LOGW(TAG,
+                                 "change_widget_ref: no *.pb files in '%s'", dir);
+                        break;
+                    }
+                    std::sort(files.begin(), files.end());
+                    const char *current = widget_refs_current_path(target_id);
+                    int idx = 0;
+                    if (current) {
+                        auto it = std::find(files.begin(), files.end(),
+                                            std::string(current));
+                        if (it == files.end()) {
+                            ESP_LOGW(TAG,
+                                     "change_widget_ref: current path '%s' "
+                                     "not in '%s'; defaulting to first entry",
+                                     current, dir);
+                        } else {
+                            idx = (int)(it - files.begin());
+                        }
+                    }
+                    int step = (behavior == 1) ? 1 : -1;
+                    int n    = (int)files.size();
+                    int next = ((idx + step) % n + n) % n;
+                    target_path = files[next];
+                } else {
+                    ESP_LOGW(TAG,
+                             "change_widget_ref: unknown behavior %d",
+                             behavior);
+                    break;
+                }
+
+                // Defer via lv_async_call — `widget_refs_change` deletes
+                // LVGL objects in the same event chain that is dispatching
+                // this callback, which is unsafe inline.
+                struct ChangeReq {
+                    char target_id[32];
+                    char path[96];
+                };
+                auto *req = new (std::nothrow) ChangeReq{};
+                if (!req) {
+                    ESP_LOGE(TAG, "OOM scheduling change_widget_ref");
+                    break;
+                }
+                snprintf(req->target_id, sizeof(req->target_id), "%s", target_id);
+                snprintf(req->path, sizeof(req->path), "%s", target_path.c_str());
                 lv_async_call(
                     [](void *p) {
-                        auto *r = static_cast<SwitchReq *>(p);
-                        bool ok = screens_switch(
-                            r->behavior, r->path[0] ? r->path : nullptr);
+                        auto *r = static_cast<ChangeReq *>(p);
+                        bool ok = widget_refs_change(r->target_id, r->path);
                         if (!ok) {
                             ESP_LOGW(TAG,
-                                     "switch_screen failed "
-                                     "(behavior=%d path='%s')",
-                                     r->behavior, r->path);
+                                     "change_widget_ref failed "
+                                     "(target_id='%s' path='%s')",
+                                     r->target_id, r->path);
                         }
                         delete r;
                     },

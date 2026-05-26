@@ -17,9 +17,9 @@ from touchy_pad.api import (
     STATE_PRESSED,
     Screen,
     arc,
-    build_demo_screen,
-    build_demo_screens,
+    build_demo,
     button,
+    change_widget_ref_action,
     checkbox,
     col,
     force_render,
@@ -31,15 +31,14 @@ from touchy_pad.api import (
     label,
     macro_action,
     macros,
-    next_screen_action,
-    prev_screen_action,
+    next_widget_action,
+    prev_widget_action,
     rect,
     ripple_animation,
     row,
     slider,
     spacer,
     style,
-    switch_screen_action,
     toggle,
     trackpad,
     transition,
@@ -315,11 +314,13 @@ def test_transition_defaults_are_linear_200ms():
 
 def test_demo_smile_uses_transition_pattern():
     """The smiley image-button carries the imagebutton_1-style transition."""
-    # Stage 24 split the demo across two screens; the smiley lives on
-    # the widget-showcase ("test") screen.
-    s = next(s for s in build_demo_screens() if s.name == "test")
-    decoded = _proto.Screen.FromString(s.to_bytes())
-    smile = next(w for w in _children(decoded.active) if w.id == "smile")
+    # Stage 57 — the smiley lives on the "test" widget page that
+    # ``build_demo()`` returns alongside the chrome screen.
+    _, widgets = build_demo()
+    test_widget = next(w for name, w in widgets if name == "test")
+    decoded = _proto.Widget.FromString(test_widget.SerializeToString())
+    grid_children = decoded.layout_grid.layout.children
+    smile = next(w for w in grid_children if w.id == "smile")
     assert len(smile.styles) == 2
     default_style, pressed_style = smile.styles
     # Default style binds the transition, no for_state and no bg colour.
@@ -522,11 +523,11 @@ def test_trackpad_full_kwargs_roundtrip():
 
 
 def test_build_demo_screen_trackpad_has_ripples():
-    """Demo screen ships ripple eye-candy so users see the feature."""
-    s = build_demo_screen()
-    decoded = _proto.Screen.FromString(s.to_bytes())
-    pad = next(w for w in _children(decoded.active) if w.id == "pad")
-    tp = pad.trackpad
+    """Demo widget page ships ripple eye-candy so users see the feature."""
+    _, widgets = build_demo()
+    pad = next(w for name, w in widgets if name == "trackpad")
+    decoded = _proto.Widget.FromString(pad.SerializeToString())
+    tp = decoded.trackpad
     assert tp.HasField("touch_ripple")
     assert tp.HasField("tap_ripple")
     assert tp.HasField("left_touch_color")
@@ -534,7 +535,7 @@ def test_build_demo_screen_trackpad_has_ripples():
     assert tp.HasField("middle_touch_color")
 
 
-# -- Stage 24: FPS widget + ActionDevice/ActionSwitchScreen -----------------
+# -- Stage 24 / 57: FPS widget + ActionDevice / ActionChangeWidgetRef -------
 
 
 def test_fps_widget_round_trip():
@@ -557,75 +558,75 @@ def test_force_render_widget_round_trip():
     assert w.WhichOneof("kind") == "force_render"
 
 
-def test_switch_screen_action_by_path():
-    """BY_PATH (default) packs the path into the proto."""
-    a = switch_screen_action(path="F:host/screens/home.pb")
+def test_change_widget_ref_action_by_path():
+    """BY_PATH (default) packs the path + target_id into the proto."""
+    a = change_widget_ref_action(target_id="page", path="F:host/w/trackpad.pb")
     assert a.WhichOneof("kind") == "device"
-    ss = a.device.switch_screen
-    assert ss.path == "F:host/screens/home.pb"
-    assert ss.behavior == _proto.ActionSwitchScreen.Behavior.BY_PATH
+    cw = a.device.change_widget_ref
+    assert cw.target_id == "page"
+    assert cw.path == "F:host/w/trackpad.pb"
+    assert cw.behavior == _proto.ActionChangeWidgetRef.Behavior.BY_PATH
 
 
-def test_switch_screen_action_legacy_name_kwarg():
-    """Pre-stage-51 ``name=`` is still accepted for compatibility."""
-    a = switch_screen_action(name="home")
-    ss = a.device.switch_screen
-    assert ss.path == "F:host/screens/home.pb"
-    assert ss.behavior == _proto.ActionSwitchScreen.Behavior.BY_PATH
-
-
-def test_switch_screen_action_by_path_requires_path():
-    """A missing path is a hard error — silent fallback would surprise users."""
+def test_change_widget_ref_action_requires_target_id():
     with pytest.raises(ValueError):
-        switch_screen_action()
+        change_widget_ref_action(target_id="", path="F:host/w/a.pb")
 
 
-def test_next_screen_action():
-    a = next_screen_action()
-    ss = a.device.switch_screen
-    assert ss.behavior == _proto.ActionSwitchScreen.Behavior.NEXT
-    assert ss.path == ""
+def test_change_widget_ref_action_requires_path():
+    with pytest.raises(ValueError):
+        change_widget_ref_action(target_id="page", path="")
 
 
-def test_prev_screen_action():
-    a = prev_screen_action()
-    ss = a.device.switch_screen
-    assert ss.behavior == _proto.ActionSwitchScreen.Behavior.PREVIOUS
-    assert ss.path == ""
+def test_next_widget_action():
+    a = next_widget_action("page", "F:host/w/")
+    cw = a.device.change_widget_ref
+    assert cw.target_id == "page"
+    assert cw.path == "F:host/w/"
+    assert cw.behavior == _proto.ActionChangeWidgetRef.Behavior.NEXT
 
 
-def test_build_demo_screens_returns_two_named_screens():
-    screens = build_demo_screens()
-    assert [s.name for s in screens] == ["home", "test"]
-
-    # Both screens carry prev/next navigation in the active layer
-    # (matching the C++ firmware — see the `header()` helper).
-    for s in screens:
-        active_ids = [w.id for w in s.widgets]
-        assert "prev" in active_ids and "next" in active_ids
-
-    # Home screen has the trackpad widget on the active layer.
-    home_ids = [w.id for w in screens[0].widgets]
-    assert "pad" in home_ids
-
-    # Test screen has the fps widget on the active layer.
-    test_ids = [w.id for w in screens[1].widgets]
-    assert "fps" in test_ids
+def test_prev_widget_action():
+    a = prev_widget_action("page", "F:host/w/")
+    cw = a.device.change_widget_ref
+    assert cw.target_id == "page"
+    assert cw.path == "F:host/w/"
+    assert cw.behavior == _proto.ActionChangeWidgetRef.Behavior.PREVIOUS
 
 
-def test_build_demo_screens_header_wires_switch_actions():
-    """Header buttons emit ActionDevice(switch_screen=NEXT/PREVIOUS)."""
-    home = build_demo_screens()[0]
-    prev = next(w for w in home.widgets if w.id == "prev")
-    nxt = next(w for w in home.widgets if w.id == "next")
+def test_build_demo_returns_screen_and_widgets():
+    screen, widgets = build_demo()
+    assert screen.name == "demo"
+    # Chrome row carries prev/next nav addressed at the body ref.
+    active_ids = [w.id for w in screen.widgets]
+    assert "prev" in active_ids and "next" in active_ids
+    # The body slot is a widget_ref(id="page") pointing into F:host/w/.
+    decoded = _proto.Screen.FromString(screen.to_bytes())
+    refs = [w for w in _children(decoded.active) if w.WhichOneof("kind") == "widget_ref"]
+    assert len(refs) == 1
+    assert refs[0].id == "page"
+    assert refs[0].widget_ref.path == "F:host/w/trackpad.pb"
+    # Two named widget pages, sorted by build order.
+    names = [n for n, _ in widgets]
+    assert names == ["test", "trackpad"]
+
+
+def test_build_demo_chrome_wires_change_widget_ref_actions():
+    """Prev/Next buttons emit ActionDevice(change_widget_ref=NEXT/PREVIOUS)."""
+    screen, _ = build_demo()
+    prev = next(w for w in screen.widgets if w.id == "prev")
+    nxt = next(w for w in screen.widgets if w.id == "next")
     for w, expected in [
-        (prev, _proto.ActionSwitchScreen.Behavior.PREVIOUS),
-        (nxt, _proto.ActionSwitchScreen.Behavior.NEXT),
+        (prev, _proto.ActionChangeWidgetRef.Behavior.PREVIOUS),
+        (nxt, _proto.ActionChangeWidgetRef.Behavior.NEXT),
     ]:
         assert len(w.button.on_click) == 1
         act = w.button.on_click[0]
         assert act.WhichOneof("kind") == "device"
-        assert act.device.switch_screen.behavior == expected
+        cw = act.device.change_widget_ref
+        assert cw.behavior == expected
+        assert cw.target_id == "page"
+        assert cw.path == "F:host/w/"
 
 
 def test_widget_ref_round_trip():
@@ -656,7 +657,9 @@ def test_widget_ref_rejects_empty_path():
 
 
 def test_widget_ref_rejects_inline_styling():
-    with pytest.raises(ValueError):
-        widget_ref("F:host/widgets/a.pb", id="x")
+    # Stage 57 — id IS now accepted (it addresses the ref at runtime).
+    w = widget_ref("F:host/widgets/a.pb", id="page")
+    assert w.id == "page"
+    # rect/style still belong to the referenced widget, not the ref node.
     with pytest.raises(ValueError):
         widget_ref("F:host/widgets/a.pb", rect=rect(0, 0, 10, 10))

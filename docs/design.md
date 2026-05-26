@@ -892,7 +892,7 @@ Shipped (wire-format bump 15 → 16):
 No backwards-compat path: older `.pb` files are deleted on first boot
 after upgrade, exactly as for prior wire-format bumps.
 
-## Stage 57: Change ActionSwitchScreen to ActionChangeWidgetRef
+## Stage 57: Change ActionSwitchScreen to ActionChangeWidgetRef (DONE)
 
 Now that we have WidgetRefs we can be smarter about the idea of Screens and sublayouts.  
 

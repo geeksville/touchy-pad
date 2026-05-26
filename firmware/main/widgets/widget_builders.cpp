@@ -43,24 +43,31 @@ namespace {
 
 using WidgetMsg = PbMessage<touchy_Widget>;
 
+// Stage 57 — one entry per resolved `widget_ref`. For the *outermost*
+// ref in a chain (the one parented directly into an LVGL container)
+// we additionally remember the LVGL parent + produced root and the
+// originating outer widget, so `widget_refs_change` can rebuild the
+// subtree in place. For deeper refs inside a chain the LVGL fields
+// stay null but `holder` / `path` still keep the decoded payload
+// alive and let `widget_refs_active_path` enumerate every referenced
+// file.
+struct ActiveRef {
+    std::string                id;       // outer Widget.id, "" if unset
+    std::string                path;     // current path (mutates on rebind)
+    lv_obj_t                  *parent = nullptr;
+    lv_obj_t                  *root   = nullptr;
+    const touchy_Widget       *outer  = nullptr;  // outer widget proto (placement)
+    // Stage 57 — context flags used when rebinding the subtree in place:
+    bool                       layer_root      = false;  // expansion at layer level
+    bool                       grid_cell       = false;  // parent layout is grid
+    bool                       absolute_layout = false;  // parent layout is absolute
+    std::unique_ptr<WidgetMsg> holder;
+};
+
 // Decoded refs picked up by the *current* build pass; committed into
 // `g_active_refs` once the new screen has fully replaced the old.
-// Held by unique_ptr so each `touchy_Widget` keeps a stable address —
-// `widget_build` only stores `const touchy_Widget &` and any pointers
-// into heap arrays must remain valid for the lifetime of the LVGL tree.
-std::vector<std::unique_ptr<WidgetMsg>> g_pending_refs;
-
-// Stage 55 — drive-prefixed paths that produced each entry in
-// `g_pending_refs`, in matching order. Lets `screens_notify_file_changed`
-// detect whether an overwritten file feeds the active screen via a
-// `WidgetRef`.
-std::vector<std::string> g_pending_ref_paths;
-
-// Decoded refs backing the currently-displayed screen. Their memory is
-// pointed at by action slots, action steps, etc. Released only after
-// the next successful screen build replaces them.
-std::vector<std::unique_ptr<WidgetMsg>> g_active_refs;
-std::vector<std::string>                g_active_ref_paths;
+std::vector<ActiveRef> g_pending_refs;
+std::vector<ActiveRef> g_active_refs;
 
 // Paths currently being expanded — guards against ref cycles within a
 // single resolve_widget_ref() chain.
@@ -134,9 +141,14 @@ const touchy_Widget *resolve_widget_ref(const touchy_Widget &w)
     // We must keep `holder` alive even if `resolved` points into a
     // *deeper* ref's holder (its own entry was already pushed by the
     // recursive call). Always push so the chain of refs lives as long
-    // as the resulting LVGL subtree.
-    g_pending_refs.push_back(std::move(holder));
-    g_pending_ref_paths.push_back(key);
+    // as the resulting LVGL subtree. LVGL fields (parent/root/outer)
+    // stay null here; `widget_build_children` patches them on the
+    // outermost ref after the build returns.
+    ActiveRef entry;
+    entry.id     = std::string(w.id);
+    entry.path   = key;
+    entry.holder = std::move(holder);
+    g_pending_refs.push_back(std::move(entry));
     return resolved;
 }
 
@@ -572,17 +584,42 @@ void widget_build_children(lv_obj_t *parent, const touchy_Widget &container)
     const bool grid_layout = container.which_kind == touchy_Widget_layout_grid_tag;
     const bool absolute_layout = container.which_kind == touchy_Widget_layout_absolute_tag;
     for (pb_size_t i = 0; i < L->children_count; i++) {
+        const bool is_ref =
+            L->children[i].which_kind == touchy_Widget_widget_ref_tag;
+        const size_t pre = g_pending_refs.size();
         const touchy_Widget *w = resolve_widget_ref(L->children[i]);
         if (!w) continue;
         lv_obj_t *obj = widget_build(parent, *w);
         if (!obj) continue;
         apply_styles(obj, *w);
+        // Stage 57 — placement (grid cell / absolute rect) belongs to
+        // the *outer* widget_ref node, since the referenced .pb file
+        // typically has no opinion about where on the enclosing layout
+        // it lives. For plain (non-ref) children, outer == resolved.
+        const touchy_Widget &placement_src = is_ref ? L->children[i] : *w;
         if (grid_layout) {
-            apply_grid_cell(obj, *w);
+            apply_grid_cell(obj, placement_src);
         } else {
-            apply_rect(obj, *w, absolute_layout);
+            apply_rect(obj, placement_src, absolute_layout);
         }
         if (w->centered) lv_obj_center(obj);
+        // Stage 57 — patch the outermost ref entry so it can be
+        // rebuilt in place by `widget_refs_change`. The recursive
+        // resolve pushes deeper entries first, so `back()` is the
+        // outermost. We also re-stamp the outer widget id (overriding
+        // anything the deeper resolution may have stashed) and the
+        // outer widget proto pointer used for placement.
+        if (is_ref && g_pending_refs.size() > pre) {
+            ActiveRef &back = g_pending_refs.back();
+            back.parent          = parent;
+            back.root            = obj;
+            back.outer           = &L->children[i];
+            back.layer_root      = false;
+            back.grid_cell       = grid_layout;
+            back.absolute_layout = absolute_layout;
+            back.id              = std::string(L->children[i].id);
+            back.path            = std::string(L->children[i].kind.widget_ref.path);
+        }
     }
 }
 
@@ -615,12 +652,23 @@ lv_obj_t *widget_build(lv_obj_t *parent, const touchy_Widget &w)
 
 void widget_build_layer(lv_obj_t *parent, const touchy_Widget &root_in)
 {
+    const bool is_ref = root_in.which_kind == touchy_Widget_widget_ref_tag;
+    const size_t pre  = g_pending_refs.size();
     const touchy_Widget *root_p = resolve_widget_ref(root_in);
     if (!root_p) return;
     const touchy_Widget &root = *root_p;
     if (widget_is_layout(root)) {
         apply_layout(parent, root);
         widget_build_children(parent, root);
+        if (is_ref && g_pending_refs.size() > pre) {
+            ActiveRef &back = g_pending_refs.back();
+            back.parent     = parent;
+            back.root       = parent;  // layout layer roots directly into `parent`
+            back.outer      = &root_in;
+            back.layer_root = true;
+            back.id         = std::string(root_in.id);
+            back.path       = std::string(root_in.kind.widget_ref.path);
+        }
         return;
     }
     if (root.which_kind == 0) {
@@ -632,6 +680,16 @@ void widget_build_layer(lv_obj_t *parent, const touchy_Widget &root_in)
     apply_styles(obj, root);
     apply_rect(obj, root, /*absolute_layout=*/true);
     if (root.centered) lv_obj_center(obj);
+    if (is_ref && g_pending_refs.size() > pre) {
+        ActiveRef &back = g_pending_refs.back();
+        back.parent          = parent;
+        back.root            = obj;
+        back.outer           = &root_in;
+        back.layer_root      = true;
+        back.absolute_layout = true;
+        back.id              = std::string(root_in.id);
+        back.path            = std::string(root_in.kind.widget_ref.path);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -641,26 +699,126 @@ void widget_build_layer(lv_obj_t *parent, const touchy_Widget &root_in)
 void widget_refs_reset_pending()
 {
     g_pending_refs.clear();
-    g_pending_ref_paths.clear();
     g_ref_expansion.clear();
 }
 
 void widget_refs_commit()
 {
-    g_active_refs      = std::move(g_pending_refs);
-    g_active_ref_paths = std::move(g_pending_ref_paths);
+    g_active_refs = std::move(g_pending_refs);
     g_pending_refs.clear();
-    g_pending_ref_paths.clear();
     g_ref_expansion.clear();
 }
 
 size_t widget_refs_active_count()
 {
-    return g_active_ref_paths.size();
+    return g_active_refs.size();
 }
 
 const char *widget_refs_active_path(size_t i)
 {
-    if (i >= g_active_ref_paths.size()) return "";
-    return g_active_ref_paths[i].c_str();
+    if (i >= g_active_refs.size()) return "";
+    return g_active_refs[i].path.c_str();
+}
+
+const char *widget_refs_current_path(const char *target_id)
+{
+    if (!target_id) return nullptr;
+    for (const auto &ref : g_active_refs) {
+        if (ref.id == target_id) return ref.path.c_str();
+    }
+    return nullptr;
+}
+
+bool widget_refs_change(const char *target_id, const char *new_path)
+{
+    if (!target_id || !new_path) return false;
+    // Locate the addressable (outermost) ref by id.
+    ActiveRef *match = nullptr;
+    size_t     match_idx = 0;
+    for (size_t i = 0; i < g_active_refs.size(); i++) {
+        ActiveRef &r = g_active_refs[i];
+        if (r.id == target_id && r.parent && r.outer) {
+            match = &r;
+            match_idx = i;
+            break;
+        }
+    }
+    if (!match) {
+        ESP_LOGW(TAG, "widget_refs_change: no active ref with id '%s'", target_id);
+        return false;
+    }
+    // Snapshot context before we mutate state.
+    lv_obj_t                  *parent           = match->parent;
+    const touchy_Widget       *outer            = match->outer;
+    const bool                 layer_root       = match->layer_root;
+    const bool                 grid_cell        = match->grid_cell;
+    const bool                 absolute_layout  = match->absolute_layout;
+
+    // Tear down the old LVGL subtree.
+    if (layer_root && match->root == parent) {
+        // Layout-layer expansion built directly into `parent` —
+        // remove every child but keep the layer object itself.
+        lv_obj_clean(parent);
+    } else {
+        lv_obj_delete(match->root);
+    }
+
+    // Replace the outer widget's widget_ref.path so the rebuild reads
+    // the new file. Per widgets.options the field is an inline
+    // fixed-size char buffer (max_size=96), so we can snprintf
+    // directly into it — no heap fuss.
+    snprintf(const_cast<char *>(outer->kind.widget_ref.path),
+             sizeof(outer->kind.widget_ref.path),
+             "%s", new_path);
+
+    // Drop the old ref entry (its holder chain is no longer reachable
+    // from any live LVGL object) and stage the rebuild.
+    g_active_refs.erase(g_active_refs.begin() + match_idx);
+    widget_refs_reset_pending();
+
+    if (layer_root) {
+        widget_build_layer(parent, *outer);
+    } else {
+        // Mirror widget_build_children's single-slot expansion.
+        const size_t pre = g_pending_refs.size();
+        const touchy_Widget *w = resolve_widget_ref(*outer);
+        if (!w) {
+            ESP_LOGW(TAG, "widget_refs_change: resolve failed for '%s'", new_path);
+            widget_refs_reset_pending();
+            return false;
+        }
+        lv_obj_t *obj = widget_build(parent, *w);
+        if (obj) {
+            apply_styles(obj, *w);
+            // Stage 57 — placement comes from the outer widget_ref
+            // node (its `placement.cell` / `placement.rect`), not
+            // from the referenced inner widget.
+            if (grid_cell) {
+                apply_grid_cell(obj, *outer);
+            } else {
+                apply_rect(obj, *outer, absolute_layout);
+            }
+            if (w->centered) lv_obj_center(obj);
+            if (g_pending_refs.size() > pre) {
+                ActiveRef &back = g_pending_refs.back();
+                back.parent          = parent;
+                back.root            = obj;
+                back.outer           = outer;
+                back.layer_root      = false;
+                back.grid_cell       = grid_cell;
+                back.absolute_layout = absolute_layout;
+                back.id              = std::string(outer->id);
+                back.path            = new_path;
+            }
+        }
+    }
+
+    // Splice newly-pending refs into the active list (preserving the
+    // sibling refs we left untouched).
+    for (auto &nr : g_pending_refs) {
+        g_active_refs.push_back(std::move(nr));
+    }
+    g_pending_refs.clear();
+    g_ref_expansion.clear();
+    return true;
 }

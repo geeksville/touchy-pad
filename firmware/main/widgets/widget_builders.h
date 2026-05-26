@@ -68,3 +68,24 @@ void widget_refs_commit();
 // appeared in the parent screen's `widget_ref.path` field).
 size_t widget_refs_active_count();
 const char *widget_refs_active_path(size_t i);
+
+// ---------------------------------------------------------------------------
+// Stage 57 — in-RAM WidgetRef rebinding.
+//
+// `widget_refs_current_path(target_id)` returns the path currently
+// bound to the active outermost WidgetRef whose outer `Widget.id`
+// equals `target_id`, or nullptr if no such ref is active.
+//
+// `widget_refs_change(target_id, new_path)` rebuilds that ref's
+// subtree in place: it tears down the old LVGL objects, mutates the
+// outer widget's `widget_ref.path` to `new_path`, and reruns the
+// builder under the original parent with the original placement. The
+// change is RAM-only — no file is rewritten. Returns false if no
+// matching ref is active or the rebuild fails (in which case the
+// caller should expect the old subtree to be gone; the slot will
+// simply be empty until the next screen reload). Caller must hold
+// the LVGL lock.
+// ---------------------------------------------------------------------------
+
+const char *widget_refs_current_path(const char *target_id);
+bool        widget_refs_change(const char *target_id, const char *new_path);

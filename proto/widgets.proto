@@ -241,34 +241,45 @@ message ActionHost {
 // Special-cased on-device behaviours. Like ActionMacro this runs
 // entirely on the firmware (no host round-trip), but instead of
 // replaying HID events the device interprets the chosen sub-message
-// and changes its own state (switching screens, etc.).
+// and changes its own state (rebinding a `WidgetRef` to a different
+// widget file, etc.).
 message ActionDevice {
     oneof kind {
-        ActionSwitchScreen switch_screen = 1;
+        ActionChangeWidgetRef change_widget_ref = 1;
     }
 }
 
-// Replace the currently-loaded screen with another previously-registered
-// one (see screens_load() in firmware/main/screens.{h,cpp}).
+// Stage 57 — retarget a `WidgetRef`-bearing widget in the currently
+// loaded screen to a different widget file. The change lives in RAM
+// only; reloading the screen reverts to the originally-encoded path.
 //
-//   * BY_PATH (default): load the screen whose registered drive-prefixed
-//     path matches the `path` field exactly (e.g.
-//     `F:host/screens/home.pb` or `R:host/screens/home.pb`).
-//   * NEXT / PREVIOUS: advance to the next / previous screen in the
-//     registry's iteration order (wraps around at the ends). `path` is
-//     ignored.
+// `target_id` is matched against the outer `Widget.id` of the ref
+// (i.e. the id set on the Widget whose `kind` is `widget_ref`). If no
+// ref with that id is currently visible the action is logged and
+// dropped.
 //
-// Combined with a `Button` carrying labels like "Next" / "Previous"
-// this gives users a no-code way to build paged UIs entirely from the
-// host without round-tripping through ActionHost.
-message ActionSwitchScreen {
+//   * BY_PATH (default): `path` is a full drive-prefixed path to a
+//     widget `.pb` file (e.g. `F:host/w/trackpad.pb`). The ref is
+//     rebound to that path.
+//   * NEXT / PREVIOUS: `path` is a *directory* (e.g. `F:host/w/`).
+//     The firmware enumerates `*.pb` files in that directory in
+//     lexicographic order, finds the ref's current path among them,
+//     and steps ±1 (wrapping at the ends). If the current path is
+//     not in that directory the firmware picks the first entry and
+//     logs a WARN.
+//
+// Combined with `Button`s carrying labels like "Next" / "Previous" and
+// a single ref widget in the content area this gives users a no-code
+// way to build paged UIs while keeping persistent chrome on screen.
+message ActionChangeWidgetRef {
     enum Behavior {
         BY_PATH  = 0;
         NEXT     = 1;
         PREVIOUS = 2;
     }
-    Behavior behavior = 1;
-    string   path     = 2;   // used iff behavior == BY_PATH
+    Behavior behavior  = 1;
+    string   path      = 2;   // file path (BY_PATH) or directory (NEXT/PREV)
+    string   target_id = 3;   // outer Widget.id of the WidgetRef to mutate
 }
 
 // Behaviour attached to a widget event trigger (click / value changed /
@@ -566,13 +577,19 @@ message ForceRender {
 // separate `.pb` file on the device filesystem. The device reads the
 // file, decodes a `Widget` message out of it, and splices the result
 // into the parent layout in place of this ref. Conventionally the
-// host writes referenced widgets to `X:host/widgets/<name>.pb` where
+// host writes referenced widgets to `X:host/w/<name>.pb` where
 // `X` is a valid drive letter (`F:` = LittleFS, `R:` = RamFs).
-// Wiget pb files can be updated by the host and the device will auto
+// Widget pb files can be updated by the host and the device will auto
 // redraw just that portion of the screen.
+//
+// The outer `Widget.id` (the id on the widget whose `kind` is
+// `widget_ref`) is the addressing key for Stage 57's
+// `ActionChangeWidgetRef`; set it to a unique value when you want an
+// action to rebind this ref at runtime. Inner widgets keep their own
+// ids for event routing as usual.
 message WidgetRef {
     // Drive-prefixed path to the serialized `Widget` (e.g.
-    // `"R:host/widgets/key0.pb"`). Empty paths are skipped with a WARN.
+    // `"R:host/w/key0.pb"`). Empty paths are skipped with a WARN.
     string path = 1;
 }
 
@@ -601,7 +618,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 16;  // Stage 56: version moved Screen→Widget
+        CURRENT         = 17;  // Stage 57: ActionSwitchScreen → ActionChangeWidgetRef
     }
     Version version = 6;
 

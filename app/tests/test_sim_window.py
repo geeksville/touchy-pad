@@ -25,7 +25,7 @@ from PySide6 import QtWidgets  # noqa: E402
 from PySide6.QtWidgets import QCheckBox, QPushButton, QSlider  # noqa: E402
 
 from touchy_pad.api.images import make_smiley_png  # noqa: E402
-from touchy_pad.api.screens import build_demo_screens  # noqa: E402
+from touchy_pad.api.screens import build_demo  # noqa: E402
 from touchy_pad.sim.device import SimDevice  # noqa: E402
 from touchy_pad.sim.fs import SimFs  # noqa: E402
 from touchy_pad.sim.window import SimWindow  # noqa: E402
@@ -45,11 +45,13 @@ def qapp() -> QtWidgets.QApplication:
 def provisioned_fs(tmp_path: pathlib.Path) -> SimFs:
     fs = SimFs(tmp_path, serial="SIMTEST")
     fs.save("F:host/images/smiley.png", make_smiley_png())
-    for s in build_demo_screens():
-        fs.save(
-            f"F:host/screens/{s.name}.pb",
-            s.to_proto().SerializeToString(),
-        )
+    screen, widgets = build_demo()
+    fs.save(
+        f"F:host/screens/{screen.name}.pb",
+        screen.to_proto().SerializeToString(),
+    )
+    for name, w in widgets:
+        fs.save(f"F:host/w/{name}.pb", w.SerializeToString())
     return fs
 
 
@@ -69,13 +71,19 @@ def test_renders_initial_screen(qapp, provisioned_fs) -> None:
     win = SimWindow(dev, size=(480, 300))
     qapp.processEvents()
 
-    assert dev.active_screen_path == "F:host/screens/home.pb"
+    assert dev.active_screen_path == "F:host/screens/demo.pb"
     labels = [b.text() for b in win.findChildren(QPushButton)]
     assert "< Prev" in labels and "Next >" in labels
 
 
-def test_next_button_dispatches_switch_screen(qapp, provisioned_fs) -> None:
-    """Clicking ``Next >`` fires an ``ActionSwitchScreen`` (behavior NEXT)."""
+def test_next_button_changes_widget_ref(qapp, provisioned_fs) -> None:
+    """Clicking ``Next >`` fires ``ActionChangeWidgetRef`` (behavior NEXT).
+
+    Stage 57 — the demo now uses a single screen + a widget_ref page
+    slot. Pressing Next must rebind that ref in-RAM (no screen change).
+    Initial path is ``F:host/w/trackpad.pb``; the sorted directory is
+    ``[test, trackpad]`` so NEXT wraps trackpad → test.
+    """
     dev = SimDevice(provisioned_fs)
     win = SimWindow(dev, size=(480, 300))
     qapp.processEvents()
@@ -84,7 +92,8 @@ def test_next_button_dispatches_switch_screen(qapp, provisioned_fs) -> None:
     nxt.click()
     qapp.processEvents()
 
-    assert dev.active_screen_path == "F:host/screens/test.pb"
+    assert dev.active_screen_path == "F:host/screens/demo.pb"
+    assert win._widget_ref_overrides.get("page") == "F:host/w/test.pb"
 
 
 def test_host_action_pushes_event(qapp, provisioned_fs) -> None:
@@ -93,7 +102,7 @@ def test_host_action_pushes_event(qapp, provisioned_fs) -> None:
     win = SimWindow(dev, size=(480, 300))
     qapp.processEvents()
 
-    # Hop to the test screen which has the host-action widgets.
+    # Hop to the "test" widget page which has the host-action widgets.
     nxt = next(b for b in win.findChildren(QPushButton) if "Next" in b.text())
     nxt.click()
     qapp.processEvents()

@@ -149,3 +149,21 @@ class SimFs:
                 found.append(f"{letter}:host/screens/{p.name}")
         found.sort()
         return found
+
+    def list_widget_files(self, directory: str) -> list[str]:
+        """Enumerate ``*.pb`` files under a drive-prefixed directory.
+
+        Stage 57 — used by the sim's ``ActionChangeWidgetRef`` NEXT /
+        PREVIOUS handler. *directory* must be drive-prefixed (e.g.
+        ``"F:host/w/"``). Returns full drive-prefixed paths sorted
+        lexicographically; missing directories return an empty list.
+        """
+        try:
+            d = self._resolve(directory.rstrip("/") + "/")
+        except ValueError:
+            return []
+        if not d.is_dir():
+            return []
+        # Recover the drive-prefixed prefix from the input.
+        prefix = directory if directory.endswith("/") else directory + "/"
+        return sorted(f"{prefix}{p.name}" for p in d.glob("*.pb"))

@@ -153,6 +153,15 @@ class SimDevice:
         """Paths of all uploaded screens, sorted (same order firmware uses)."""
         return self._fs.list_screens()
 
+    def list_widget_files(self, directory: str) -> list[str]:
+        """Stage 57 — paths of ``*.pb`` widget files under *directory*.
+
+        Used by the simulator's ``ActionChangeWidgetRef`` NEXT / PREVIOUS
+        handler to enumerate paged widget files the same way the firmware
+        does.
+        """
+        return self._fs.list_widget_files(directory)
+
     @property
     def fs(self) -> SimFs:
         return self._fs

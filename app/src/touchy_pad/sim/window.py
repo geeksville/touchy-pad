@@ -8,13 +8,13 @@ RPCs, etc.) trigger a re-render via a cross-thread signal.
 Click handling is deferred to :mod:`touchy_pad.sim.window` rather than
 sitting inside :mod:`touchy_pad.sim.widgets` so the renderer stays
 pure: the window walks each clicked widget's ``on_click`` actions and
-either dispatches them to the device (screen switches), echoes them to
+either dispatches them to the device (widget_ref rebinds), echoes them to
 the log panel (macros), or feeds them back into the host-event queue
 (host actions).
 
 Top / sys / bottom LVGL layers are rendered as transparent overlays
 above the active screen so the header chrome from
-:func:`touchy_pad.api.screens.build_demo_screens` shows up correctly.
+:func:`touchy_pad.api.screens.build_demo` shows up correctly.
 """
 
 from __future__ import annotations
@@ -86,6 +86,10 @@ class SimWindow(QtWidgets.QMainWindow):
         super().__init__(parent)
         self._device = device
         self._size = size
+        # Stage 57: in-RAM widget_ref rebindings keyed by outer Widget.id.
+        # Cleared on every screen load (matches firmware semantics: the
+        # encoded path takes effect again as soon as the screen is reloaded).
+        self._widget_ref_overrides: dict[str, str] = {}
 
         self.setWindowTitle("touchy-pad sim")
         self.resize(size[0] + 260, max(size[1] + 40, 360))
@@ -129,6 +133,8 @@ class SimWindow(QtWidgets.QMainWindow):
 
     def _render_screen(self, screen: _proto.Screen | None) -> None:
         self._canvas.clear_layers()
+        # Drop any RAM overrides — encoded path wins on screen (re)load.
+        self._widget_ref_overrides.clear()
         if screen is None:
             self.setWindowTitle("touchy-pad sim — (no screen)")
             return
@@ -144,7 +150,12 @@ class SimWindow(QtWidgets.QMainWindow):
             if w.WhichOneof("kind") is None:
                 continue
             try:
-                qw = build_widget(w, self._device.fs, on_event=self._on_widget_event)
+                qw = build_widget(
+                    w,
+                    self._device.fs,
+                    on_event=self._on_widget_event,
+                    widget_ref_overrides=self._widget_ref_overrides,
+                )
             except Exception:  # noqa: BLE001 — broken authoring shouldn't kill the window
                 _log.exception("sim: failed to render layer %r", attr)
                 continue
@@ -184,8 +195,8 @@ class SimWindow(QtWidgets.QMainWindow):
         Mirrors what the firmware's event handler does in
         ``firmware/main/widget_actions.cpp``:
 
-        * :class:`ActionSwitchScreen` → calls back into
-          :class:`SimDevice` to load the named (or next/previous) screen;
+        * :class:`ActionChangeWidgetRef` → re-binds the addressed
+          widget_ref slot in-RAM and re-renders;
         * :class:`ActionMacro` → echoed to the log panel; the sim does
           not emulate HID;
         * :class:`ActionHost` → pushed onto the device event queue with
@@ -259,32 +270,116 @@ class SimWindow(QtWidgets.QMainWindow):
 
     def _dispatch_device(self, action: _proto.ActionDevice, widget_id: str) -> None:
         sub = action.WhichOneof("kind")
-        if sub != "switch_screen":
+        if sub != "change_widget_ref":
             self.log(f"device: widget={widget_id!r} (unsupported {sub!r})")
             return
-        sw = action.switch_screen
-        if sw.behavior == _proto.ActionSwitchScreen.BY_PATH:
-            target = sw.path
-        else:
-            paths = self._device.list_screens()
-            current = self._device.active_screen_path
-            if not paths:
-                self.log(f"switch: widget={widget_id!r} — no screens registered")
+        msg = action.change_widget_ref
+        target_id = msg.target_id
+        if not target_id:
+            self.log(f"change_widget_ref: widget={widget_id!r} — missing target_id")
+            return
+        # Resolve target path.
+        if msg.behavior == _proto.ActionChangeWidgetRef.BY_PATH:
+            target = msg.path
+            if not target:
+                self.log(f"change_widget_ref: target_id={target_id!r} — empty path")
                 return
+        else:
+            directory = msg.path or "F:host/w/"
+            paths = self._device.list_widget_files(directory)
+            if not paths:
+                self.log(
+                    f"change_widget_ref: target_id={target_id!r} — "
+                    f"no *.pb files in {directory!r}"
+                )
+                return
+            current = self._current_widget_ref_path(target_id)
             try:
                 idx = paths.index(current) if current in paths else 0
+                if current not in paths:
+                    _log.warning(
+                        "sim: change_widget_ref %r current %r not in %r",
+                        target_id,
+                        current,
+                        directory,
+                    )
             except ValueError:
                 idx = 0
-            step = 1 if sw.behavior == _proto.ActionSwitchScreen.NEXT else -1
+            step = 1 if msg.behavior == _proto.ActionChangeWidgetRef.NEXT else -1
             target = paths[(idx + step) % len(paths)]
-        try:
-            # `_do_screen_load` updates the active screen and fires the
-            # callback that we wired in __init__ — the renderer reacts
-            # to that, so we don't need to call _render_screen here.
-            self._device._do_screen_load(target)
-            self.log(f"switch: → {target!r}")
-        except FileNotFoundError:
-            self.log(f"switch: target {target!r} not found")
+        self._widget_ref_overrides[target_id] = target
+        self.log(f"change_widget_ref: id={target_id!r} → {target!r}")
+        # Re-render the current screen with the new override applied.
+        # Note: we deliberately bypass `_render_screen` here because it
+        # clears the overrides map on entry (those are wiped only on a
+        # *new* screen load). Inline the rebuild instead.
+        screen = self._device.active_screen
+        self._canvas.clear_layers()
+        if screen is None:
+            return
+        for attr in ("bottom", "active", "top", "sys"):
+            if attr == "active":
+                w = screen.active
+            else:
+                if not screen.HasField(attr):
+                    continue
+                w = getattr(screen, attr)
+            if w.WhichOneof("kind") is None:
+                continue
+            try:
+                qw = build_widget(
+                    w,
+                    self._device.fs,
+                    on_event=self._on_widget_event,
+                    widget_ref_overrides=self._widget_ref_overrides,
+                )
+            except Exception:  # noqa: BLE001
+                _log.exception("sim: failed to render layer %r", attr)
+                continue
+            self._canvas.add_layer(qw, transparent_to_mouse=attr != "active")
+
+    def _current_widget_ref_path(self, target_id: str) -> str | None:
+        """Return the path the given widget_ref currently resolves to.
+
+        Honours any in-RAM override; otherwise walks the active screen
+        tree for a ``widget_ref`` whose outer ``Widget.id`` matches and
+        returns its encoded path.
+        """
+        if target_id in self._widget_ref_overrides:
+            return self._widget_ref_overrides[target_id]
+        screen = self._device.active_screen
+        if screen is None:
+            return None
+
+        def walk(w: _proto.Widget) -> str | None:
+            kind = w.WhichOneof("kind")
+            if kind == "widget_ref" and w.id == target_id:
+                return w.widget_ref.path
+            if kind == "layout_grid":
+                children = w.layout_grid.layout.children
+            elif kind == "layout_flex":
+                children = w.layout_flex.layout.children
+            elif kind == "layout_absolute":
+                children = w.layout_absolute.layout.children
+            else:
+                return None
+            for child in children:
+                hit = walk(child)
+                if hit is not None:
+                    return hit
+            return None
+
+        for attr in ("active", "top", "bottom", "sys"):
+            if attr == "active":
+                root = screen.active
+            else:
+                if not screen.HasField(attr):
+                    continue
+                root = getattr(screen, attr)
+            hit = walk(root)
+            if hit is not None:
+                return hit
+        return None
 
 
 # ---------------------------------------------------------------------------

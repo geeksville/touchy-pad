@@ -52,6 +52,7 @@ def build_widget(
     w: _proto.Widget,
     fs: SimFs,
     on_event: EventHandler | None = None,
+    widget_ref_overrides: dict[str, str] | None = None,
 ) -> QtWidgets.QWidget:
     """Recursively turn a proto Widget into a Qt widget tree.
 
@@ -60,14 +61,22 @@ def build_widget(
     w:
         The widget proto to render.
     fs:
-        Pseudo-fs used to resolve :class:`Image` ``asset`` paths.
+        Pseudo-fs used to resolve :class:`Image` ``asset`` paths and
+        :class:`WidgetRef` ``path`` indirections.
     on_event:
         Optional callback invoked when a leaf widget is activated.
         See :data:`EventHandler` for the signature.
+    widget_ref_overrides:
+        Optional ``{outer_widget_id: path}`` map applied to
+        :class:`WidgetRef` widgets whose outer :attr:`Widget.id`
+        matches a key — used by Stage-57 ``ActionChangeWidgetRef`` to
+        rebind refs in RAM without rewriting the screen file.
     """
     kind = w.WhichOneof("kind")
     if kind in ("layout_absolute", "layout_flex", "layout_grid"):
-        return _build_layout(w, kind, fs, on_event)
+        return _build_layout(w, kind, fs, on_event, widget_ref_overrides)
+    if kind == "widget_ref":
+        return _build_widget_ref(w, fs, on_event, widget_ref_overrides)
     return _build_leaf(w, kind, fs, on_event)
 
 
@@ -81,6 +90,7 @@ def _build_layout(
     kind: str,
     fs: SimFs,
     on_event: EventHandler | None,
+    overrides: dict[str, str] | None = None,
 ) -> QtWidgets.QWidget:
     container = QtWidgets.QWidget()
     container.setObjectName(f"layout_{w.id or kind}")
@@ -97,7 +107,7 @@ def _build_layout(
         for r in range(max(1, int(g.rows) or 1)):
             lay.setRowStretch(r, 1)
         for child in g.layout.children:
-            cw = build_widget(child, fs, on_event)
+            cw = build_widget(child, fs, on_event, overrides)
             cell = child.cell if child.WhichOneof("placement") == "cell" else _proto.GridCell()
             col_span = int(cell.col_span) if cell.HasField("col_span") else 1
             row_span = int(cell.row_span) if cell.HasField("row_span") else 1
@@ -119,7 +129,7 @@ def _build_layout(
         lay.setSpacing(int(f.gap))
         lay.setContentsMargins(0, 0, 0, 0)
         for child in f.layout.children:
-            cw = build_widget(child, fs, on_event)
+            cw = build_widget(child, fs, on_event, overrides)
             lay.addWidget(cw)
         return container
 
@@ -130,7 +140,7 @@ def _build_layout(
     abs_layout = w.layout_absolute
     max_x = max_y = 0
     for child in abs_layout.layout.children:
-        cw = build_widget(child, fs, on_event)
+        cw = build_widget(child, fs, on_event, overrides)
         cw.setParent(container)
         r = child.rect if child.WhichOneof("placement") == "rect" else _proto.Rect()
         sh = cw.sizeHint()
@@ -257,6 +267,33 @@ def _build_leaf(
 
     _log.info("sim: unrenderable widget kind %r — falling back to placeholder", kind)
     return QtWidgets.QLabel(f"?{kind}?")
+
+
+def _build_widget_ref(
+    w: _proto.Widget,
+    fs: SimFs,
+    on_event: EventHandler | None,
+    overrides: dict[str, str] | None,
+) -> QtWidgets.QWidget:
+    """Expand a Stage-54 ``WidgetRef`` inline.
+
+    Resolves the path through :paramref:`overrides` (Stage 57 RAM
+    rebinding by outer ``Widget.id``) then falls back to the path
+    encoded in the proto. Empty / missing files render as a placeholder
+    label so authoring mistakes don't crash the sim.
+    """
+    declared = w.widget_ref.path
+    path = (overrides or {}).get(w.id, declared) if w.id else declared
+    if not path:
+        return QtWidgets.QLabel("(empty widget_ref)")
+    try:
+        blob = fs.read(path)
+    except (FileNotFoundError, ValueError):
+        _log.warning("sim: widget_ref %r — file not found", path)
+        return QtWidgets.QLabel(f"(missing: {path})")
+    inner = _proto.Widget()
+    inner.ParseFromString(blob)
+    return build_widget(inner, fs, on_event, overrides)
 
 
 # ---------------------------------------------------------------------------
