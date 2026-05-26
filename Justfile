@@ -490,6 +490,14 @@ opendeck-run:
         echo "Running deno install…"
         deno install
     fi
+    # In devcontainers the host /dev/ is bind-mounted at /host/dev/.
+    # Symlink any hidraw devices visible on the host but absent from the
+    # container's /dev/ so that hidapi can enumerate Stream Deck devices.
+    for _d in /host/dev/hidraw*; do
+        [ -e "$_d" ] || continue
+        _name=$(basename "$_d")
+        [ -e "/dev/$_name" ] || sudo ln -sf "$_d" "/dev/$_name" 2>/dev/null || true
+    done
     exec dbus-run-session -- deno task tauri dev
 
 # Remove generated artifacts. The proto outputs are rebuilt on the next
