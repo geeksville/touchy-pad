@@ -51,6 +51,19 @@ RUN apt-get update \
       libxcb-xfixes0 \
       libxcb-xinerama0 \
       libxcb-xkb1 \
+      `# Tauri (and OpenDeck) build dependencies.` \
+      `# libwebkit2gtk-4.1-dev is the WebKit renderer Tauri shells into.` \
+      `# libayatana-appindicator3-dev is needed for system-tray support.` \
+      `# libudev-dev is required by the elgato-streamdeck Rust crate.` \
+      build-essential \
+      file \
+      unzip \
+      libxdo-dev \
+      libssl-dev \
+      libwebkit2gtk-4.1-dev \
+      libayatana-appindicator3-dev \
+      librsvg2-dev \
+      libudev-dev \
       `# StreamController (tools/StreamController) runtime and build deps.` \
       `# python3-dev provides the Python pkg-config entry meson needs to` \
       `# build dbus-python. The GTK/GObject packages are needed at runtime.` \
@@ -102,6 +115,10 @@ RUN apt install -y eim-cli
 RUN eim install
 RUN chown -R ${USERNAME} /root/.espressif && chmod a+rx /root
 
+# Ensure the user's home config dir is writable (Ubuntu base image may create
+# ~/.config as root via earlier RUN steps that run as root).
+RUN mkdir -p /home/${USERNAME}/.config && chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
+
 # Put the ESP tools in my path
 USER ${USERNAME}
 RUN ln -s /root/.espressif $HOME
@@ -130,4 +147,14 @@ RUN sudo pip install --break-system-packages \
 RUN curl -sSL https://install.python-poetry.org | python3 - \
  && echo 'export PATH="$HOME/.local/bin:$PATH"' | tee -a $HOME/.bashrc $HOME/.zshrc
 
+# Rust — required by Tauri and OpenDeck (and the touchy-pad Rust API).
+# Install via rustup into the ubuntu user's home. --no-modify-path keeps
+# rustup from appending to .bashrc/.zshrc itself; we do it explicitly below
+# so the shell init order is predictable.
+RUN curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path \
+ && echo 'source "$HOME/.cargo/env"' | tee -a $HOME/.bashrc $HOME/.zshrc
 
+# Deno — OpenDeck's build system uses `deno task tauri dev/build`.
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.deno" sh \
+ && echo 'export DENO_INSTALL="$HOME/.deno"' | tee -a $HOME/.bashrc $HOME/.zshrc \
+ && echo 'export PATH="$DENO_INSTALL/bin:$PATH"' | tee -a $HOME/.bashrc $HOME/.zshrc

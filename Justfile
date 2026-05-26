@@ -478,6 +478,20 @@ streamcontroller-run *ARGS:
     done
     cd {{sc_dir}} && PATH="$CLEAN_PATH" {{sc_py}} touchy_bootstrap.py "${forward_args[@]}"
 
+# Run OpenDeck in Tauri dev mode (hot-reloading frontend + live Rust backend).
+# Requires Rust and Deno to be installed (see .devcontainer/Containerfile).
+opendeck-run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="$HOME/.cargo/bin:$HOME/.deno/bin:$PATH"
+    git submodule update --init tools/OpenDeck
+    cd "$(git rev-parse --show-toplevel)/tools/OpenDeck"
+    if [ ! -d node_modules ] && [ ! -d .deno ]; then
+        echo "Running deno install…"
+        deno install
+    fi
+    exec dbus-run-session -- deno task tauri dev
+
 # Remove generated artifacts. The proto outputs are rebuilt on the next
 # `just build-proto*` invocation.
 clean:

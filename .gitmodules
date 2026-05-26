@@ -2,3 +2,6 @@
 	path = tools/StreamController
 	url = https://github.com/geeksville/StreamController.git
 	branch = pr-touchypad
+[submodule "tools/OpenDeck"]
+	path = tools/OpenDeck
+	url = https://github.com/nekename/OpenDeck.git
