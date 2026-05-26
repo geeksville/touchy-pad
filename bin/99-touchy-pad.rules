@@ -1,6 +1,6 @@
 # Touchy-Pad — give regular users access to the custom vendor USB interface.
 #
-# The device enumerates as VID:PID 0x4403:0x1002 with three interfaces:
+# The device enumerates as VID:PID 0x303A:0x8369 with three interfaces:
 #   * HID mouse  — kernel-owned, no udev rule needed.
 #   * CDC-ACM    — kernel-owned (/dev/ttyACM*), uses the dialout group.
 #   * Vendor 0xFF (host_api command/response) — accessed via libusb directly,
@@ -14,4 +14,4 @@
 #
 # Make sure your user is in the plugdev group:
 #   sudo usermod -aG plugdev "$USER"   # then log out / log back in
-SUBSYSTEM=="usb", ATTRS{idVendor}=="4403", ATTRS{idProduct}=="1002", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="8369", OWNER="1000", MODE="0660", GROUP="plugdev", TAG+="uaccess"

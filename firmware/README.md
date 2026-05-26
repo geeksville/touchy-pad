@@ -18,7 +18,7 @@ What it does today (parity with v1 Stage 10):
 - Brings up the touch controller and feeds events into LVGL.
 - Drives LVGL through `esp_lvgl_port`, RGB565.
 - Enumerates over the USB-OTG port as a **USB-HID mouse** (TinyUSB,
-  VID/PID = `0x4403 / 0x1002`).
+  VID/PID = `0x303A / 0x8369`).
 - Implements `TrackpadWidget` with the v1 gesture rules:
   - 1-finger tap → left click
   - 2-finger tap → right click
@@ -128,7 +128,7 @@ idf.py -p /host/dev/ttyACM0 flash monitor
 ```
 
 After flashing, plug the **OTG** USB-C port of the board into the host
-computer. You should see VID `0x4403` / PID `0x1002` ("Touchy-Pad") show
+computer. You should see VID `0x303A` / PID `0x8369` ("Touchy-Pad") show
 up as a HID mouse.
 
 ### Switching boards

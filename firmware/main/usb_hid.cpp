@@ -2,6 +2,7 @@
 
 #include "usb_hid.h"
 #include "host_api.h"
+#include "proto/touchy.pb.h"  // touchy_Constants_USB_VID / USB_PID
 
 #include "esp_log.h"
 #include "tinyusb.h"
@@ -73,8 +74,8 @@ static const tusb_desc_device_t s_device_desc = {
     .bDeviceSubClass    = 0x02,
     .bDeviceProtocol    = 0x01,
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor           = 0x4403,    // matches v1
-    .idProduct          = 0x1002,    // matches v1
+    .idVendor           = touchy_Constants_USB_VID,
+    .idProduct          = touchy_Constants_USB_PID,
     .bcdDevice          = 0x0100,
     .iManufacturer      = 0x01,
     .iProduct           = 0x02,

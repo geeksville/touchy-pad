@@ -29,7 +29,7 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
   * [ ] explain plans w.r.t. 3d printing and knobs on the screen
   * [x] request feedback/propose distribution
 * [x] ensure no 10ms delay on loop polling
-* [ ] Pick a real USB VID/PID for our device via https://gqithub.com/espressif/usb-pids/pull/315
+* [x] Pick a real USB VID/PID for our device via https://github.com/espressif/usb-pids/pull/315
 * [x] fix multitouch gestures - the change to lvgl instead of polling broke them
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
 

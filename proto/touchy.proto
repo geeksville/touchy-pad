@@ -28,6 +28,15 @@ package touchy;
 // Common types
 // ---------------------------------------------------------------------------
 
+// Protocol-level constants clients need to discover and connect to the device.
+// Storing them here means any language with a protobuf compiler gets them for
+// free without a separate constants file.
+enum Constants {
+    CONSTANTS_UNSPECIFIED = 0;
+    USB_VID               = 0x303A;  // 12346 — Espressif-assigned vendor ID
+    USB_PID               = 0x8369;  // 33641 — touchy-pad product ID
+}
+
 // Generic result code shared by every Response.
 enum ResultCode {
     RESULT_OK             = 0;

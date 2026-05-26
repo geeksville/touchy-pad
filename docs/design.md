@@ -910,6 +910,14 @@ note: the prior convention I picked of host/widgets for a dir name should instea
 
 (I don't care about backwards compatibility - just bump the widet file version #)
 
+# Stage 58: We've been assigned USB VID 0x303A, PID 0x8369
+Per https://github.com/espressif/usb-pids/commit/d32920ad0aacb4e6ab4188d6c351afeec0db0d2f we've been assigned USB IDs!
+
+* Add a Constants enum to touchy.proto, use this for any misc constants that are necessary for clients that want to talk using this protocol (It is nice to store constants in the protobuf because it is implicitly language/platform agnostic)
+* Add USB_VID, USB_PID to that enum.  Use it in the C++ and python code.  Update docs if needed.
+
+**Done.** `Constants` enum added to `touchy.proto` with `USB_VID = 0x303A` and `USB_PID = 0x8369`. `usb_hid.cpp` now uses `touchy_Constants_USB_VID/PID`; `usb_ids.py` reads from the generated `touchy_pb2.Constants`.
+
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?
 * Use https://lvgl.io/docs/open/debugging/gdb_plugin to faciltiate debugging
