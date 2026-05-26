@@ -171,7 +171,7 @@ class TouchyClient:
 
         if looks_like_supported_image(data) and self._t.needs_image_conversion:
             original_len = len(data)
-            data = to_lvgl_bin(data)
+            data = to_lvgl_bin(data, dest_path=path)
             # LVGL's bin decoder selects itself by extension, so the
             # on-device file has to be named *.bin even though the
             # caller likely passed e.g. "F:host/images/avatar.png".

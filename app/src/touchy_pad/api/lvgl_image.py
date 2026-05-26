@@ -200,7 +200,12 @@ def _has_non_opaque_alpha(image) -> bool:
     return False
 
 
-def to_lvgl_bin(source: bytes | str | Path, *, cf: str | None = None) -> bytes:
+def to_lvgl_bin(
+    source: bytes | str | Path,
+    *,
+    cf: str | None = None,
+    dest_path: str | None = None,
+) -> bytes:
     """Convert *source* (image bytes or a path) to an LVGL ``.bin`` blob.
 
     *cf* selects the output color format. Supported values:
@@ -208,8 +213,10 @@ def to_lvgl_bin(source: bytes | str | Path, *, cf: str | None = None) -> bytes:
     * ``None`` (default) — auto-pick: emit ``RGB565`` for opaque
       images (fastest on-device, mmap-eligible) and fall back to
       ``RGB565A8`` only when the source actually contains non-opaque
-      alpha. The fallback emits a ``logging.WARNING`` so callers can
-      see when an asset misses the Stage 52 mmap fast path.
+      alpha. A ``logging.WARNING`` is emitted when *dest_path* starts
+      with ``R:`` (PSRAM ramdisk), because that is the only filesystem
+      that supports the Stage 52 zero-copy mmap fast path; ``F:``
+      (flash) never mmaps, so the fallback is silent there.
     * ``"RGB565"`` — force opaque RGB565 (alpha is dropped).
     * ``"RGB565A8"`` — force RGB565 + A8 plane.
 
@@ -237,14 +244,18 @@ def to_lvgl_bin(source: bytes | str | Path, *, cf: str | None = None) -> bytes:
     if chosen == "":
         # Auto-pick: prefer RGB565; fall back to RGB565A8 on real alpha.
         if _has_non_opaque_alpha(img):
-            _log.warning(
-                "image has non-opaque alpha (%dx%d, mode=%s); falling back "
-                "to RGB565A8 — this asset will miss the on-device mmap "
-                "fast path",
-                img.width,
-                img.height,
-                img.mode,
-            )
+            # Only warn when the destination is R: (PSRAM ramdisk) — that is
+            # the only filesystem that supports the zero-copy mmap fast path.
+            # F: (flash) never mmaps, so RGB565A8 there is fine silently.
+            if dest_path is None or dest_path.upper().startswith("R:"):
+                _log.warning(
+                    "image has non-opaque alpha (%dx%d, mode=%s); falling back "
+                    "to RGB565A8 — this asset will miss the on-device mmap "
+                    "fast path",
+                    img.width,
+                    img.height,
+                    img.mode,
+                )
             chosen = "RGB565A8"
         else:
             chosen = "RGB565"
