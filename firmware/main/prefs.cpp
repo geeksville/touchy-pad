@@ -38,7 +38,8 @@ bool Prefs::begin()
     uint8_t *data = fs.readBinary(PREFS_PATH, &len);
     if (!data) {
         ESP_LOGI(TAG, "No prefs file found — using defaults "
-                       "(screen_timeout_ms=0)");
+                       "(screen_timeout_ms=%" PRIu32 ")",
+                 m_timeout_ms);
         return true;
     }
 

@@ -37,13 +37,13 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 
 Main new features: Works with StreamController app to provide arbitrary user buttons
 
-* [ ] make switchable subscreens by using widgetref?
+* [x] make switchable subscreens by using widgetref?
 * [x] remove Screen.path?  I don't think we need it
 * [ ] test https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/lcd/index.html to see if it could help rendering performance
 * [ ] investigate [opendeck](docs/opendeck.md) and possibly do a plugin for that instead-of or in-addition-to StreamController.
 * [ ] add some of the example JSON to the API docs
 * [ ] add a widget handle concept so host can say to just redraw one particular widget (only need to implement for screens/layouts/image)
-* [ ] make screen sleep default timeout
+* [x] make screen sleep default timeout
 * [x] Add support for F:widgets/foo.pb widget files.  This would allow TouchyDeck to own a R:widgets/deck.pb.  Which could be nested into a F: screen.  So that dynamic StreamDeck emulated stuff could be updated independently of the configurable screens the user has selected.  Probably should add a way for the host to see dimensions of arbitrary widgets in screens/walk the screen list?
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [x] Turn off "Expensive debugging flags!" in sdkconfig.defaults

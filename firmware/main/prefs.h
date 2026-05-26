@@ -45,6 +45,11 @@ private:
 
     void save();
 
-    uint32_t    m_timeout_ms     = 0;   // default: backlight always on
+    // Default applies only when no prefs file exists yet (first boot or
+    // after a flash erase). Once the user calls ScreenSleepTimeoutCmd —
+    // even with 0 to mean "disable" — that value is persisted and used
+    // verbatim. 5 minutes keeps the LCD off long enough to mitigate
+    // image-retention without surprising someone who briefly steps away.
+    uint32_t    m_timeout_ms     = 5u * 60u * 1000u;   // 5 minutes
     std::string m_current_screen;       // default: empty (no preference)
 };
