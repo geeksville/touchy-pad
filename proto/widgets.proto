@@ -666,10 +666,7 @@ message Screen {
     // Stage 56 — the wire-format version field lives on `Widget`
     // (only the root widget of each file carries it). For screen
     // files that's `active.version`; the firmware validates it on
-    // load and deletes the file on mismatch. Field tag 6 is reserved
-    // to avoid accidental reuse.
-    reserved 6;
-    reserved "version";
+    // load and deletes the file on mismatch.
 
     // The active LVGL screen (what `lv_screen_load` swaps in). Authoring
     // code that doesn't think about LVGL layers should put everything

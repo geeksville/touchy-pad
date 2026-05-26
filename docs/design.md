@@ -892,6 +892,24 @@ Shipped (wire-format bump 15 → 16):
 No backwards-compat path: older `.pb` files are deleted on first boot
 after upgrade, exactly as for prior wire-format bumps.
 
+## Stage 57: Change ActionSwitchScreen to ActionChangeWidgetRef
+
+Now that we have WidgetRefs we can be smarter about the idea of Screens and sublayouts.  
+
+* Change ActionSwitchScreen into ActionChangeWidgetRef.  It should also have a "target_id" which is the id of the WidgetRef it is going to change.  The path inside this action will always be used.  
+If by_name we it should be a full path to a widget pb file.  
+If next/prev it should be the DIRECTORY name where we look for the next/previous widget file (vs the current value of the targeted widget ref).  If the current widget ref value is not found in that directory just pick the first file in that dir.  Otherwise print a warning to the console
+* Changes made to WidgetRefs by this feature DO NOT GET SAVED BACK TO FS - just change the in-ram state as needed
+
+Because we now have widgetrefs and they are changable by actions you can make the "screen demo" cleaner.  Rather than switching screens when the user goes next prev (with a hardwired set of buttons in the top row).  You can instead make the filesystem something like:
+* host/screens/demo.pb - contains a bar at the top with prev/next widgets and the whole bottom initially has a widgetref pointing to...
+* host/w/trackpad.pb - contains the former demo's trackpad widget
+* host/w/test.pb - contains the former demo's test widgets
+
+note: the prior convention I picked of host/widgets for a dir name should instead be host/w (for brevity)
+
+(I don't care about backwards compatibility - just bump the widet file version #)
+
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?
 * Use https://lvgl.io/docs/open/debugging/gdb_plugin to faciltiate debugging
