@@ -51,9 +51,12 @@ void widget_styles_delete_cb(lv_event_t *e)
     delete ws;
 }
 
+}  // namespace (WidgetStyles internals)
+
 // Translate a wire-stable `touchy_StyleProp` into the matching
 // `lv_style_prop_t` value. Unknown values become `LV_STYLE_PROP_INV`
-// so LVGL silently skips them.
+// so LVGL silently skips them. Exposed (non-anonymous) so
+// `widget_animations.cpp` can reuse it.
 lv_style_prop_t lv_prop_from_proto(touchy_StyleProp p)
 {
     switch (p) {
@@ -71,12 +74,19 @@ lv_style_prop_t lv_prop_from_proto(touchy_StyleProp p)
         case touchy_StyleProp_STYLE_PROP_IMAGE_RECOLOR_OPA: return LV_STYLE_IMAGE_RECOLOR_OPA;
         case touchy_StyleProp_STYLE_PROP_TRANSFORM_WIDTH:   return LV_STYLE_TRANSFORM_WIDTH;
         case touchy_StyleProp_STYLE_PROP_TRANSFORM_HEIGHT:  return LV_STYLE_TRANSFORM_HEIGHT;
+        // Stage 59 — geometry / opacity for declarative animations.
+        case touchy_StyleProp_STYLE_PROP_X:                 return LV_STYLE_X;
+        case touchy_StyleProp_STYLE_PROP_Y:                 return LV_STYLE_Y;
+        case touchy_StyleProp_STYLE_PROP_WIDTH:             return LV_STYLE_WIDTH;
+        case touchy_StyleProp_STYLE_PROP_HEIGHT:            return LV_STYLE_HEIGHT;
+        case touchy_StyleProp_STYLE_PROP_OPA:               return LV_STYLE_OPA;
         default:                                            return LV_STYLE_PROP_INV;
     }
 }
 
 // Translate a wire-stable `touchy_AnimPath` into the matching LVGL path
-// callback. Unknown values fall back to linear.
+// callback. Unknown values fall back to linear. Exposed (non-anonymous)
+// so `widget_animations.cpp` can reuse it.
 lv_anim_path_cb_t lv_path_from_proto(touchy_AnimPath p)
 {
     switch (p) {
@@ -90,6 +100,8 @@ lv_anim_path_cb_t lv_path_from_proto(touchy_AnimPath p)
         default:                                    return lv_anim_path_linear;
     }
 }
+
+namespace {
 
 // Allocate (heap-owned) a `lv_style_transition_dsc_t` + a 0-terminated
 // prop array describing `t`, stash both in `ws`, and return the

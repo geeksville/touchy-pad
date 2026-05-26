@@ -20,6 +20,7 @@
 #include "screens.h"           // screens_get_touch()
 #include "trackpad_widget.h"
 #include "widget_actions.h"
+#include "widget_animations.h"
 #include "widget_styles.h"
 
 #include "esp_log.h"
@@ -511,9 +512,13 @@ lv_obj_t *build_arc(lv_obj_t *parent, const touchy_Widget &w)
 lv_obj_t *build_spacer(lv_obj_t *parent, const touchy_Widget &)
 {
     lv_obj_t *o = lv_obj_create(parent);
-    // Transparent, borderless padding object.
-    lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(o, 0, 0);
+    // Strip all theme-provided styles so the spacer is fully invisible by
+    // default. User-applied styles (bg_color, etc.) are added afterwards
+    // via apply_styles and will be the sole styling, rather than fighting
+    // the local bg_opa / border_width we used to set here (local styles
+    // have higher LVGL priority than lv_obj_add_style, which caused
+    // bg_opa=TRANSP to win over a user-supplied bg_color style).
+    lv_obj_remove_style_all(o);
     return o;
 }
 
@@ -592,6 +597,7 @@ void widget_build_children(lv_obj_t *parent, const touchy_Widget &container)
         lv_obj_t *obj = widget_build(parent, *w);
         if (!obj) continue;
         apply_styles(obj, *w);
+        apply_animations(obj, *w);
         // Stage 57 — placement (grid cell / absolute rect) belongs to
         // the *outer* widget_ref node, since the referenced .pb file
         // typically has no opinion about where on the enclosing layout
@@ -678,6 +684,7 @@ void widget_build_layer(lv_obj_t *parent, const touchy_Widget &root_in)
     lv_obj_t *obj = widget_build(parent, root);
     if (!obj) return;
     apply_styles(obj, root);
+    apply_animations(obj, root);
     apply_rect(obj, root, /*absolute_layout=*/true);
     if (root.centered) lv_obj_center(obj);
     if (is_ref && g_pending_refs.size() > pre) {
@@ -790,6 +797,7 @@ bool widget_refs_change(const char *target_id, const char *new_path)
         lv_obj_t *obj = widget_build(parent, *w);
         if (obj) {
             apply_styles(obj, *w);
+            apply_animations(obj, *w);
             // Stage 57 — placement comes from the outer widget_ref
             // node (its `placement.cell` / `placement.rect`), not
             // from the referenced inner widget.

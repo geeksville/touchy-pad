@@ -319,7 +319,12 @@ def test_demo_smile_uses_transition_pattern():
     _, widgets = build_demo()
     test_widget = next(w for name, w in widgets if name == "test")
     decoded = _proto.Widget.FromString(test_widget.SerializeToString())
-    grid_children = decoded.layout_grid.layout.children
+    # Stage 59 — build_demo() now wraps the showcase grid in an outer
+    # absolute layer (with an animated "red dot" overlay) so we have to
+    # descend one extra level to reach the grid's children.
+    abs_children = decoded.layout_absolute.layout.children
+    grid_widget = next(w for w in abs_children if w.WhichOneof("kind") == "layout_grid")
+    grid_children = grid_widget.layout_grid.layout.children
     smile = next(w for w in grid_children if w.id == "smile")
     assert len(smile.styles) == 2
     default_style, pressed_style = smile.styles

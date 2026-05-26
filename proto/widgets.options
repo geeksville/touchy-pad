@@ -37,3 +37,5 @@ touchy.ImageButton.on_press            type:FT_POINTER
 touchy.ImageButton.on_release          type:FT_POINTER
 touchy.ActionMacro.steps               type:FT_POINTER
 touchy.Transition.props                type:FT_POINTER
+touchy.Widget.animations               type:FT_POINTER
+touchy.Animation.tracks                type:FT_POINTER

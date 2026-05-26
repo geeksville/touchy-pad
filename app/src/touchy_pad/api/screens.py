@@ -43,6 +43,8 @@ __all__ = [
     "rect",
     "style",
     "transition",
+    "anim_track",
+    "animation",
     "action",
     "host_action",
     "macro_action",
@@ -100,6 +102,12 @@ __all__ = [
     "PROP_IMAGE_RECOLOR_OPA",
     "PROP_TRANSFORM_WIDTH",
     "PROP_TRANSFORM_HEIGHT",
+    # Stage 59 — geometry / opacity props for declarative `animation(...)`.
+    "PROP_X",
+    "PROP_Y",
+    "PROP_WIDTH",
+    "PROP_HEIGHT",
+    "PROP_OPA",
     # AnimPath easing curves for use with `transition(path=...)`.
     "ANIM_PATH_LINEAR",
     "ANIM_PATH_EASE_IN",
@@ -158,6 +166,12 @@ PROP_IMAGE_RECOLOR = _proto.StyleProp.STYLE_PROP_IMAGE_RECOLOR
 PROP_IMAGE_RECOLOR_OPA = _proto.StyleProp.STYLE_PROP_IMAGE_RECOLOR_OPA
 PROP_TRANSFORM_WIDTH = _proto.StyleProp.STYLE_PROP_TRANSFORM_WIDTH
 PROP_TRANSFORM_HEIGHT = _proto.StyleProp.STYLE_PROP_TRANSFORM_HEIGHT
+# Stage 59 — geometry / opacity props for `animation(...)`.
+PROP_X = _proto.StyleProp.STYLE_PROP_X
+PROP_Y = _proto.StyleProp.STYLE_PROP_Y
+PROP_WIDTH = _proto.StyleProp.STYLE_PROP_WIDTH
+PROP_HEIGHT = _proto.StyleProp.STYLE_PROP_HEIGHT
+PROP_OPA = _proto.StyleProp.STYLE_PROP_OPA
 
 ANIM_PATH_LINEAR = _proto.AnimPath.ANIM_PATH_LINEAR
 ANIM_PATH_EASE_IN = _proto.AnimPath.ANIM_PATH_EASE_IN
@@ -552,16 +566,93 @@ def _normalise_styles(
     return list(style)
 
 
+def _normalise_animations(
+    animations: _proto.Animation | Iterable[_proto.Animation] | None,
+) -> list[_proto.Animation]:
+    """Coerce a widget factory's ``animations=`` argument to a flat list.
+
+    Stage 59 — accepts ``None``, a single :class:`_proto.Animation`, or
+    any iterable of them. The result is what callers pass to
+    ``Widget.animations.extend``.
+    """
+    if animations is None:
+        return []
+    if isinstance(animations, _proto.Animation):
+        return [animations]
+    return list(animations)
+
+
+def anim_track(
+    prop: int,
+    start: int,
+    end: int,
+) -> _proto.AnimTrack:
+    """One animated style property inside an :func:`animation`.
+
+    ``prop`` is a ``PROP_*`` constant (e.g. :data:`PROP_X`,
+    :data:`PROP_OPA`). ``start`` / ``end`` are the initial and final
+    integer values — pixels for X/Y/WIDTH/HEIGHT, 0–255 for OPA,
+    RGB888 / RGB565 ints for colour props.
+    """
+    return _proto.AnimTrack(prop=prop, start=start, end=end)
+
+
+def animation(
+    *tracks: _proto.AnimTrack,
+    duration_ms: int = 1000,
+    path: int = None,  # type: ignore[assignment]   # default filled below
+    repeat_count: int = 0,
+    repeat_delay_ms: int = 0,
+    reverse: bool = False,
+    reverse_delay_ms: int = 0,
+    reverse_duration_ms: int = 0,
+    start_delay_ms: int = 0,
+) -> _proto.Animation:
+    """Build an :class:`_proto.Animation` describing N parallel tracks.
+
+    Stage 59. Mirrors LVGL's `lv_anim_t` knobs:
+
+    * ``duration_ms`` — forward leg duration.
+    * ``path`` — easing curve (an ``ANIM_PATH_*`` constant); defaults
+      to :data:`ANIM_PATH_LINEAR`.
+    * ``repeat_count`` — ``0`` means infinite (mapped to
+      ``LV_ANIM_REPEAT_INFINITE`` on the device), otherwise the total
+      number of forward (or forward+reverse) cycles.
+    * ``repeat_delay_ms`` — pause between cycles.
+    * ``reverse`` — when ``True``, animate back to ``start`` after the
+      forward leg (ping-pong). ``reverse_delay_ms`` / ``reverse_duration_ms``
+      configure the reverse leg; a zero ``reverse_duration_ms`` reuses
+      ``duration_ms``.
+    * ``start_delay_ms`` — one-shot pre-roll before the first cycle.
+    """
+    if path is None:
+        path = ANIM_PATH_LINEAR
+    a = _proto.Animation(
+        duration_ms=duration_ms,
+        path=path,
+        repeat_count=repeat_count,
+        repeat_delay_ms=repeat_delay_ms,
+        reverse=reverse,
+        reverse_delay_ms=reverse_delay_ms,
+        reverse_duration_ms=reverse_duration_ms,
+        start_delay_ms=start_delay_ms,
+    )
+    a.tracks.extend(tracks)
+    return a
+
+
 def _widget(
     id: str,
     *,
     rect: _proto.Rect | None,
     style: _proto.Style | Iterable[_proto.Style] | None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     w = _proto.Widget(id=id)
     if rect is not None:
         w.rect.CopyFrom(rect)
     w.styles.extend(_normalise_styles(style))
+    w.animations.extend(_normalise_animations(animations))
     return w
 
 
@@ -573,6 +664,7 @@ def button(
     on_release=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """A clickable button with an optional text label.
 
@@ -587,7 +679,7 @@ def button(
     an ``int`` host code, or a list mixing both; pass ``None`` (the
     default) for buttons that don't react on that edge.
     """
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.button.text = text
     w.button.on_click.extend(_normalise_actions(on_click))
     w.button.on_press.extend(_normalise_actions(on_press))
@@ -601,9 +693,10 @@ def label(
     font_size: int = 0,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """Static text. ``font_size = 0`` uses the theme default."""
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.label.text = text
     w.label.font_size = font_size
     return w
@@ -617,9 +710,10 @@ def slider(
     on_change=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """A linear slider over ``[min, max]``."""
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.slider.min = min
     w.slider.max = max
     w.slider.value = value
@@ -633,9 +727,10 @@ def toggle(
     on_change=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """An on/off switch."""
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.toggle.on = on
     w.toggle.on_change.extend(_normalise_actions(on_change))
     return w
@@ -648,9 +743,10 @@ def checkbox(
     on_change=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """A labelled tickbox."""
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.checkbox.text = text
     w.checkbox.checked = checked
     w.checkbox.on_change.extend(_normalise_actions(on_change))
@@ -662,6 +758,7 @@ def image(
     asset: str,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
     scale: int | float | None = None,
     rotation: int | float | None = None,
 ) -> _proto.Widget:
@@ -673,7 +770,7 @@ def image(
     ints ``<= 16`` as a multiplier. ``rotation`` is in degrees (floats
     or ints); fractional degrees are honoured down to 0.1°.
     """
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     _fill_image(w.image, asset, scale, rotation)
     return w
 
@@ -687,6 +784,7 @@ def image_button(
     on_release=None,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
     scale: int | float | None = None,
     rotation: int | float | None = None,
     pressed_scale: int | float | None = None,
@@ -704,7 +802,7 @@ def image_button(
     provided. ``on_click`` accepts the same shapes as :func:`button`'s
     ``on_click``.
     """
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     _fill_image(w.image_button.released, asset, scale, rotation)
     # If the caller asked for a press-state visual change (different
     # asset, scale, or rotation) populate the embedded `pressed` Image.
@@ -778,9 +876,10 @@ def arc(
     value: int = 0,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """A circular arc indicator."""
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.arc.min = min
     w.arc.max = max
     w.arc.value = value
@@ -791,9 +890,10 @@ def spacer(
     id: str = "",
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """Invisible placeholder. Useful for padding inside flex/grid layouts."""
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.spacer.SetInParent()
     return w
 
@@ -869,6 +969,7 @@ def trackpad(
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     *,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
     scroll_invert_y: bool = False,
     scroll_invert_x: bool = False,
     left_touch_color: int | None = None,
@@ -906,7 +1007,7 @@ def trackpad(
     starts and fades out when all fingers lift. ``tap_max_ms`` overrides
     the tap-vs-drag hold threshold (default 200 ms on-device).
     """
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     tp = w.trackpad
     tp.scroll_invert_y = scroll_invert_y
     tp.scroll_invert_x = scroll_invert_x
@@ -931,6 +1032,7 @@ def log_line(
     id: str = "log",
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """One-line readout of the most recent device log message.
 
@@ -938,7 +1040,7 @@ def log_line(
     ``firmware/main/log_line.{h,cpp}``); the :func:`trackpad` widget
     and other subsystems push status lines through that sink.
     """
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.log.SetInParent()
     return w
 
@@ -947,6 +1049,7 @@ def fps(
     id: str = "fps",
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """Live frames-per-second readout for the active LVGL display.
 
@@ -955,7 +1058,7 @@ def fps(
     while iterating on layouts to spot the cost of expensive widgets
     (image scaling, transitions, ...).
     """
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.fps.SetInParent()
     return w
 
@@ -964,6 +1067,7 @@ def force_render(
     id: str = "force_render",
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """Dev / benchmark toggle that pins LVGL to maximum redraw rate.
 
@@ -976,7 +1080,7 @@ def force_render(
     Has no host-visible Actions — the checkbox's on-change effect is
     handled entirely on-device.
     """
-    w = _widget(id, rect=rect, style=style)
+    w = _widget(id, rect=rect, style=style, animations=animations)
     w.force_render.SetInParent()
     return w
 
@@ -1325,8 +1429,36 @@ def build_demo() -> tuple[Screen, list[tuple[str, _proto.Widget]]]:
     showcase += cell(fps("fps"), col=3, row=2)
     showcase += cell(log_line("log"), col=0, row=3, col_span=4, row_span=4)
 
+    grid_widget = _proto.Widget()
+    showcase.copy_into(grid_widget)
+
+    # Stage 59 — wrap the showcase grid in an absolute layer so we can
+    # overlay a freely-positioned animated "red dot" that exercises the
+    # declarative-animation pipeline end-to-end.
+    # Screen is 480 px wide; dot grows to 100 px, so x_end=380 puts the
+    # right edge flush with the screen edge.
+    red_dot = spacer(
+        id="reddot",
+        rect=rect(x=10, y=10, w=10, h=10),
+        style=[style(bg_color=0xE53935, radius=32767)],
+        animations=[
+            animation(
+                anim_track(PROP_WIDTH, 10, 100),
+                anim_track(PROP_HEIGHT, 10, 100),
+                anim_track(PROP_X, 10, 380),
+                duration_ms=1000,
+                path=ANIM_PATH_EASE_IN_OUT,
+                repeat_count=0,
+                repeat_delay_ms=500,
+                reverse=True,
+                reverse_delay_ms=100,
+                reverse_duration_ms=300,
+            ),
+        ],
+    )
+    outer = Layer(layout=absolute(), widgets=[red_dot, grid_widget])
     test_widget = _proto.Widget()
-    showcase.copy_into(test_widget)
+    outer.copy_into(test_widget)
 
     return screen, [("test", test_widget), ("trackpad", pad)]
 

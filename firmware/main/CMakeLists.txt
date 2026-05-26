@@ -20,6 +20,7 @@ idf_component_register(
         "screens.cpp"
         "widgets/screen_layout.cpp"
         "widgets/widget_actions.cpp"
+        "widgets/widget_animations.cpp"
         "widgets/widget_builders.cpp"
         "widgets/widget_styles.cpp"
         "widgets/image_mmap.cpp"

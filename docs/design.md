@@ -918,6 +918,56 @@ Per https://github.com/espressif/usb-pids/commit/d32920ad0aacb4e6ab4188d6c351afe
 
 **Done.** `Constants` enum added to `touchy.proto` with `USB_VID = 0x303A` and `USB_PID = 0x8369`. `usb_hid.cpp` now uses `touchy_Constants_USB_VID/PID`; `usb_ids.py` reads from the generated `touchy_pb2.Constants`.
 
+## Stage 59: improve animation support
+
+* Read existing docs and widgets.proto.
+* Improve the protobufs so they could describe an animation like the example in tools/reference/anim.c (i.e. the host could use our protobufs to fully specify such an animation on a device screen)
+* enhance the "screen demo" so that a red dot animation similar to that c code is running behind the rest of the widgets on the test page.  (lvgl draws later widgets on top of earlier widgets)
+
+**Done.** Extended the proto schema with five new style-prop enum
+values (`STYLE_PROP_X`/`Y`/`WIDTH`/`HEIGHT`/`OPA`), a new `AnimTrack`
+message (`prop` + `start`/`end` ints — `from`/`to` are Python keywords)
+and a top-level `Animation` message carrying N parallel tracks plus the
+full LVGL knob set: `duration_ms`, `path` (re-uses the existing
+`AnimPath` enum), `repeat_count` (0 → `LV_ANIM_REPEAT_INFINITE`),
+`repeat_delay_ms`, `reverse` + `reverse_delay_ms` +
+`reverse_duration_ms`, and `start_delay_ms`. `Widget.animations` is
+now a `repeated Animation` heap-alloc field, bumping
+`Widget.Version.CURRENT` to **18**.
+
+Firmware grew a single new `widgets/widget_animations.{h,cpp}` pair:
+`apply_animations()` allocates one `lv_anim_t` per track, plugs in a
+shared `anim_style_exec_cb` that calls `lv_obj_set_local_style_prop`
+with the right `lv_style_prop_t`, and tracks the live `AnimCtx*`s on
+the widget so a custom delete-cb cancels animations via
+`lv_anim_delete()` and frees the ctx storage when the widget is
+destroyed. `widget_styles` got two free helpers
+(`lv_prop_from_proto` / `lv_path_from_proto`) reused by both the
+animation builder and the transition builder. `apply_animations` is
+called immediately after `apply_styles` in all three widget code-paths
+(ordinary, image, layout-widget).
+
+Python DSL adds `anim_track(prop, start, end)`, `animation(*tracks, …)`,
+and five `PROP_X`/`PROP_Y`/`PROP_WIDTH`/`PROP_HEIGHT`/`PROP_OPA`
+constants. Every widget factory grew an `animations=` kwarg routed
+through the existing `_widget()` helper (alongside `style=`). The
+Stage-57 demo `test` page is now wrapped in an outer absolute layer
+that overlays a red-radius spacer with a 1 s ease-in-out
+`anim_track(PROP_X, …) + WIDTH + HEIGHT` ping-pong animation —
+matching the spirit of `tools/reference/anim.c` while exercising the
+new pipeline end-to-end.
+
+The PySide6 sim mirrors the firmware in Qt: a per-widget
+`_apply_animations()` builds one `QParallelAnimationGroup` per cycle
+(forward + optional reverse leg), wraps it in a
+`QSequentialAnimationGroup` when `start_delay_ms` / `repeat_delay_ms`
+are non-zero, sets `loopCount(-1)` for infinite repeats, and connects
+each track's `valueChanged` to `move()` / `resize()` /
+`QGraphicsOpacityEffect.setOpacity()` based on the track's `StyleProp`.
+`QEasingCurve.Type.Steps` doesn't exist, so `ANIM_PATH_STEP` collapses
+to `Linear` in the sim (good-enough preview).
+
+
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?
 * Use https://lvgl.io/docs/open/debugging/gdb_plugin to faciltiate debugging

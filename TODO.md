@@ -54,6 +54,7 @@ Main new features: Works with StreamController app to provide arbitrary user but
 
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] add an animation to demo/test.pb https://lvgl.io/docs/open/9.5/main-modules/animation.html 
 * [ ] Implement multitouch HID to support multitouch native apps
 * [ ] Stylus support for 'paintbrush mode'
 * [ ] support turn, back, forward, up gestures natively

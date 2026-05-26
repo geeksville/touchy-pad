@@ -19,13 +19,21 @@ bool widget_is_layout(const touchy_Widget &w)
 
 void apply_rect(lv_obj_t *obj, const touchy_Widget &w, bool absolute_layout)
 {
-    if (w.which_placement != touchy_Widget_rect_tag) return;
-    const auto &r = w.placement.rect;
+    const bool has_rect = (w.which_placement == touchy_Widget_rect_tag);
+    // Outside absolute layouts, an absent rect means "let the layout manager
+    // decide" — nothing to set. Inside absolute layouts we always set size:
+    // a zero w/h means "fill the parent" (LV_PCT(100)) rather than
+    // LV_SIZE_CONTENT, so children without an explicit rect expand to fill.
+    if (!has_rect && !absolute_layout) return;
+
+    const touchy_Rect empty_rect = touchy_Rect_init_zero;
+    const auto &r = has_rect ? w.placement.rect : empty_rect;
+
     if (absolute_layout) {
         lv_obj_set_pos(obj, r.x, r.y);
     }
-    int32_t w_ = r.w > 0 ? r.w : LV_SIZE_CONTENT;
-    int32_t h_ = r.h > 0 ? r.h : LV_SIZE_CONTENT;
+    int32_t w_ = r.w > 0 ? r.w : (absolute_layout ? lv_pct(100) : LV_SIZE_CONTENT);
+    int32_t h_ = r.h > 0 ? r.h : (absolute_layout ? lv_pct(100) : LV_SIZE_CONTENT);
     lv_obj_set_size(obj, w_, h_);
 }
 

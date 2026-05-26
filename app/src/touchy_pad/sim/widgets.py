@@ -74,15 +74,43 @@ def build_widget(
     """
     kind = w.WhichOneof("kind")
     if kind in ("layout_absolute", "layout_flex", "layout_grid"):
-        return _build_layout(w, kind, fs, on_event, widget_ref_overrides)
-    if kind == "widget_ref":
-        return _build_widget_ref(w, fs, on_event, widget_ref_overrides)
-    return _build_leaf(w, kind, fs, on_event)
+        qw = _build_layout(w, kind, fs, on_event, widget_ref_overrides)
+    elif kind == "widget_ref":
+        qw = _build_widget_ref(w, fs, on_event, widget_ref_overrides)
+    else:
+        qw = _build_leaf(w, kind, fs, on_event)
+    if w.animations:
+        _apply_animations(qw, w)
+    return qw
 
 
 # ---------------------------------------------------------------------------
 # Layout containers
 # ---------------------------------------------------------------------------
+
+
+class _AbsContainer(QtWidgets.QWidget):
+    """Absolute-layout container that auto-resizes 'fill' children.
+
+    Children with no explicit Rect (or zero w/h) are collected in
+    ``_fill_children`` and resized to the full container area whenever
+    the container itself is resized — mirroring the firmware's
+    ``lv_pct(100)`` default for un-sized children in absolute layouts.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._fill_children: list[QtWidgets.QWidget] = []
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        w, h = event.size().width(), event.size().height()
+        for child in self._fill_children:
+            child.setGeometry(0, 0, w, h)
 
 
 def _build_layout(
@@ -134,23 +162,41 @@ def _build_layout(
         return container
 
     # layout_absolute: no Qt layout — children are placed via setGeometry
-    # from their Rect placements. The container itself reports a size
-    # hint that bounds every child so parent layouts have something to
-    # work with.
+    # from their Rect placements. Children that have no explicit rect (or
+    # zero w/h) are treated as "fill parent", matching the firmware's
+    # lv_pct(100) behaviour — see _AbsContainer below.
     abs_layout = w.layout_absolute
+    abs_container = _AbsContainer()
+    abs_container.setParent(container)
+    # Use a simple QVBoxLayout on the outer container so Qt fills the
+    # cell with the abs_container rather than clipping it.
+    fill_lay = QtWidgets.QVBoxLayout(container)
+    fill_lay.setContentsMargins(0, 0, 0, 0)
+    fill_lay.addWidget(abs_container)
     max_x = max_y = 0
+    animated_children: list[QtWidgets.QWidget] = []
     for child in abs_layout.layout.children:
         cw = build_widget(child, fs, on_event, overrides)
-        cw.setParent(container)
+        cw.setParent(abs_container)
         r = child.rect if child.WhichOneof("placement") == "rect" else _proto.Rect()
-        sh = cw.sizeHint()
-        cw_w = int(r.w) if r.w else max(sh.width(), 1)
-        cw_h = int(r.h) if r.h else max(sh.height(), 1)
-        cw.setGeometry(int(r.x), int(r.y), cw_w, cw_h)
+        if r.w == 0 and r.h == 0:
+            # No explicit size → fill parent (mirrors LV_PCT(100) on firmware).
+            abs_container._fill_children.append(cw)
+        else:
+            cw_w = int(r.w) if r.w else max(cw.sizeHint().width(), 1)
+            cw_h = int(r.h) if r.h else max(cw.sizeHint().height(), 1)
+            cw.setGeometry(int(r.x), int(r.y), cw_w, cw_h)
+            max_x = max(max_x, int(r.x) + cw_w)
+            max_y = max(max_y, int(r.y) + cw_h)
         cw.show()
-        max_x = max(max_x, int(r.x) + cw_w)
-        max_y = max(max_y, int(r.y) + cw_h)
-    container.setMinimumSize(max_x, max_y)
+        if child.animations:
+            animated_children.append(cw)
+    # Raise animated children to the top of the Z-order so they appear
+    # in front of fill-parent siblings (e.g. the grid overlay).
+    for cw in animated_children:
+        cw.raise_()
+    if max_x or max_y:
+        abs_container.setMinimumSize(max_x, max_y)
     return container
 
 
@@ -263,6 +309,26 @@ def _build_leaf(
     if kind == "spacer":
         sp = QtWidgets.QWidget()
         sp.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        # Apply the first default-state style that carries a bg_color so
+        # styled spacers (e.g. the Stage-59 animated red dot) are visible.
+        for st in w.styles:
+            if st.for_state == 0 and st.HasField("bg_color"):
+                r_c = (st.bg_color >> 16) & 0xFF
+                g_c = (st.bg_color >> 8) & 0xFF
+                b_c = st.bg_color & 0xFF
+                if st.HasField("radius") and st.radius >= 32767:
+                    # LV_RADIUS_CIRCLE — Qt clamps an oversized px value to
+                    # min(w, h) / 2, giving a true circle at any widget size.
+                    radius_css = "9999px"
+                elif st.HasField("radius") and st.radius > 0:
+                    radius_css = f"{st.radius}px"
+                else:
+                    radius_css = "0px"
+                sp.setStyleSheet(
+                    f"QWidget {{ background-color: #{r_c:02x}{g_c:02x}{b_c:02x};"
+                    f" border-radius: {radius_css}; }}"
+                )
+                break
         return sp
 
     _log.info("sim: unrenderable widget kind %r — falling back to placeholder", kind)
@@ -379,3 +445,112 @@ def _load_pixmap(asset: str, fs: SimFs) -> QtGui.QPixmap | None:
 
 
 __all__ = ["build_widget", "EventHandler"]
+
+
+# ---------------------------------------------------------------------------
+# Stage 59 — declarative animations
+# ---------------------------------------------------------------------------
+
+
+# Map proto AnimPath enum values → Qt easing curves. Qt has no Steps
+# curve, so STEP collapses to Linear in the sim (good-enough preview).
+_EASING_MAP: dict[int, QtCore.QEasingCurve.Type] = {
+    _proto.AnimPath.ANIM_PATH_LINEAR: QtCore.QEasingCurve.Type.Linear,
+    _proto.AnimPath.ANIM_PATH_EASE_IN: QtCore.QEasingCurve.Type.InQuad,
+    _proto.AnimPath.ANIM_PATH_EASE_OUT: QtCore.QEasingCurve.Type.OutQuad,
+    _proto.AnimPath.ANIM_PATH_EASE_IN_OUT: QtCore.QEasingCurve.Type.InOutQuad,
+    _proto.AnimPath.ANIM_PATH_OVERSHOOT: QtCore.QEasingCurve.Type.OutBack,
+    _proto.AnimPath.ANIM_PATH_BOUNCE: QtCore.QEasingCurve.Type.OutBounce,
+    _proto.AnimPath.ANIM_PATH_STEP: QtCore.QEasingCurve.Type.Linear,
+}
+
+
+def _proto_easing(path: int) -> QtCore.QEasingCurve:
+    return QtCore.QEasingCurve(_EASING_MAP.get(path, QtCore.QEasingCurve.Type.Linear))
+
+
+def _make_track_anim(
+    widget: QtWidgets.QWidget,
+    prop: int,
+    start: int,
+    end: int,
+    duration_ms: int,
+    easing: QtCore.QEasingCurve,
+) -> QtCore.QVariantAnimation:
+    """Build a single QVariantAnimation tied to one StyleProp axis."""
+    anim = QtCore.QVariantAnimation()
+    anim.setStartValue(int(start))
+    anim.setEndValue(int(end))
+    anim.setDuration(max(1, int(duration_ms)))
+    anim.setEasingCurve(easing)
+
+    if prop == _proto.StyleProp.STYLE_PROP_X:
+        anim.valueChanged.connect(lambda v: widget.move(int(v), widget.y()))
+    elif prop == _proto.StyleProp.STYLE_PROP_Y:
+        anim.valueChanged.connect(lambda v: widget.move(widget.x(), int(v)))
+    elif prop == _proto.StyleProp.STYLE_PROP_WIDTH:
+        anim.valueChanged.connect(lambda v: widget.resize(int(v), widget.height()))
+    elif prop == _proto.StyleProp.STYLE_PROP_HEIGHT:
+        anim.valueChanged.connect(lambda v: widget.resize(widget.width(), int(v)))
+    elif prop == _proto.StyleProp.STYLE_PROP_OPA:
+        # Attach a graphics opacity effect lazily; reuse if already
+        # attached so multiple opacity tracks coexist.
+        eff = widget.graphicsEffect()
+        if not isinstance(eff, QtWidgets.QGraphicsOpacityEffect):
+            eff = QtWidgets.QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(eff)
+        anim.valueChanged.connect(lambda v: eff.setOpacity(max(0.0, min(1.0, int(v) / 255.0))))
+    return anim
+
+
+def _apply_animations(widget: QtWidgets.QWidget, w: _proto.Widget) -> None:
+    """Attach every :class:`_proto.Animation` on ``w`` to ``widget``."""
+    for proto_anim in w.animations:
+        easing = _proto_easing(proto_anim.path)
+        dur = int(proto_anim.duration_ms) or 1
+        # Forward leg: every track in parallel.
+        forward = QtCore.QParallelAnimationGroup(widget)
+        for track in proto_anim.tracks:
+            forward.addAnimation(
+                _make_track_anim(widget, track.prop, track.start, track.end, dur, easing)
+            )
+
+        cycle: QtCore.QAbstractAnimation
+        if proto_anim.reverse:
+            rev_dur = int(proto_anim.reverse_duration_ms) or dur
+            reverse = QtCore.QParallelAnimationGroup(widget)
+            for track in proto_anim.tracks:
+                reverse.addAnimation(
+                    _make_track_anim(widget, track.prop, track.end, track.start, rev_dur, easing)
+                )
+            seq = QtCore.QSequentialAnimationGroup(widget)
+            seq.addAnimation(forward)
+            if proto_anim.reverse_delay_ms:
+                seq.addPause(int(proto_anim.reverse_delay_ms))
+            seq.addAnimation(reverse)
+            cycle = seq
+        else:
+            cycle = forward
+
+        # Stage 59 — `repeat_count == 0` means infinite in the proto,
+        # which maps to Qt's `-1` loop count. Other values are literal.
+        loops = -1 if proto_anim.repeat_count == 0 else int(proto_anim.repeat_count)
+
+        # `repeat_delay_ms` and `start_delay_ms` need a sequential
+        # wrapper since QAbstractAnimation has no native pause hook.
+        if proto_anim.start_delay_ms or (proto_anim.repeat_delay_ms and loops != 1):
+            wrapper = QtCore.QSequentialAnimationGroup(widget)
+            if proto_anim.start_delay_ms:
+                wrapper.addPause(int(proto_anim.start_delay_ms))
+            if proto_anim.repeat_delay_ms and loops != 1:
+                # Inline the cycle then a pause; rely on the outer loop
+                # count to repeat the whole wrapper sequence.
+                wrapper.addAnimation(cycle)
+                wrapper.addPause(int(proto_anim.repeat_delay_ms))
+            else:
+                wrapper.addAnimation(cycle)
+            wrapper.setLoopCount(loops)
+            wrapper.start()
+        else:
+            cycle.setLoopCount(loops)
+            cycle.start()

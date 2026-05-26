@@ -104,6 +104,12 @@ enum StyleProp {
     STYLE_PROP_PAD_BOTTOM        = 12;
     STYLE_PROP_PAD_LEFT          = 13;
     STYLE_PROP_PAD_RIGHT         = 14;
+    // Stage 59 — geometry / opacity props for declarative `Animation`s.
+    STYLE_PROP_X                 = 15;
+    STYLE_PROP_Y                 = 16;
+    STYLE_PROP_WIDTH             = 17;
+    STYLE_PROP_HEIGHT            = 18;
+    STYLE_PROP_OPA               = 19;
 }
 
 // Animation path (easing curve) selector. Maps 1-to-1 onto the
@@ -137,6 +143,35 @@ message Transition {
     AnimPath  path           = 2;       // easing; default = LINEAR
     uint32    duration_ms    = 3;
     uint32    delay_ms       = 4;
+}
+
+// Stage 59 — one animated style property inside an `Animation`.
+// `start`/`end` are interpreted as integer values appropriate to `prop`
+// (pixels for X/Y/WIDTH/HEIGHT, 0–255 for OPA, RGB565/RGB888 ints for
+// colour props, etc.). Named `start`/`end` rather than `from`/`to`
+// because `from` is a reserved word in Python.
+message AnimTrack {
+    StyleProp prop  = 1;
+    int32     start = 2;
+    int32     end   = 3;
+}
+
+// Stage 59 — declarative LVGL animation: one or more `AnimTrack`s that
+// share a single timeline (duration, easing, delay, repeat, ping-pong
+// reverse). One `Animation` proto → one `lv_anim_t` per `track` on the
+// firmware side, kicked off in parallel when the widget is built.
+// Mirrors the `lv_example_anim_1` / red-dot pattern from LVGL's docs.
+message Animation {
+    repeated AnimTrack tracks          = 1;
+    uint32             duration_ms     = 2;   // forward leg duration (>0)
+    AnimPath           path            = 3;   // easing; default = LINEAR
+    // 0 → infinite repeat (LV_ANIM_REPEAT_INFINITE); N → N total cycles.
+    uint32             repeat_count    = 4;
+    uint32             repeat_delay_ms = 5;   // pause between cycles
+    bool               reverse         = 6;   // ping-pong back to `start`
+    uint32             reverse_delay_ms    = 7;
+    uint32             reverse_duration_ms = 8;   // 0 → same as duration_ms
+    uint32             start_delay_ms      = 9;   // one-shot pre-roll
 }
 
 // Cosmetic overrides applied to a widget via an `lv_style_t` instance
@@ -618,7 +653,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 17;  // Stage 57: ActionSwitchScreen → ActionChangeWidgetRef
+        CURRENT         = 18;  // Stage 59: AnimTrack / Animation / Widget.animations
     }
     Version version = 6;
 
@@ -628,6 +663,10 @@ message Widget {
     // order via `lv_obj_add_style`; see the `Style` doc-comment.
     repeated Style styles = 3;
     bool centered = 5;
+    // Stage 59 — declarative animations. Each `Animation` runs in
+    // parallel on `this` widget for the lifetime of the LVGL object;
+    // see the `Animation` doc-comment.
+    repeated Animation animations = 7;
     // Where this widget sits inside its parent layout. `rect` is used by
     // absolute and flex parents; `cell` by grid parents. Renamed from
     // `layout` in Stage 24.2 to disambiguate from the layout-widget

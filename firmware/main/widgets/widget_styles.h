@@ -30,3 +30,9 @@ static inline lv_color_t color_from_u32(uint32_t rgb)
 //
 // Safe to call with a widget that has no styles — it's a no-op.
 void apply_styles(lv_obj_t *obj, const touchy_Widget &w);
+
+// Stage 59 — wire-stable enum → LVGL translators, exposed for reuse by
+// `widget_animations.cpp`. Unknown values fall back sensibly
+// (`LV_STYLE_PROP_INV` / `lv_anim_path_linear`).
+lv_style_prop_t   lv_prop_from_proto(touchy_StyleProp p);
+lv_anim_path_cb_t lv_path_from_proto(touchy_AnimPath  p);
