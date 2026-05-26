@@ -1,6 +1,6 @@
 {
-  "version": "CURRENT",
   "active": {
+    "version": "CURRENT",
     "id": "root",
     "layoutGrid": {
       "cols": 1,

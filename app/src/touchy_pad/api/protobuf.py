@@ -9,7 +9,8 @@ Example::
 
     from touchy_pad.api import protobuf
 
-    screen = protobuf.Screen(name="home", version=protobuf.Screen.Version.CURRENT)
+    screen = protobuf.Screen()
+    screen.active.version = protobuf.Widget.Version.CURRENT
     screen.active.layout_flex.flow = protobuf.LayoutFlex.ROW
 """
 

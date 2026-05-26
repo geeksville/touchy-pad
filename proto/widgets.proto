@@ -586,6 +586,25 @@ message WidgetRef {
 // can be either a leaf control (button / label / trackpad / …) or a
 // container that arranges its own `Layout.children`.
 message Widget {
+    // Stage 56 — wire-format version. Only the *root* `Widget` of an
+    // on-disk `.pb` file carries this; nested children leave it at
+    // `VERSION_UNKNOWN` (proto3 default). The device validates the
+    // root widget's `version` field on file load and deletes the file
+    // on mismatch.
+    //
+    // For screen files (`F:host/screens/<name>.pb`) the root is
+    // `Screen.active`, so `screen.active.version` must equal
+    // `CURRENT`. For standalone widget files
+    // (`{F,R}:host/widgets/<name>.pb`, see `WidgetRef`) the top-level
+    // `Widget` itself carries the version. Increment `CURRENT`
+    // whenever a wire-incompatible change is made to `Widget`,
+    // `Screen`, or any message they reference.
+    enum Version {
+        VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
+        CURRENT         = 16;  // Stage 56: version moved Screen→Widget
+    }
+    Version version = 6;
+
     string id    = 1;
     // Visual styling: zero or more `Style` messages, each tagged with the
     // state / part selector it targets via `Style.for_state`. Stacked in
@@ -644,22 +663,14 @@ message Widget {
 // One on-device LVGL screen. The encoded `Screen` is what lives in
 // F:host/screens/<name>.pb.
 message Screen {
-    // Wire-format version of the `Screen` message. The device rejects (and
-    // deletes) any saved `.pb` file whose `version` field is not `CURRENT`.
-    // Increment `CURRENT` whenever a wire-incompatible change is made to
-    // `Screen`, `Widget`, or any message they reference.
-    //
-    // Values lower than `CURRENT` are treated as stale; the file is removed
-    // from the device filesystem so the host re-uploads a fresh copy.
-    enum Version {
-        VERSION_UNKNOWN = 0;   // proto3 default — any file without a version field
-        CURRENT         = 15;  // Stage 55: renamed Image.asset→path; dropped Screen.path (redundant)
-    }
+    // Stage 56 — the wire-format version field lives on `Widget`
+    // (only the root widget of each file carries it). For screen
+    // files that's `active.version`; the firmware validates it on
+    // load and deletes the file on mismatch. Field tag 6 is reserved
+    // to avoid accidental reuse.
+    reserved 6;
+    reserved "version";
 
-    // Must equal `CURRENT`; the firmware deletes and ignores files that
-    // carry a different value (including the proto3 default of 0, which
-    // is produced by old host code that did not set this field).
-    Version version = 6;
     // The active LVGL screen (what `lv_screen_load` swaps in). Authoring
     // code that doesn't think about LVGL layers should put everything
     // here — this is where the bulk of every UI lives. Almost always a

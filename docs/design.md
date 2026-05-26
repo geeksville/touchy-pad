@@ -760,7 +760,8 @@ Host changes:
   persistent flash, `R:` for the volatile PSRAM ramdisk.
 * `widget_save` deliberately mirrors the existing `screen_save` path
   shape rather than sharing a wrapper — `Screen` carries a version
-  field that we validate, `Widget` does not.
+  field that we validate, `Widget` does not. *(Fixed in Stage 56 —
+  see below.)*
 
 Firmware changes (`firmware/main/widgets/widget_builders.{h,cpp}` +
 `screens.cpp`):
@@ -853,6 +854,43 @@ Not done (deferred):
   on every built object (which collides with trackpad's existing
   user-data use). Cheap follow-up if a real workload reveals the
   full-reload cost matters.
+
+## Stage 56: widget tweak (DONE)
+
+In Stage 54 we noted that `widget_save` mirrored `screen_save` but
+couldn't validate a wire-format version because only `Screen` carried
+the field. Stage 56 fixes that asymmetry by moving the version onto
+`Widget` (only the *root* widget of any `.pb` file carries it), so
+both file types are validated identically.
+
+Shipped (wire-format bump 15 → 16):
+
+* **`proto/widgets.proto`** — added `Widget.Version` enum and
+  `Widget.version` field (tag 6). Removed `Screen.version`; tag 6 on
+  `Screen` is now `reserved`. For screen files the version lives on
+  `screen.active.version`; for standalone widget files
+  (`{F,R}:host/widgets/<name>.pb`) the top-level `Widget` carries it.
+  Nested children always leave it at `VERSION_UNKNOWN`.
+* **Host** — `Screen.to_proto()` (DSL) now stamps
+  `msg.active.version = CURRENT` instead of `msg.version`.
+  `Touchy.widget_save()` deep-copies the supplied widget and stamps
+  the version on the copy before serialising, so callers never have
+  to think about it. `proto/default_screen.json` moved its `version`
+  into the `active` block.
+* **Firmware** — `screens.cpp::screens_register_from_file` validates
+  `screen.active.version`; `widget_builders.cpp::resolve_widget_ref`
+  validates the decoded widget's `version` and deletes the file from
+  the underlying `Fs` on mismatch (same delete-and-let-the-host-retry
+  pattern as screen files). Both messages log at WARN with the bad
+  version number.
+* **Tests** — `test_screen_save_accepts_dict` /
+  `test_screen_save_accepts_json_path` now pass
+  `{"active": {"version": "CURRENT"}}`; the existing
+  `test_widget_ref_serialises_inside_screen` asserts
+  `msg.active.version == Widget.Version.CURRENT`.
+
+No backwards-compat path: older `.pb` files are deleted on first boot
+after upgrade, exactly as for prior wire-format bumps.
 
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?

@@ -1150,10 +1150,11 @@ class Screen:
     # -- serialisation ------------------------------------------------------
 
     def to_proto(self) -> _proto.Screen:
-        msg = _proto.Screen(
-            version=_proto.Screen.Version.CURRENT,
-        )
+        # Stage 56: the wire-format version lives on the root `Widget`
+        # of each file. For screen files that's `active.version`.
+        msg = _proto.Screen()
         self.active.copy_into(msg.active)
+        msg.active.version = _proto.Widget.Version.CURRENT
         if self.top is not None:
             self.top.copy_into(msg.top)
         if self.sys is not None:

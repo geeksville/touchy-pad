@@ -305,8 +305,14 @@ class Touchy:
                 f"got {type(widget).__name__}"
             )
         path = f"{drive}:host/widgets/{name}.pb"
+        # Stage 56: stamp the wire-format version on the root widget
+        # so the firmware can validate (and delete on mismatch) the
+        # same way it does for screen files.
+        stamped = _proto.Widget()
+        stamped.CopyFrom(widget)
+        stamped.version = _proto.Widget.Version.CURRENT
         logger.debug("widget_save: %s", path)
-        self._client.file_save(path, widget.SerializeToString())
+        self._client.file_save(path, stamped.SerializeToString())
         return path
 
     # -- event dispatch ----------------------------------------------------

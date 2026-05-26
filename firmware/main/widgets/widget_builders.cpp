@@ -114,6 +114,16 @@ const touchy_Widget *resolve_widget_ref(const touchy_Widget &w)
         return nullptr;
     }
 
+    // Stage 56: the wire-format version lives on the root `Widget`
+    // of each file. Reject (and delete) mismatched files so the host
+    // re-uploads a fresh copy on its next pass.
+    if ((**holder).version != touchy_Widget_Version_CURRENT) {
+        ESP_LOGW(TAG, "widget '%s' has wrong version (%d) — deleting",
+                 path, (int)(**holder).version);
+        fs->remove(rest);
+        return nullptr;
+    }
+
     // Recurse to support a ref pointing at another ref (rare but
     // legal); guard via the expansion stack.
     g_ref_expansion.insert(key);

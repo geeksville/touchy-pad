@@ -642,7 +642,7 @@ def test_widget_ref_round_trip():
     )
     msg = _proto.Screen()
     msg.ParseFromString(Screen._registry[0].to_bytes())
-    assert msg.version == _proto.Screen.Version.CURRENT
+    assert msg.active.version == _proto.Widget.Version.CURRENT
     children = msg.active.layout_flex.layout.children
     assert len(children) == 2
     assert children[0].WhichOneof("kind") == "widget_ref"

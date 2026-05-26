@@ -317,13 +317,20 @@ bool screens_register_from_file(const char *path)
     }
 
     // Decode just enough to check the version field before caching.
+    // Stage 56: the wire-format version lives on the root `Widget`,
+    // which for screen files means `screen.active.version`. A screen
+    // without an `active` layer is malformed (every screen needs one)
+    // and is treated as a version mismatch.
     {
         auto check = decode_screen(std::vector<uint8_t>(raw, raw + len));
-        if (!check ||
-            (*check)->version != touchy_Screen_Version_CURRENT) {
+        bool ok = check && (*check)->has_active &&
+                  (*check)->active.version == touchy_Widget_Version_CURRENT;
+        if (!ok) {
+            int v = (check && (*check)->has_active)
+                        ? (int)(*check)->active.version
+                        : -1;
             ESP_LOGW(TAG, "screen '%s' has wrong version (%d) — deleting",
-                     path,
-                     check ? (int)(*check)->version : -1);
+                     path, v);
             delete[] raw;
             fs->remove(rest);
             return false;
