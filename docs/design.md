@@ -967,6 +967,29 @@ each track's `valueChanged` to `move()` / `resize()` /
 `QEasingCurve.Type.Steps` doesn't exist, so `ANIM_PATH_STEP` collapses
 to `Linear` in the sim (good-enough preview).
 
+## Stage 60: streamdeck-probe
+
+Streamdeck-probe has kinda organically turned into a 'stress test' of the TouchyDeck (sim StreamDeck) implementation.  I'd like you to improve it a bit further.  (Note - you talk to TouchyDeck as if it were a 'streamdeck')
+
+* When the user holds down any of the buttons, change the image on the button so it is upside down (by sending new contents for that image file).  This lets us test/see the button release action and how fast we can change images.
+* If there isn't already a TouchyDeck test suite in the main libraries tests, please add one.  You'll need to make a harness that fires up the python simulator (in headless mode), assign image buttons, handle press and release tests and then tear down the Touchydeck+sim
+
+## Stage 61: Beginning Rust API
+
+I'm a complete noob at Rust, please be extra clear in the plan so that we can discuss tradeoffs in archtecture/etc...
+
+* Make a new Rust API library (for eventual use in our rust based 'opendeck' plugin device in stage 62).
+* Refer to docs/python-api for inspiration but use idiomatic rust styles/documentation standards/directory paths.  Feel free to change API as needed to make it more 'rust like'.  In particular the threading/notification model for reading host-event messages from the device may be different.
+* Note: the python api library included a 'dsl' for building screens etc and the ability to pass in JSON for screen/widget files.  I don't think either of those were a great idea.  Instead have the API be smaller with the user passing in built up protobufs (using a standard rust protobuf library)
+* Use the 'standard'/conventional rust build steps to generate protobuf glue based on our /proto files.  
+* Also note: the protobuf files include the PID/VID you need for your USB device enumeration for your 'find touchpads' operation. 
+* Implement standard rust documentation generation for the library
+* Configure the build for the rust API so that it can eventually go on standard rust library repo servers (whatever those are?)
+* Include test cases (kinda analogous to the Touchydeck )
+* Make a new docs/rust-api.md describing this new API to rust developers.  Put a README.md in the root dir of this new source tree with instructions on how to build.
+* Update devcontainer and justfile as needed for "rust-build"
+* the current python code is in /src, I'm not sure the best place to put this new sister rust code.  You might even want to move /src to a better name (though that sounds painful)
+* Make a small text only rust app to exercise this API with real hardware.  It should be similar to the python "screen demo" cli test, create a few widgets (using protobufs), and write some screen/widget/image files to the device and if --listen, print log messages when the user clicks on buttons etc...
 
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?

@@ -16,6 +16,13 @@ https://marketplace.tacto.live/plugin/com.github.mean-ui-thread.opendeck-stream-
 https://marketplace.tacto.live/plugin/com.monkeykiller.plugins.opendeck-ss550
 device plugins are currently 'learn by example', so take a look at the links above, and then [this](https://docs.rs/openaction/latest/openaction/device_plugin/index.html) is what there is in terms of library docs
 
+## In particular
+
+Use https://github.com/4ndv/opendeck-akp153 as my example driver
+
+* A reference high level binding to receive set_image events and call handle_set_image https://github.com/4ndv/opendeck-akp153/blob/0366650d759ff798516a4013d8e41985e92312dc/src/main.rs#L44
+* A reference handle_set_image impl: https://github.com/4ndv/opendeck-akp153/blob/0366650d759ff798516a4013d8e41985e92312dc/src/device.rs#L182
+
 ## Hints from TerrorWorf on the OpenDeck discord
 
 If you use Rust, I recommend to use the OpenActionAPI Crate which does all the Websocket stuff with Opendeck and makes a few things a  lot easier. AFAIK its also the only API Crate yet, to have built in Support for the Device Plugins.

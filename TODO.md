@@ -48,12 +48,15 @@ Main new features: Works with StreamController app to provide arbitrary user but
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [x] Turn off "Expensive debugging flags!" in sdkconfig.defaults
 * [ ] Support a few more board types
+* [ ] cleanup embedding of streamdeck ui into other widgets
+* [ ] update python code to be 'finished' for StreamController (make sure press and release events work)
 * [ ] implement the StreamDeck background graphic API
 
 ## For release Alpha 3
 
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] allow setting brightness by putting that GPIO on a hw PWM output
 * [ ] add an animation to demo/test.pb https://lvgl.io/docs/open/9.5/main-modules/animation.html 
 * [ ] Implement multitouch HID to support multitouch native apps
 * [ ] Stylus support for 'paintbrush mode'
