@@ -97,6 +97,7 @@ class SimDevice:
         self._lock = threading.RLock()
         self._events: Queue[_proto.LvEvent] = Queue()
         self._on_screen_change = on_screen_change
+        self._on_image_update: Callable[[str], None] | None = None
         # Reported back via SysBoardInfoResponse.display_{width,height}.
         # Host adapters (e.g. TouchyDeck) size their UI from this.
         self._display_size = (int(display_size[0]), int(display_size[1]))
@@ -173,6 +174,14 @@ class SimDevice:
         ``QApplication`` is up rather than at ``SimDevice`` construction.
         """
         self._on_screen_change = cb
+
+    def set_image_update_callback(self, cb: Callable[[str], None] | None) -> None:
+        """Register a callback for when image asset files are updated.
+
+        Used by the Qt window to reload pixmaps without destroying
+        widgets (which would break mouse tracking during interactions).
+        """
+        self._on_image_update = cb
 
     def push_host_event(
         self,
@@ -296,6 +305,14 @@ class SimDevice:
         except OSError as exc:
             _log.error("sim: file_close I/O error on %r: %s", path, exc)
             return _result(_proto.RESULT_IO_ERROR)
+        # Notify image updates so SimWindow can reload affected pixmaps
+        # without destroying widgets (which would break mouse tracking).
+        if "host/images/" in path and self._on_image_update is not None:
+            _log.debug("sim: image asset updated %r", path)
+            try:
+                self._on_image_update(path)
+            except Exception:  # noqa: BLE001
+                _log.exception("sim: on_image_update callback raised")
         return _result()
 
     def _cmd_screen_load(self, msg: _proto.ScreenLoadCmd) -> _proto.Response:
@@ -346,6 +363,11 @@ class SimDevice:
         self._notify_screen_change()
 
     def _notify_screen_change(self) -> None:
+        _log.debug(
+            "sim: _notify_screen_change: path=%r callback=%s",
+            self._active_path,
+            "set" if self._on_screen_change is not None else "NONE",
+        )
         if self._on_screen_change is not None:
             try:
                 self._on_screen_change(self._active_screen)

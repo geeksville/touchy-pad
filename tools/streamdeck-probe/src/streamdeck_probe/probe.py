@@ -80,6 +80,28 @@ def _tile_native(deck, label: str) -> bytes | None:
         return None
 
 
+def _tile_flipped(deck, label: str) -> bytes | None:
+    """Return a 180°-rotated tile in the deck's native format, or None on failure.
+
+    Used by the press-flip phase: the upside-down version of the normal
+    tile is uploaded while a key is held and then swapped back on release.
+    """
+    try:
+        fmt = deck.key_image_format()
+    except Exception:  # noqa: BLE001
+        return None
+    size = fmt.get("size") if isinstance(fmt, dict) else None
+    if not size:
+        return None
+    w, h = size
+    pil = _make_tile(w, h, label).transpose(Image.ROTATE_180)
+    try:
+        from StreamDeck.ImageHelpers import PILHelper  # type: ignore
+        return PILHelper.to_native_key_format(deck, pil)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _probe_brightness(deck, log: ProbeLogger, idx: int, pause_ms: int) -> None:
     for pct in (0, 30, 100):
         with log.timed("brightness", "set_brightness", deck_index=idx, percent=pct):
@@ -193,10 +215,47 @@ def _probe_callbacks(
     stop = threading.Event()
     key_events: list[dict[str, Any]] = []
 
+    # Pre-build press-flip tile caches before defining on_key so the
+    # closure captures fully-populated lists. Fetching key_count here (rather
+    # than inside the interactive block) is safe — it only reads metadata.
+    try:
+        key_count = deck.key_count()
+    except Exception:  # noqa: BLE001
+        key_count = 0
+    normal_tiles: list[bytes | None] = [
+        _tile_native(deck, str(k)) for k in range(key_count)
+    ]
+    flipped_tiles: list[bytes | None] = [
+        _tile_flipped(deck, str(k)) for k in range(key_count)
+    ]
+    have_flip = any(t is not None for t in flipped_tiles)
+
     def on_key(_deck, key: int, state: bool) -> None:
         evt = {"ts": time.time(), "key": key, "state": state}
         key_events.append(evt)
         log.log("callback", "key", deck_index=idx, data=evt)
+        # Flip the key image upside-down while held; restore on release.
+        if not have_flip or key >= len(flipped_tiles):
+            return
+        tile = flipped_tiles[key] if state else normal_tiles[key]
+        if tile is None:
+            return
+        try:
+            with log.timed(
+                "set_key_image",
+                "flip_on_press" if state else "restore_on_release",
+                deck_index=idx,
+                key=key,
+            ):
+                deck.set_key_image(key, tile)
+        except Exception as e:  # noqa: BLE001
+            log.log(
+                "set_key_image",
+                "flip_error",
+                deck_index=idx,
+                key=key,
+                data={"error": str(e)},
+            )
 
     def on_dial(_deck, dial: int, evt_type, value) -> None:
         log.log(
@@ -234,14 +293,17 @@ def _probe_callbacks(
         log.log("callback", "skip_noninteractive", deck_index=idx)
         return
 
-    try:
-        key_count = deck.key_count()
-    except Exception:  # noqa: BLE001
-        key_count = 0
+    if have_flip:
+        log.log(
+            "callback",
+            "press_flip_enabled",
+            deck_index=idx,
+            data={"key_count": key_count},
+        )
 
     print(
-        f"\n[deck {idx}] Press every key once (0..{key_count - 1}), "
-        f"then press-and-HOLD key 0 for ~1 second then release. "
+        f"\n[deck {idx}] Press any key to see it flip upside-down while held. "
+        f"Keys 0..{key_count - 1}. "
         f"Press Ctrl-C or wait {int(press_timeout)}s to continue.\n",
         flush=True,
     )
@@ -252,6 +314,17 @@ def _probe_callbacks(
             time.sleep(0.25)
     except KeyboardInterrupt:
         log.log("callback", "user_interrupt", deck_index=idx)
+
+    # Restore all keys to their upright tiles so we leave a clean slate.
+    if have_flip:
+        for k, tile in enumerate(normal_tiles):
+            if tile is None:
+                continue
+            try:
+                with log.timed("set_key_image", "restore_all", deck_index=idx, key=k):
+                    deck.set_key_image(k, tile)
+            except Exception:  # noqa: BLE001
+                pass
 
     log.log(
         "callback",

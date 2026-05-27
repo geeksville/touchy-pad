@@ -25,7 +25,7 @@ from PySide6 import QtCore, QtWidgets
 
 from .. import _proto
 from .device import SimDevice
-from .widgets import build_widget
+from .widgets import _ImageButton, build_widget
 
 _log = logging.getLogger("touchy_pad.sim")
 
@@ -75,6 +75,7 @@ class SimWindow(QtWidgets.QMainWindow):
     # callback fires on whatever thread runs the command worker; this
     # signal hops back to the Qt main thread before re-rendering.
     _screen_changed = QtCore.Signal(object)
+    _image_updated = QtCore.Signal(str)  # path of updated image file
 
     def __init__(
         self,
@@ -90,6 +91,9 @@ class SimWindow(QtWidgets.QMainWindow):
         # Cleared on every screen load (matches firmware semantics: the
         # encoded path takes effect again as soon as the screen is reloaded).
         self._widget_ref_overrides: dict[str, str] = {}
+        # Track image widgets by their asset path so we can reload pixmaps
+        # without rebuilding the widget tree (which would break mouse tracking).
+        self._image_widgets: dict[str, list[_ImageButton]] = {}
 
         self.setWindowTitle("touchy-pad sim")
         self.resize(size[0] + 260, max(size[1] + 40, 360))
@@ -114,11 +118,13 @@ class SimWindow(QtWidgets.QMainWindow):
         right.addWidget(self._log_view, 1)
         outer.addLayout(right, 1)
 
-        # Wire device → window. The callback fires on the sim worker
-        # thread, so we hop through a Qt signal (QueuedConnection) to
+        # Wire device → window. The callbacks fire on the sim worker
+        # thread, so we hop through Qt signals (QueuedConnection) to
         # land on the GUI thread before touching widgets.
         self._screen_changed.connect(self._render_screen, QtCore.Qt.QueuedConnection)
         device.set_screen_change_callback(lambda scr: self._screen_changed.emit(scr))
+        self._image_updated.connect(self._reload_image, QtCore.Qt.QueuedConnection)
+        device.set_image_update_callback(lambda path: self._image_updated.emit(path))
 
         self._render_screen(device.active_screen)
 
@@ -132,9 +138,15 @@ class SimWindow(QtWidgets.QMainWindow):
     # -- screen rendering --------------------------------------------------
 
     def _render_screen(self, screen: _proto.Screen | None) -> None:
+        _log.debug(
+            "sim: _render_screen called: path=%r screen=%s",
+            self._device.active_screen_path,
+            type(screen).__name__ if screen is not None else "None",
+        )
         self._canvas.clear_layers()
         # Drop any RAM overrides — encoded path wins on screen (re)load.
         self._widget_ref_overrides.clear()
+        self._image_widgets.clear()
         if screen is None:
             self.setWindowTitle("touchy-pad sim — (no screen)")
             return
@@ -155,6 +167,7 @@ class SimWindow(QtWidgets.QMainWindow):
                     self._device.fs,
                     on_event=self._on_widget_event,
                     widget_ref_overrides=self._widget_ref_overrides,
+                    image_widget_registry=self._image_widgets,
                 )
             except Exception:  # noqa: BLE001 — broken authoring shouldn't kill the window
                 _log.exception("sim: failed to render layer %r", attr)
@@ -164,6 +177,13 @@ class SimWindow(QtWidgets.QMainWindow):
             # gaps fall through so widgets on the active layer remain
             # clickable.
             self._canvas.add_layer(qw, transparent_to_mouse=attr != "active")
+
+    def _reload_image(self, path: str) -> None:
+        """Reload pixmaps for all image widgets backed by the given path."""
+        widgets = self._image_widgets.get(path, [])
+        _log.debug("sim: reloading %d widget(s) for path %r", len(widgets), path)
+        for widget in widgets:
+            widget.reload_pixmap()
 
     # -- shutdown ---------------------------------------------------------
 

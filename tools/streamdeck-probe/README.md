@@ -28,10 +28,12 @@ scripted sequence and logs every observation:
    with a runtime-generated test image. Each call's timing and exceptions are
    captured.
 5. `set_key_color`, `set_screen_image`, `set_touchscreen_image` where supported.
-6. Interactive: prompts the operator to press each key once, then press-and-hold
-   one key. Every `set_key_callback` invocation is logged with timestamp and
-   state — this resolves the press-only-vs-press+release question we have for
-   our own `host_action` widget.
+6. Interactive: prompts the operator to press each key. **While any key is
+   held down the probe immediately uploads a 180°-rotated (upside-down)
+   version of that key's tile** via `set_key_image`, then restores the normal
+   tile on release. This stress-tests the press→image-update→release round-trip
+   latency and verifies that `Button.on_release` host events are delivered. On
+   exit from this phase all keys are restored to their normal tiles.
 7. `close()`.
 
 ## Install & run

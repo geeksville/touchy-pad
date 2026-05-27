@@ -89,3 +89,23 @@ const char *widget_refs_active_path(size_t i);
 
 const char *widget_refs_current_path(const char *target_id);
 bool        widget_refs_change(const char *target_id, const char *new_path);
+
+// ---------------------------------------------------------------------------
+// Stage 60 — image binding registry.
+//
+// Every `Image` widget and every configured `ImageButton` slot built
+// into the active screen registers the wire path it tracks. When a
+// file is overwritten via FileOpenWrite/Write/Close,
+// `widget_image_registry_notify()` re-applies that file's bytes to
+// every matching lv_image in place — no screen rebuild, so a button
+// currently receiving a touch keeps its LVGL state machine intact and
+// still emits its RELEASE / PRESS_LOST event when the finger lifts.
+//
+// Returns true if at least one binding matched the path; false if no
+// active widget references it (in which case the caller can fall back
+// to checking widget_refs / screen-pb paths).
+//
+// Caller must hold the LVGL lock.
+// ---------------------------------------------------------------------------
+
+bool widget_image_registry_notify(const char *wire_path);

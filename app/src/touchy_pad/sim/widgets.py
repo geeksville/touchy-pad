@@ -44,6 +44,34 @@ EventHandler = Callable[["_proto.Widget", str, dict], None]
 
 
 # ---------------------------------------------------------------------------
+# Custom widgets for reloadable images
+# ---------------------------------------------------------------------------
+
+
+class _ImageButton(QtWidgets.QPushButton):
+    """QPushButton that can reload its icon from disk without being destroyed.
+
+    Used for image_button widgets so we can update their appearance
+    during mouse interactions without breaking Qt's mouse tracking.
+    """
+
+    def __init__(self, path: str, fs: SimFs) -> None:
+        super().__init__()
+        self._path = path
+        self._fs = fs
+        self.reload_pixmap()
+
+    def reload_pixmap(self) -> None:
+        """Reload the icon from the backing file."""
+        pix = _load_pixmap(self._path, self._fs)
+        if pix is not None:
+            self.setIcon(QtGui.QIcon(pix))
+            self.setIconSize(pix.size())
+        else:
+            self.setText(self._path or "(img)")
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -53,6 +81,7 @@ def build_widget(
     fs: SimFs,
     on_event: EventHandler | None = None,
     widget_ref_overrides: dict[str, str] | None = None,
+    image_widget_registry: dict[str, list] | None = None,
 ) -> QtWidgets.QWidget:
     """Recursively turn a proto Widget into a Qt widget tree.
 
@@ -71,14 +100,18 @@ def build_widget(
         :class:`WidgetRef` widgets whose outer :attr:`Widget.id`
         matches a key — used by Stage-57 ``ActionChangeWidgetRef`` to
         rebind refs in RAM without rewriting the screen file.
+    image_widget_registry:
+        Optional ``{asset_path: [widget, ...]}`` map tracking image
+        widgets by their backing file path, so the SimWindow can reload
+        pixmaps without destroying widgets (which breaks mouse tracking).
     """
     kind = w.WhichOneof("kind")
     if kind in ("layout_absolute", "layout_flex", "layout_grid"):
-        qw = _build_layout(w, kind, fs, on_event, widget_ref_overrides)
+        qw = _build_layout(w, kind, fs, on_event, widget_ref_overrides, image_widget_registry)
     elif kind == "widget_ref":
-        qw = _build_widget_ref(w, fs, on_event, widget_ref_overrides)
+        qw = _build_widget_ref(w, fs, on_event, widget_ref_overrides, image_widget_registry)
     else:
-        qw = _build_leaf(w, kind, fs, on_event)
+        qw = _build_leaf(w, kind, fs, on_event, image_widget_registry)
     if w.animations:
         _apply_animations(qw, w)
     return qw
@@ -119,6 +152,7 @@ def _build_layout(
     fs: SimFs,
     on_event: EventHandler | None,
     overrides: dict[str, str] | None = None,
+    registry: dict[str, list] | None = None,
 ) -> QtWidgets.QWidget:
     container = QtWidgets.QWidget()
     container.setObjectName(f"layout_{w.id or kind}")
@@ -135,7 +169,7 @@ def _build_layout(
         for r in range(max(1, int(g.rows) or 1)):
             lay.setRowStretch(r, 1)
         for child in g.layout.children:
-            cw = build_widget(child, fs, on_event, overrides)
+            cw = build_widget(child, fs, on_event, overrides, registry)
             cell = child.cell if child.WhichOneof("placement") == "cell" else _proto.GridCell()
             col_span = int(cell.col_span) if cell.HasField("col_span") else 1
             row_span = int(cell.row_span) if cell.HasField("row_span") else 1
@@ -157,7 +191,7 @@ def _build_layout(
         lay.setSpacing(int(f.gap))
         lay.setContentsMargins(0, 0, 0, 0)
         for child in f.layout.children:
-            cw = build_widget(child, fs, on_event, overrides)
+            cw = build_widget(child, fs, on_event, overrides, registry)
             lay.addWidget(cw)
         return container
 
@@ -176,7 +210,7 @@ def _build_layout(
     max_x = max_y = 0
     animated_children: list[QtWidgets.QWidget] = []
     for child in abs_layout.layout.children:
-        cw = build_widget(child, fs, on_event, overrides)
+        cw = build_widget(child, fs, on_event, overrides, registry)
         cw.setParent(abs_container)
         r = child.rect if child.WhichOneof("placement") == "rect" else _proto.Rect()
         if r.w == 0 and r.h == 0:
@@ -210,6 +244,7 @@ def _build_leaf(
     kind: str | None,
     fs: SimFs,
     on_event: EventHandler | None,
+    registry: dict[str, list] | None = None,
 ) -> QtWidgets.QWidget:
     if kind == "button":
         btn = QtWidgets.QPushButton(w.button.text or "")
@@ -257,14 +292,14 @@ def _build_leaf(
         return _build_image(w.image, fs)
 
     if kind == "image_button":
-        btn = QtWidgets.QPushButton()
-        pix = _load_pixmap(w.image_button.released.path, fs)
-        if pix is not None:
-            btn.setIcon(QtGui.QIcon(pix))
-            btn.setIconSize(pix.size())
-        else:
-            btn.setText(w.image_button.released.path or "(img)")
+        path = w.image_button.released.path
+        btn = _ImageButton(path, fs)
         _wire_click(btn, w, on_event)
+        # Register in the image widget registry so SimWindow can reload
+        # the pixmap when the file changes (without destroying the button,
+        # which would break mouse tracking during interactions).
+        if registry is not None and path:
+            registry.setdefault(path, []).append(btn)
         return btn
 
     if kind == "arc":
@@ -340,6 +375,7 @@ def _build_widget_ref(
     fs: SimFs,
     on_event: EventHandler | None,
     overrides: dict[str, str] | None,
+    registry: dict[str, list] | None = None,
 ) -> QtWidgets.QWidget:
     """Expand a Stage-54 ``WidgetRef`` inline.
 
@@ -359,7 +395,7 @@ def _build_widget_ref(
         return QtWidgets.QLabel(f"(missing: {path})")
     inner = _proto.Widget()
     inner.ParseFromString(blob)
-    return build_widget(inner, fs, on_event, overrides)
+    return build_widget(inner, fs, on_event, overrides, registry)
 
 
 # ---------------------------------------------------------------------------

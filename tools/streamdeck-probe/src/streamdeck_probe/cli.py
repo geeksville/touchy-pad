@@ -88,6 +88,9 @@ def main(
         stream=sys.stderr,
     )
     logging.getLogger("touchy_pad").setLevel(logging.DEBUG)
+    # event_consume is polled at ~20 Hz; suppress its per-call trace to
+    # avoid flooding stderr. Set to DEBUG to re-enable.
+    logging.getLogger("touchy_pad.client.rpc").setLevel(logging.INFO)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = time.strftime("%Y%m%d-%H%M%S")

@@ -491,8 +491,29 @@ void screens_notify_file_changed(const char *path)
     if (!path || !*path) return;
     std::string key(path);
 
+    // Stage 60 — fast path: if the overwritten file is only referenced
+    // by Image / ImageButton widgets on the active screen, re-mmap and
+    // re-apply just those lv_image sources in place. No screen
+    // rebuild, so any widget currently receiving a touch keeps its
+    // LVGL state machine and still emits a RELEASE event on
+    // finger-up. Holds the LVGL lock since the registry walk mutates
+    // widget state.
+    {
+        lvgl_port_lock(0);
+        bool handled = widget_image_registry_notify(path);
+        lvgl_port_unlock();
+        if (handled) {
+            ESP_LOGI(TAG, "notify_file_changed: '%s' updated in place via image registry",
+                     path);
+            return;
+        }
+    }
+
     // The active screen's own .pb file is the obvious case; check it
     // first so we don't have to traverse on a screen-file overwrite.
+    // We also fall through to a full reload for changes that
+    // reach the active screen via a WidgetRef — those carry whole
+    // widget subtrees whose construction can't be patched in place.
     bool reload = (key == g_current_path) ||
                   active_screen_references_path(key);
     if (!reload) {

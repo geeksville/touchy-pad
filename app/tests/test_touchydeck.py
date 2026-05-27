@@ -25,8 +25,9 @@ pytest.importorskip("StreamDeck.Devices.StreamDeck")
 
 # Bytes for `LvEvent.code`, matching `_LV_EVENT_PRESSED` / `_LV_EVENT_RELEASED`
 # in deck.py. Duplicated locally so a wire-protocol change forces a test fix.
+# These are LVGL 9.x enum values (RELEASED=11, not 8).
 _LV_PRESSED = 1
-_LV_RELEASED = 8
+_LV_RELEASED = 11
 
 
 def test_host_code_roundtrip() -> None:
@@ -203,6 +204,108 @@ def test_set_key_color_not_implemented(caplog) -> None:
         deck.set_key_color(0, 255, 0, 0)
         assert "set_key_color: not implemented" in caplog.text
         assert "ERROR" in caplog.text
+
+
+def test_touchydeck_set_key_image_writes_match_image_button_path() -> None:
+    """set_key_image(k, data) writes to the exact path the layout builder encodes.
+
+    Catches the regression where the upload "succeeds" host-side but firmware
+    would render a stale path because the two sides disagree on the filename.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    from touchy_pad.touchydeck.layout import asset_path_for
+
+    with make_tempdir_transport() as t, TouchyClient(t) as c:
+        deck = TouchyDeck(c, cols=2, rows=2)
+
+        buf = BytesIO()
+        Image.new("RGB", (16, 16), (255, 0, 0)).save(buf, format="PNG")
+        png = buf.getvalue()
+
+        deck.set_key_image(0, png)
+
+        # The sim transport sets needs_image_conversion=False, so bytes are
+        # stored verbatim at asset_path_for(0).
+        assert t._fs.read(asset_path_for(0)) == png
+        # Key 1 was not touched beyond the layout push.
+        assert not t._fs.exists(asset_path_for(1))
+
+
+def test_touchydeck_press_flip_roundtrip_via_sim() -> None:
+    """Press → flip image, release → restore: full E2E via the sim transport.
+
+    Verifies that:
+    - Both press and release edges reach the host callback (via on_press /
+      on_release action slots already wired in the layout builder).
+    - set_key_image called from inside the callback is serialised correctly
+      (update_lock is an RLock, so re-entrant from the read thread is fine).
+    - The fs blob matches the expected image after each edge.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    from touchy_pad.touchydeck.layout import asset_path_for
+
+    with make_tempdir_transport() as t, TouchyClient(t) as c:
+        deck = TouchyDeck(c, cols=2, rows=2)
+
+        def make_png(color: tuple[int, int, int]) -> bytes:
+            buf = BytesIO()
+            Image.new("RGB", (16, 16), color).save(buf, format="PNG")
+            return buf.getvalue()
+
+        black = make_png((0, 0, 0))
+        white = make_png((255, 255, 255))
+
+        # Prime every key with the black image.
+        for k in range(4):
+            deck.set_key_image(k, black)
+
+        observed: list[tuple[int, bool]] = []
+        fs_after: list[bytes] = []
+
+        def on_key(_deck, key_idx, pressed) -> None:
+            key_idx = int(key_idx)
+            pressed = bool(pressed)
+            tile = white if pressed else black
+            deck.set_key_image(key_idx, tile)
+            # Read back immediately after the synchronous write to capture the
+            # per-edge fs snapshot.
+            fs_after.append(t._fs.read(asset_path_for(key_idx)))
+            observed.append((key_idx, pressed))
+
+        deck.set_key_callback(on_key)
+
+        # Inject press then release for keys 0 and 3.
+        t.device.push_host_event(host_code_for(0), widget_id="sdk_key_0", lv_code=_LV_PRESSED)
+        t.device.push_host_event(host_code_for(0), widget_id="sdk_key_0", lv_code=_LV_RELEASED)
+        t.device.push_host_event(host_code_for(3), widget_id="sdk_key_3", lv_code=_LV_PRESSED)
+        t.device.push_host_event(host_code_for(3), widget_id="sdk_key_3", lv_code=_LV_RELEASED)
+
+        deck.open(resume_from_suspend=False)
+        try:
+            deadline = time.monotonic() + 2.0
+            while len(observed) < 4 and time.monotonic() < deadline:
+                time.sleep(0.02)
+        finally:
+            deck.run_read_thread = False
+            deck.close()
+
+        assert observed == [(0, True), (0, False), (3, True), (3, False)]
+
+        # After press → white; after release → black.
+        assert fs_after[0] == white  # key 0 pressed
+        assert fs_after[1] == black  # key 0 released
+        assert fs_after[2] == white  # key 3 pressed
+        assert fs_after[3] == black  # key 3 released
+
+        # Keys 1 and 2 were only primed; never changed by an event.
+        assert t._fs.read(asset_path_for(1)) == black
+        assert t._fs.read(asset_path_for(2)) == black
 
 
 def test_create_sim_device_surfaces_via_enumerate(tmp_path) -> None:

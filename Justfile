@@ -222,7 +222,7 @@ app-lint: build-proto-py
     export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '\.espressif' | paste -sd: -)"
     export POETRY_VIRTUALENVS_CREATE=true
     export POETRY_VIRTUALENVS_IN_PROJECT=false
-    cd app && poetry lock && poetry run ruff format src tests
+    cd app && poetry lock && poetry run ruff format src tests && poetry run ruff check src tests
 
 # Build the public-API HTML docs into docs/python-api/ (commit-friendly).
 # Requires the optional `docs` Poetry group: `poetry install --with docs`.

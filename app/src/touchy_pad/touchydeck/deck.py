@@ -61,10 +61,12 @@ _LOG = logging.getLogger(__name__)
 # LVGL event codes that flag press / release edges. Must stay in sync
 # with the firmware's `widget_attach_actions(..., LV_EVENT_PRESSED ...)`
 # / `LV_EVENT_RELEASED` / `LV_EVENT_PRESS_LOST` registrations in
-# `firmware/main/widget_builders.cpp`.
+# `firmware/main/widget_builders.cpp`. Values come from the LVGL 9.x
+# `lv_event_code_t` enum in `lvgl/src/misc/lv_event.h` — keep aligned
+# with the firmware's actual emission, not with older LVGL 8 docs.
 _LV_EVENT_PRESSED = 1
-_LV_EVENT_RELEASED = 8
-_LV_EVENT_PRESS_LOST = 32
+_LV_EVENT_PRESS_LOST = 3
+_LV_EVENT_RELEASED = 11
 
 
 class _FakeTransportDevice:
@@ -250,6 +252,13 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         if evt is None:
             # Nothing pending; tell the base loop to sleep ~1/poll_rate.
             return None
+
+        _LOG.debug(
+            "touchydeck: event received: host_code=0x%x lv_code=%d widget=%r",
+            evt.host_code,
+            evt.code,
+            evt.user_data,
+        )
 
         # Filter to events from our own key widgets, identified by their
         # host_code range (NOT user_data, so a host-side rename of the

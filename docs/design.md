@@ -967,12 +967,39 @@ each track's `valueChanged` to `move()` / `resize()` /
 `QEasingCurve.Type.Steps` doesn't exist, so `ANIM_PATH_STEP` collapses
 to `Linear` in the sim (good-enough preview).
 
-## Stage 60: streamdeck-probe
+## Stage 60: streamdeck-probe — DONE
 
-Streamdeck-probe has kinda organically turned into a 'stress test' of the TouchyDeck (sim StreamDeck) implementation.  I'd like you to improve it a bit further.  (Note - you talk to TouchyDeck as if it were a 'streamdeck')
+Extended `streamdeck-probe` to stress-test the TouchyDeck press/release
+round-trip and image-update throughput, and extended the existing
+`test_touchydeck.py` suite with two new end-to-end tests.
 
-* When the user holds down any of the buttons, change the image on the button so it is upside down (by sending new contents for that image file).  This lets us test/see the button release action and how fast we can change images.
-* If there isn't already a TouchyDeck test suite in the main libraries tests, please add one.  You'll need to make a harness that fires up the python simulator (in headless mode), assign image buttons, handle press and release tests and then tear down the Touchydeck+sim
+### What was done
+
+**`tools/streamdeck-probe/src/streamdeck_probe/probe.py`**
+- Added `_tile_flipped(deck, label)` — produces a 180°-rotated (`ROTATE_180`)
+  version of the standard labelled tile in the deck's native image format.
+- Extended `_probe_callbacks`: pre-builds `normal_tiles` and `flipped_tiles`
+  caches (one entry per key) before registering callbacks. Inside `on_key`:
+  on press → uploads `flipped_tiles[key]` via `set_key_image`; on release →
+  restores `normal_tiles[key]`. Both calls are wrapped in `log.timed(...)` so
+  the JSONL carries per-event latency. On exit from the interactive phase, all
+  keys are restored to their normal tiles.
+- Works against both the headless sim (`--sim-headless`) and real USB hardware
+  — no new CLI flags needed; the flip runs whenever `--interactive` is on.
+
+**`app/tests/test_touchydeck.py`** (extended — suite already existed)
+- `test_touchydeck_set_key_image_writes_match_image_button_path`: verifies
+  that `set_key_image(k, data)` writes to the exact `F:/R:host/...` path that
+  the layout builder encodes in the `ImageButton.released.path` field.
+- `test_touchydeck_press_flip_roundtrip_via_sim`: full E2E — injects synthetic
+  press/release `HostEvent`s for two keys via `SimDevice.push_host_event`,
+  calls `set_key_image` inside the callback, and asserts that the sim fs blob
+  matches `white` after each press and `black` after each release.
+
+**No firmware changes required.** `Button.on_release` already fires host
+events (implemented in Stage 50.2 and wired by the TouchyDeck layout builder);
+the device delivers a matching release `HostEvent` via `LV_EVENT_RELEASED` and
+`LV_EVENT_PRESS_LOST`.
 
 ## Stage 61: Beginning Rust API
 

@@ -25,9 +25,14 @@
 
 #include "esp_log.h"
 #include "lvgl.h"
+// Not exposed via lvgl.h umbrella; reach into the LVGL tree to grab
+// `lv_image_cache_drop()` so we can evict stale decoder entries when a
+// path-backed image is overwritten in place (Stage 60).
+#include "src/misc/cache/instance/lv_image_cache.h"
 
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <memory>
 #include <new>
 #include <string>
@@ -273,41 +278,136 @@ std::string to_lvgl_path(const char *wire)
     return std::string(wire);
 }
 
-// LV_EVENT_DELETE handler that frees a heap-allocated `lv_image_dsc_t`
-// owned by an image / image-button widget. The dsc's `data` field
-// aliases into RamFs storage and must NOT be freed here.
-void image_dsc_delete_cb(lv_event_t *e)
+// Apply the bytes at `wire_path` as `img`'s source. If `*dsc_inout` is
+// non-null on entry, that dsc was the previously-applied alias into
+// FS storage and is freed after LVGL has been pointed somewhere else
+// (the lv_image keeps an internal pointer to its current src). The
+// updated dsc pointer (or nullptr for the file-read fallback) is
+// written back to `*dsc_inout`.
+//
+// Used by both build-time `apply_image_attrs()` (called with
+// `*dsc_inout == nullptr`) and the runtime image-binding registry
+// (called with the previous dsc so it can hand back a fresh one when
+// a file is overwritten in RamFs).
+void apply_image_src_from_path(lv_obj_t *img,
+                               const char *wire_path,
+                               lv_image_dsc_t **dsc_inout)
 {
-    if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
-    delete static_cast<lv_image_dsc_t *>(lv_event_get_user_data(e));
-}
-
-void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
-{
-    if (im.path[0] != '\0') {
+    lv_image_dsc_t *old_dsc = *dsc_inout;
+    lv_image_dsc_t *new_dsc = nullptr;
+    if (wire_path && wire_path[0]) {
         // Stage 52 fast path: if the asset lives on a mmappable FS
         // (R:) and its on-disk pixel format matches the display
         // native, alias the bytes directly via an lv_image_dsc_t —
-        // no decode/copy. The dsc is heap-allocated and freed on the
-        // widget's LV_EVENT_DELETE.
+        // no decode/copy.
         auto *dsc = new (std::nothrow) lv_image_dsc_t{};
         const char *why = nullptr;
-        if (dsc && try_mmap_image(im.path, dsc, &why)) {
+        if (dsc && try_mmap_image(wire_path, dsc, &why)) {
             lv_image_set_src(img, dsc);
-            lv_obj_add_event_cb(img, image_dsc_delete_cb,
-                                LV_EVENT_DELETE, dsc);
+            new_dsc = dsc;
         } else {
             if (dsc) delete dsc;
             if (why && *why) {
                 ESP_LOGW(TAG, "image %s: mmap declined (%s); using file read",
-                         im.path, why);
+                         wire_path, why);
             }
-            std::string lv_path = to_lvgl_path(im.path);
+            // File-read fallback: drop any LVGL cache entry for this
+            // path so a subsequent set_src re-reads the on-disk bytes
+            // rather than serving the previous (now stale) decode.
+            std::string lv_path = to_lvgl_path(wire_path);
+            lv_image_cache_drop(lv_path.c_str());
             lv_image_set_src(img, lv_path.c_str());
         }
     }
-    if (im.has_scale) lv_image_set_scale(img, (uint16_t)im.scale);
+    // Safe to free the old dsc now that LVGL is no longer reading it.
+    delete old_dsc;
+    *dsc_inout = new_dsc;
+    // Force a redraw — for the mmap path LVGL may not invalidate
+    // automatically when set_src happens within the same draw cycle.
+    lv_obj_invalidate(img);
+}
+
+// ---------------------------------------------------------------------------
+// Stage 60 — image binding registry.
+//
+// Records every plain `Image` and every `ImageButton` slot (released /
+// pressed) on the currently-built widget tree so that when a file is
+// overwritten via FileOpenWrite/Write/Close we can re-apply just the
+// affected image source(s) in-place — without rebuilding the screen
+// (which would destroy the widget currently receiving a touch and
+// suppress its RELEASE / PRESS_LOST event).
+//
+// Each binding owns the lifetime of its associated dsc (for the mmap
+// fast path) and removes itself on the anchor widget's LV_EVENT_DELETE.
+// Plain images use the lv_image itself as anchor; ImageButton slots
+// use the outer lv_button (so a single delete cb tears down both the
+// state and any slot bindings).
+// ---------------------------------------------------------------------------
+
+struct ImageButtonState;  // fwd, defined below
+
+struct PlainImageBinding {
+    lv_obj_t       *img_obj;        // the lv_image
+    lv_obj_t       *anchor;         // same as img_obj
+    lv_image_dsc_t *dsc;            // current mmap dsc, or nullptr (file-read)
+    std::string     path;           // wire path being tracked
+};
+
+struct ButtonSlotBinding {
+    ImageButtonState *state;        // owning ImageButton state struct
+    lv_obj_t         *anchor;       // outer lv_button (lifetime anchor)
+    bool              is_pressed_slot;  // true → tracks `state->pressed`
+    std::string       path;
+};
+
+std::vector<PlainImageBinding> g_plain_bindings;
+std::vector<ButtonSlotBinding> g_button_bindings;
+
+void plain_image_binding_delete_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+    auto *anchor = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    for (auto it = g_plain_bindings.begin(); it != g_plain_bindings.end();) {
+        if (it->anchor == anchor) {
+            delete it->dsc;
+            it = g_plain_bindings.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void button_bindings_remove(lv_obj_t *anchor)
+{
+    g_button_bindings.erase(
+        std::remove_if(g_button_bindings.begin(), g_button_bindings.end(),
+                       [&](const ButtonSlotBinding &b) {
+                           return b.anchor == anchor;
+                       }),
+        g_button_bindings.end());
+}
+
+void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
+{
+    lv_image_dsc_t *dsc = nullptr;
+    apply_image_src_from_path(img, im.path, &dsc);
+    if (im.has_scale)    lv_image_set_scale(img, (uint16_t)im.scale);
     if (im.has_rotation) lv_image_set_rotation(img, im.rotation);
+    // Register this image for in-place updates if it has a real path.
+    if (im.path[0] != '\0') {
+        PlainImageBinding b;
+        b.img_obj = img;
+        b.anchor  = img;
+        b.dsc     = dsc;
+        b.path    = im.path;
+        g_plain_bindings.push_back(std::move(b));
+        lv_obj_add_event_cb(img, plain_image_binding_delete_cb,
+                            LV_EVENT_DELETE, nullptr);
+    } else {
+        // No path → nothing to track; orphaned dsc (none in this case)
+        // is already cleaned up by apply_image_src_from_path.
+        (void)dsc;
+    }
 }
 
 lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
@@ -355,17 +455,27 @@ lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
 // RamFs (`dsc`). Exactly one of the two pointers is non-null when the
 // state is configured. Both are freed in image_button_state_delete_cb.
 struct ImageButtonSrc {
-    char            *path;        // strdup'd; nullptr if state isn't configured or mmap'd
+    char            *path;        // strdup'd LVGL path; nullptr if state isn't configured or mmap'd
     lv_image_dsc_t  *dsc;         // heap; nullptr unless mmap fast path took over
+    char            *wire_path;   // strdup'd original wire path (e.g. "R:host/images/foo.bin");
+                                  // nullptr if state isn't configured. Used by the Stage 60
+                                  // image-binding registry to re-mmap after a file overwrite.
     bool      has_scale;
     uint16_t  scale;
     bool      has_rotation;
     int32_t   rotation;
 };
 struct ImageButtonState {
-    lv_obj_t *img_child;
-    ImageButtonSrc released;
-    ImageButtonSrc pressed;
+    lv_obj_t       *img_child;
+    ImageButtonSrc  released;
+    ImageButtonSrc  pressed;
+    // Pointer to whichever slot is currently displayed on `img_child`.
+    // Starts as &released; flipped by image_button_press_release_cb as
+    // the LVGL press state machine reports edges. Stage 60 uses this
+    // to decide whether a slot change from the file-watcher should
+    // also update `img_child` immediately (only when the changed slot
+    // matches the displayed one).
+    ImageButtonSrc *current_slot;
 };
 
 void image_button_state_delete_cb(lv_event_t *e)
@@ -373,8 +483,14 @@ void image_button_state_delete_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
     auto *st = static_cast<ImageButtonState *>(lv_event_get_user_data(e));
     if (!st) return;
+    // Stage 60: drop any registry entries anchored on this button
+    // before we free the state struct that those entries point at.
+    auto *anchor = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    button_bindings_remove(anchor);
     free(st->released.path);
     free(st->pressed.path);
+    free(st->released.wire_path);
+    free(st->pressed.wire_path);
     delete st->released.dsc;
     delete st->pressed.dsc;
     delete st;
@@ -385,12 +501,18 @@ void image_button_state_delete_cb(lv_event_t *e)
 // fast path first, otherwise fall back to a strdup'd LVGL path.
 void image_button_src_init(ImageButtonSrc &dst, const touchy_Image &im)
 {
+    // Free any state from a previous occupancy of this slot (used by
+    // Stage 60's in-place re-mmap on file overwrite).
+    free(dst.path);
+    free(dst.wire_path);
+    delete dst.dsc;
     dst = {};
     if (im.path[0] == '\0') return;
     dst.has_scale    = im.has_scale;
     dst.scale        = (uint16_t)im.scale;
     dst.has_rotation = im.has_rotation;
     dst.rotation     = im.rotation;
+    dst.wire_path    = strdup(im.path);
 
     auto *dsc = new (std::nothrow) lv_image_dsc_t{};
     const char *why = nullptr;
@@ -405,6 +527,42 @@ void image_button_src_init(ImageButtonSrc &dst, const touchy_Image &im)
     }
     std::string lv_path = to_lvgl_path(im.path);
     dst.path = strdup(lv_path.c_str());
+}
+
+// Re-populate `dst` after the on-disk bytes at `dst.wire_path` were
+// overwritten. Keeps wire_path/scale/rotation intact and just swaps
+// the underlying dsc/path. Returns true if anything was rebuilt.
+bool image_button_src_reload(ImageButtonSrc &dst)
+{
+    if (!dst.wire_path) return false;
+    // Preserve attrs across the rebuild.
+    char *saved_wire   = dst.wire_path;
+    bool  has_scale    = dst.has_scale;
+    uint16_t scale     = dst.scale;
+    bool  has_rotation = dst.has_rotation;
+    int32_t rotation   = dst.rotation;
+
+    free(dst.path);
+    delete dst.dsc;
+    dst.path = nullptr;
+    dst.dsc  = nullptr;
+
+    auto *dsc = new (std::nothrow) lv_image_dsc_t{};
+    const char *why = nullptr;
+    if (dsc && try_mmap_image(saved_wire, dsc, &why)) {
+        dst.dsc = dsc;
+    } else {
+        delete dsc;
+        std::string lv_path = to_lvgl_path(saved_wire);
+        // Drop LVGL's decode cache so the next set_src re-reads bytes.
+        lv_image_cache_drop(lv_path.c_str());
+        dst.path = strdup(lv_path.c_str());
+    }
+    dst.has_scale    = has_scale;
+    dst.scale        = scale;
+    dst.has_rotation = has_rotation;
+    dst.rotation     = rotation;
+    return true;
 }
 
 // True iff this state has any image-source override (mmap or path).
@@ -427,17 +585,28 @@ void image_button_apply(lv_obj_t *img,
     else if (fallback.has_scale) lv_image_set_scale(img, fallback.scale);
     if (state.has_rotation)         lv_image_set_rotation(img, state.rotation);
     else if (fallback.has_rotation) lv_image_set_rotation(img, fallback.rotation);
+    lv_obj_invalidate(img);
 }
 
 void image_button_press_release_cb(lv_event_t *e)
 {
     auto *st = static_cast<ImageButtonState *>(lv_event_get_user_data(e));
-    if (!st || !image_button_src_configured(st->pressed) || !st->img_child) return;
+    if (!st || !st->img_child) return;
+    // When the `pressed` slot has no image override the visible
+    // image stays on the released bytes for the whole press, so we
+    // must NOT move `current_slot` — keeping it at &released lets the
+    // Stage 60 registry push fresh bytes through to img_child if the
+    // host overwrites the released slot mid-press (the StreamDeck
+    // "flip on press" probe relies on this).
+    if (!image_button_src_configured(st->pressed)) return;
+
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
         image_button_apply(st->img_child, st->pressed, st->released);
+        st->current_slot = &st->pressed;
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         image_button_apply(st->img_child, st->released, st->released);
+        st->current_slot = &st->released;
     }
 }
 
@@ -456,7 +625,8 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
 
     auto *st = new (std::nothrow) ImageButtonState{};
     if (!st) return btn;
-    st->img_child = img;
+    st->img_child    = img;
+    st->current_slot = &st->released;
 
     image_button_src_init(st->released, released);
     if (ib.has_pressed && ib.pressed.path[0] != '\0') {
@@ -468,18 +638,35 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
     // Apply released-state attrs immediately.
     image_button_apply(img, st->released, st->released);
 
-    if (image_button_src_configured(st->pressed)) {
-        // Listen on the button (which owns the press state machine);
-        // the handler updates the inner image's src/scale/rotation.
-        lv_obj_add_event_cb(btn, image_button_press_release_cb,
-                            LV_EVENT_PRESSED, st);
-        lv_obj_add_event_cb(btn, image_button_press_release_cb,
-                            LV_EVENT_RELEASED, st);
-        lv_obj_add_event_cb(btn, image_button_press_release_cb,
-                            LV_EVENT_PRESS_LOST, st);
-    }
+    // Always wire press/release tracking so current_slot stays accurate
+    // even when only the released slot is configured — the Stage 60
+    // file-watcher consults current_slot to decide whether the swap is
+    // visible. (When `pressed` is not configured the cb just updates
+    // current_slot without touching img_child.)
+    lv_obj_add_event_cb(btn, image_button_press_release_cb,
+                        LV_EVENT_PRESSED, st);
+    lv_obj_add_event_cb(btn, image_button_press_release_cb,
+                        LV_EVENT_RELEASED, st);
+    lv_obj_add_event_cb(btn, image_button_press_release_cb,
+                        LV_EVENT_PRESS_LOST, st);
+
+    // Stage 60 — register each configured slot so file overwrites can
+    // update it in place without rebuilding the screen.
+    auto register_slot = [&](ImageButtonSrc *slot, bool is_pressed) {
+        if (!slot->wire_path) return;
+        ButtonSlotBinding b;
+        b.state            = st;
+        b.anchor           = btn;
+        b.is_pressed_slot  = is_pressed;
+        b.path             = slot->wire_path;
+        g_button_bindings.push_back(std::move(b));
+    };
+    register_slot(&st->released, /*is_pressed=*/false);
+    register_slot(&st->pressed,  /*is_pressed=*/true);
+
     // Free `st` (and its strings) when the button is deleted; the
-    // child image is destroyed automatically by the parent.
+    // child image is destroyed automatically by the parent. This cb
+    // also removes any registry entries anchored on `btn`.
     lv_obj_add_event_cb(btn, image_button_state_delete_cb,
                         LV_EVENT_DELETE, st);
     widget_attach_actions(btn, w.id,
@@ -572,6 +759,49 @@ lv_obj_t *build_layout(lv_obj_t *parent, const touchy_Widget &w)
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// Stage 60 — public image-binding registry entry point.
+// ---------------------------------------------------------------------------
+
+bool widget_image_registry_notify(const char *wire_path)
+{
+    if (!wire_path || !*wire_path) return false;
+
+    bool any = false;
+
+    // Plain Image widgets: re-apply the source in place. The dsc slot
+    // is owned by the binding; apply_image_src_from_path swaps it for
+    // a fresh one (or transitions to a file-read fallback) and frees
+    // the stale buffer.
+    for (auto &b : g_plain_bindings) {
+        if (b.path != wire_path) continue;
+        ESP_LOGI(TAG, "image_registry: reloading plain image '%s'", wire_path);
+        apply_image_src_from_path(b.img_obj, wire_path, &b.dsc);
+        any = true;
+    }
+
+    // ImageButton slots: re-mmap the slot's dsc / re-strdup its path,
+    // then push the bytes to the inner lv_image only if that slot is
+    // currently displayed (so a finger-down user doesn't see the
+    // pressed art flip back to released mid-touch, and vice versa).
+    for (auto &b : g_button_bindings) {
+        if (b.path != wire_path) continue;
+        ImageButtonSrc &slot = b.is_pressed_slot ? b.state->pressed
+                                                 : b.state->released;
+        ESP_LOGI(TAG,
+                 "image_registry: reloading image_button %s slot for '%s'%s",
+                 b.is_pressed_slot ? "pressed" : "released",
+                 wire_path,
+                 b.state->current_slot == &slot ? " (visible)" : " (hidden)");
+        image_button_src_reload(slot);
+        if (b.state->current_slot == &slot && b.state->img_child) {
+            image_button_apply(b.state->img_child, slot, b.state->released);
+        }
+        any = true;
+    }
+    return any;
+}
 
 void widget_build_children(lv_obj_t *parent, const touchy_Widget &container)
 {
