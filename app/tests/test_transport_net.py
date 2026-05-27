@@ -115,7 +115,8 @@ def test_sim_server_second_client_is_rejected(tmp_path) -> None:
         extra.sendall(b"\x00\x00\x00\x00")
         try:
             chunk = extra.recv(64)
-        except ConnectionResetError:
+        except (ConnectionResetError, ConnectionAbortedError):
+            # Linux: ConnectionResetError; Windows: ConnectionAbortedError
             chunk = b""
         extra.close()
         assert chunk == b""
