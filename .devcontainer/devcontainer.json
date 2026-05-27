@@ -19,7 +19,8 @@
 				"ms-vscode.cpptools",
 				"ms-python.python",
 				"ms-vscode.cmake-tools",
-				"rust-lang.rust-analyzer"
+				"rust-lang.rust-analyzer",
+				"skellock.just"
 			]
 		}
 	},
