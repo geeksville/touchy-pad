@@ -258,6 +258,39 @@ app-run *ARGS: build-proto-py
     cd app && poetry run touchy {{ARGS}}
 
 # ---------------------------------------------------------------------------
+# Rust library + demo (rust/) — pure-Rust async client.
+# ---------------------------------------------------------------------------
+
+# Build the Rust workspace (library + demo binary).
+rust-build:
+    cd rust && cargo build --workspace
+
+# Run the Rust test suite.
+rust-test:
+    cd rust && cargo test --workspace
+
+# Format-check and clippy-lint the Rust workspace.
+rust-lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd rust
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets -- -D warnings
+
+# Auto-format Rust sources.
+rust-fmt:
+    cd rust && cargo fmt --all
+
+# Build rustdoc HTML for the touchy-pad crate.
+rust-doc:
+    cd rust && cargo doc --workspace --no-deps
+
+# Run the touchy-demo binary. Forward extra args:
+#   just rust-run -- listen
+rust-run *ARGS:
+    cd rust && cargo run -p touchy-demo -- {{ARGS}}
+
+# ---------------------------------------------------------------------------
 # Versioning
 # ---------------------------------------------------------------------------
 

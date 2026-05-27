@@ -1,0 +1,30 @@
+[package]
+name = "touchy-pad"
+description = "Host-side API for the Touchy-Pad open-source USB multitouch pad / button-matrix device."
+readme = "../README.md"
+keywords = ["touchpad", "streamdeck", "lvgl", "esp32", "usb"]
+categories = ["hardware-support", "api-bindings"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prost.workspace = true
+nusb.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+log.workspace = true
+bytes.workspace = true
+image.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true
+
+[dev-dependencies]
+env_logger.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync", "io-util"] }
