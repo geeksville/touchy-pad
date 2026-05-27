@@ -1,0 +1,25 @@
+{
+	"Name": "Touchy-Pad",
+	"Description": "Use a Touchy-Pad LCD touch device as an OpenDeck device.",
+	"Author": "Touchy-Pad project",
+	"Version": "0.2.4",
+	"Icon": "icons/plugin",
+	"Category": "Touchy-Pad",
+	"Actions": [],
+	"DeviceNamespace": "tp",
+	"OS": [
+		{ "Platform": "linux" },
+		{ "Platform": "mac", "MinimumVersion": "10.15" },
+		{ "Platform": "windows", "MinimumVersion": "10" }
+	],
+	"CodePaths": {
+		"x86_64-unknown-linux-gnu": "x86_64-unknown-linux-gnu/bin/touchy-opendeck",
+		"aarch64-unknown-linux-gnu": "aarch64-unknown-linux-gnu/bin/touchy-opendeck",
+		"x86_64-apple-darwin": "x86_64-apple-darwin/bin/touchy-opendeck",
+		"aarch64-apple-darwin": "aarch64-apple-darwin/bin/touchy-opendeck",
+		"x86_64-pc-windows-msvc": "x86_64-pc-windows-msvc/bin/touchy-opendeck.exe"
+	},
+	"CodePathLin": "x86_64-unknown-linux-gnu/bin/touchy-opendeck",
+	"CodePathMac": "x86_64-apple-darwin/bin/touchy-opendeck",
+	"CodePathWin": "x86_64-pc-windows-msvc/bin/touchy-opendeck.exe"
+}

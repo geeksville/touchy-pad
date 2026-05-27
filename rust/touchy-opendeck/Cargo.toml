@@ -1,0 +1,25 @@
+[package]
+name = "touchy-opendeck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "OpenDeck device plugin exposing Touchy-Pad hardware as a StreamDeck-like device."
+publish = false
+
+[[bin]]
+name = "touchy-opendeck"
+path = "src/main.rs"
+
+[dependencies]
+touchy-pad = { path = "../touchy-pad" }
+openaction = "2"
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "io-util", "signal"] }
+anyhow.workspace = true
+log.workspace = true
+async-trait.workspace = true
+nusb.workspace = true
+base64 = "0.22"
+simplelog = "0.12"

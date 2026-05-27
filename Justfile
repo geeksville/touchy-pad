@@ -290,6 +290,31 @@ rust-doc:
 rust-run *ARGS:
     cd rust && cargo run -p touchy-demo -- {{ARGS}}
 
+# Build the OpenDeck device plugin (release binary).
+opendeck-build:
+    cd rust && cargo build -p touchy-opendeck --release
+
+# Package the .sdPlugin folder (with the host-triple binary) into a
+# zip ready to install from OpenDeck's "Install plugin from file…"
+# dialog. Writes to rust/target/touchy-opendeck.sdPlugin.zip.
+opendeck-package:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd rust
+    cargo build -p touchy-opendeck --release
+    triple="$(rustc -vV | awk '/^host:/ {print $2}')"
+    bin="target/release/touchy-opendeck"
+    case "$triple" in
+        *windows*) ext=".exe" ;;
+        *)         ext="" ;;
+    esac
+    out="touchy-opendeck/com.geeksville.touchypad.sdPlugin"
+    mkdir -p "$out/$triple/bin"
+    cp "${bin}${ext}" "$out/$triple/bin/touchy-opendeck${ext}"
+    rm -f target/touchy-opendeck.sdPlugin.zip
+    (cd touchy-opendeck && zip -r ../target/touchy-opendeck.sdPlugin.zip com.geeksville.touchypad.sdPlugin)
+    echo "wrote rust/target/touchy-opendeck.sdPlugin.zip"
+
 # ---------------------------------------------------------------------------
 # Versioning
 # ---------------------------------------------------------------------------

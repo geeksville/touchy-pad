@@ -1001,7 +1001,7 @@ events (implemented in Stage 50.2 and wired by the TouchyDeck layout builder);
 the device delivers a matching release `HostEvent` via `LV_EVENT_RELEASED` and
 `LV_EVENT_PRESS_LOST`.
 
-## Stage 61: Beginning Rust API
+## Stage 61: Beginning Rust API ✓ DONE
 
 I'm a complete noob at Rust, please be extra clear in the plan so that we can discuss tradeoffs in archtecture/etc...
 
@@ -1139,6 +1139,196 @@ Add `ghcr.io/devcontainers/features/rust:1` to install rustup + cargo
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?
 * Use https://lvgl.io/docs/open/debugging/gdb_plugin to faciltiate debugging
+
+## Stage 62: OpenDeck plugin ✓ DONE
+
+[OpenDeck](https://github.com/nekename/OpenDeck) is a Rust-based
+alternative to StreamController for driving StreamDeck-like devices.
+Per `docs/opendeck.md`, plugins are out-of-process executables that
+talk to the OpenDeck app over a WebSocket using the **OpenAction**
+protocol; each plugin is then responsible for talking to its own
+hardware. Our `touchy-pad` Rust crate (stage 61) gives us that piece
+for free, so the plugin is mostly an OpenAction-side adapter.
+
+### Plan (subject to revision)
+
+#### 1. Reference example as submodule
+
+Add `4ndv/opendeck-akp153` (recommended by the OpenDeck author and the
+plugin the OpenAction `device_plugin` module was designed around) as a
+read-only submodule at `tools/reference/opendeck-akp153`. We won't
+build it — just read it for structural cues (manifest layout, packaging,
+the `register_device` / `handle_set_image` call shape, hot-plug loop).
+
+`git submodule add https://github.com/4ndv/opendeck-akp153.git
+tools/reference/opendeck-akp153` and pin to the latest tag (`v0.9.5` at
+the time of writing).
+
+#### 2. Crate location
+
+New crate at `rust/touchy-opendeck/` as a third workspace member
+alongside `touchy-pad` and `touchy-demo`. Rationale:
+
+* Shares `Cargo.lock` / rustfmt / clippy config with the rest of the
+  Rust workspace.
+* Lets the plugin depend on `touchy-pad` via a path dep (no
+  duplicate-version drift, no `cargo publish` round-trip during
+  development).
+* Same hard-tabs/`edition = 2024` style; same `just rust-build` /
+  `just rust-lint` recipes pick it up automatically.
+
+`publish = false` — the plugin ships as a packaged `.zip` for
+"Install from file", not via crates.io.
+
+```
+rust/touchy-opendeck/
+├── Cargo.toml          # publish = false
+├── README.md           # install / packaging / known issues
+├── manifest.json       # OpenDeck plugin manifest (id, version, exec name, supported devices)
+├── 99-touchy-pad.rules # symlinked to ../../bin/99-touchy-pad.rules
+├── assets/
+│   └── icon.png        # plugin icon shown in OpenDeck UI
+├── src/
+│   ├── main.rs         # openaction::run + register/unregister loop
+│   ├── device.rs       # per-device state + OpenAction → touchy-pad bridge
+│   ├── layout.rs       # key-index ↔ Touchy-pad widget grid mapping
+│   └── hotplug.rs      # nusb hotplug watcher (re-uses crate::transport_usb::enumerate)
+└── justfile            # local `just package` recipe (zip up release binary + manifest)
+```
+
+Top-level [Justfile](Justfile) gets `opendeck-build` / `opendeck-package`
+recipes that delegate to the crate's justfile so contributors can stay
+at the repo root.
+
+#### 3. OpenAction wiring
+
+Use `openaction = "2"` with normal caret-semver — minor bumps
+(currently 2.6.0, looks healthy at 2.x) come along automatically; we
+only pin if a breaking change forces it. All new code in this crate is
+licensed **GPL-3.0-or-later**, matching the rest of the workspace and
+the akp153 reference plugin.
+
+Sketch of `main.rs`:
+
+```rust
+#[tokio::main]
+async fn main() -> openaction::OpenActionResult<()> {
+    env_logger::init();
+    let plugin = TouchyPlugin::new();
+    openaction::run(plugin).await
+}
+```
+
+`TouchyPlugin` implements the OpenAction device-plugin trait surface
+with roughly:
+
+| OpenAction event | Our handler |
+|---|---|
+| Plugin startup | `nusb::watch_devices()` → enumerate existing Touchy-Pads, call `register_device(id, name, kind, rows, cols)` for each. |
+| `handle_set_image(device_id, key, image_bytes)` | **Use the touchy-pad Rust API**: `pad.file_save("R:host/opendeck/{dev}/key_{k}.png", &image_bytes).await?` (host auto-converts to LVGL `.bin`); debounce a `pad.screen_load(...)` so adjacent set-image calls coalesce into one screen reload (≈100 ms window — same trick TouchyDeck uses to avoid flashing the whole grid on every key change). |
+| `handle_set_brightness(device_id, percent)` | Map 0–100% to a backlight RPC (`screen_sleep_timeout` for now; add a dedicated `BacklightSet` command in firmware stage 62.1 if needed). |
+| Hot-plug attach | Build a Touchy-pad screen with an `rows × cols` `ImageButton` grid; each button's `ActionHost{host_code = HOST_CODE_BASE + key_index}` is what surfaces as a key press to OpenDeck. |
+| Hot-plug detach | `unregister_device(id)`; drop the per-device `Touchy`; let `Drop` cancel its event poller. |
+| `Touchy::events()` → `LvEvent` with `host_code` | Translate to `openaction::device_plugin::key_down(device_id, key)` + `key_up(device_id, key)` calls. (Hold/release semantics already correct as of stage 60 fix.) |
+
+##### Initial screen build (mirrors TouchyDeck)
+
+The Python `touchy_pad.touchydeck.layout` module already solves this
+problem for StreamController; we port the same layout verbatim into the
+Rust plugin so the on-device behaviour is identical:
+
+* `SCREEN_PATH = "R:host/screens/opendeck_{device_id}.pb"` — per-device
+  screen file in PSRAM (rewritten on every connect, no flash wear).
+* `HOST_CODE_BASE = 0xB000` for the OpenDeck plugin (TouchyDeck uses
+  `0xA000`, so a single board can host both without code clashes).
+* `asset_path_for(k) = "R:host/opendeck/{device_id}/key_{k}.bin"`.
+* `build_screen(cols, rows)` builds a `Screen` with a `Grid` layout and
+  one `ImageButton` per cell wired to `on_press = on_release =
+  HOST_CODE_BASE + k`.
+
+Per-device sequence on attach:
+1. `Touchy::open()` the device.
+2. Build the `Screen` proto in-memory via the touchy-pad Rust API
+   (the same primitives `touchy-demo` already exercises:
+   `ImageButton`, `ActionHost`, `LayoutGrid`).
+3. `pad.file_save(SCREEN_PATH, encoded_screen).await?` — uses the
+   existing host→device protobuf bytes path.
+4. `pad.client().screen_load(SCREEN_PATH).await?` to make it live.
+5. Spawn the event loop: `pad.events().await` → `LvEvent` → OpenDeck
+   `key_down`/`key_up`.
+
+Pressed/released animation: leave to OpenDeck. We don't try to do
+"set pressed image" tricks — OpenDeck already redraws via
+`handle_set_image` when its own pressed state changes.
+
+This means the plugin's hot path is **purely**
+`Touchy::file_save` + `Client::screen_load` + `Touchy::events`; we do
+not poke USB directly. If any image-format or framing concern arises,
+the fix belongs in `touchy-pad` so the Python and Rust paths both
+benefit.
+
+#### 4. Device identity & re-connect
+
+OpenDeck plugins identify devices by a stable string. Our board
+exposes a name but not (currently) a unique serial; for the first cut
+use `format!("touchy:{bus}-{addr}")` so multiple connected pads work
+distinctly, and document the limitation in the plugin README. A
+firmware-side `serial` field in `SysBoardInfoResponse` is a clean
+follow-up if anybody actually has two units.
+
+#### 5. Layout discovery
+
+For now hard-code a 3×5 grid (matching the screenshot demo in
+stage 61) but read `display_width` / `display_height` from
+`SysBoardInfoResponse` so larger boards (`waveshare_s3_lcd_7b`) can
+opt into a different shape via a per-device config saved to OpenDeck
+global settings. The grid layout itself is built using the Python
+`touchy_pad.api.screens.grid` DSL ported to Rust — or, simpler for v1,
+hand-rolled `LayoutAbsolute` arithmetic since `touchy-demo` already
+demonstrates that path.
+
+#### 6. Packaging
+
+* Cross-compile release binaries for linux-x64, win-x64-gnu, macos
+  (`just opendeck-package`).
+* Zip layout per OpenDeck convention: `manifest.json` + executable +
+  `assets/` at the root.
+* Publish via GitHub Releases initially; once stable, submit to
+  `marketplace.tacto.live` (the OpenDeck plugin marketplace) alongside
+  the akp153 reference.
+
+#### 7. Documentation
+
+* `rust/touchy-opendeck/README.md` — install, udev rules, supported
+  boards, troubleshooting.
+* New `docs/opendeck-plugin.md` — design rationale + Stage 62 acceptance
+  criteria (kept separate from `docs/opendeck.md` which stays as the
+  research notes).
+* Link from `docs/README.md`.
+
+### Out of scope for Stage 62
+
+* Encoder / dial support (no rotary inputs on current boards).
+* Layer/profile UI inside OpenDeck — we just expose buttons; everything
+  beyond a flat key grid is OpenDeck's responsibility.
+* Multitouch / trackpad routing into OpenDeck (no obvious mapping;
+  defer to a later stage if anyone asks).
+* Windows/macOS hot-plug — start with Linux-only event reaction; other
+  OSes fall back to enumerate-on-start.
+
+### Acceptance
+
+1. `git submodule update --init tools/reference/opendeck-akp153` works.
+2. `just rust-build` builds the `touchy-opendeck` crate.
+3. `just rust-test` passes including a unit test for the
+   key-index↔widget-name mapping and an `openaction`-mocked
+   `handle_set_image` round-trip.
+4. With OpenDeck running and a Touchy-Pad plugged in:
+   * device appears in OpenDeck's device list,
+   * setting an image on a key shows up on the touchpad,
+   * pressing the touch shows up as a key event in OpenDeck.
+5. Plugin survives unplug/replug without restarting OpenDeck.
+
 
 # Old/Existing projects
 

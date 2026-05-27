@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["touchy-pad", "touchy-demo"]
+members = ["touchy-pad", "touchy-demo", "touchy-opendeck"]
 
 [workspace.package]
 version = "0.1.0"
