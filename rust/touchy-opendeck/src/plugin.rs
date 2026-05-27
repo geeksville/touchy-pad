@@ -46,10 +46,10 @@ const LV_EVENT_PRESS_LOST: u32 = 7;
 /// LVGL ``LV_EVENT_RELEASED`` — the press completed normally.
 const LV_EVENT_RELEASED: u32 = 8;
 
-/// Default OpenDeck "Plus"-shaped grid we register when board info
-/// doesn't give us anything more specific.
-const DEFAULT_COLS: u8 = 5;
-const DEFAULT_ROWS: u8 = 3;
+/// Nominal key size in pixels used to compute the grid from the device's
+/// reported `display_width` / `display_height`. 96 px gives 5 × 3 on the
+/// 480 × 320 jc4827w543 panel; 800 × 480 yields 8 × 5, etc.
+const KEY_PX: u32 = 96;
 
 /// OpenDeck device-type byte (see `docs/opendeck-device-plugin.md`).
 /// `0` (StreamDeck Original 3×5) is the closest match for a flat
@@ -127,11 +127,25 @@ impl TouchyPlugin {
 		let transport = UsbTransport::open_info(info).await.context("open usb transport")?;
 		let pad = Arc::new(Touchy::from_transport(Arc::new(transport)));
 
-		// Cheap heartbeat — if this fails the device isn't really ours.
-		let _ = pad.client().sys_board_info_get().await.context("sys_board_info_get")?;
-
-		let cols = DEFAULT_COLS;
-		let rows = DEFAULT_ROWS;
+		let board = pad.client().sys_board_info_get().await.context("sys_board_info_get")?;
+		if board.display_width == 0 || board.display_height == 0 {
+			return Err(anyhow!(
+				"{device_id} reported zero display dimensions ({}×{})",
+				board.display_width,
+				board.display_height
+			));
+		}
+		let cols = u8::try_from(board.display_width / KEY_PX)
+			.context("cols overflow")?;
+		let rows = u8::try_from(board.display_height / KEY_PX)
+			.context("rows overflow")?;
+		if cols == 0 || rows == 0 {
+			return Err(anyhow!(
+				"{device_id} display {}×{} is smaller than one key ({KEY_PX} px)",
+				board.display_width,
+				board.display_height
+			));
+		}
 		let screen_path = layout::screen_path_for(device_id);
 		let screen = layout::build_screen(cols, rows, device_id);
 		pad.screen_save(&screen_path, &screen).await.context("screen_save")?;
