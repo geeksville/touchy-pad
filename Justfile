@@ -329,7 +329,7 @@ firmware-build: build-proto-c build-default-screen
     # The IDF activate script detects sourcing via ${0##*/}; when Just runs a
     # recipe the temp-script name doesn't match "bash", so sourcing would fail.
     # Run a fresh bash -c so $0 is "bash" and is_sourced() returns true.
-    exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && cmake --build firmware/build'
+    exec bash -c '[ -n "${IDF_PATH:-}" ] || source ~/.espressif/tools/activate_idf_v6.0.1.sh && cmake --build firmware/build'
 
 flash: firmware-build
     #!/usr/bin/env bash

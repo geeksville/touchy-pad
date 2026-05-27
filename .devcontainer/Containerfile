@@ -123,15 +123,17 @@ RUN mkdir -p /home/${USERNAME}/.config && chown ${USERNAME}:${USERNAME} /home/${
 # Put the ESP tools in my path
 USER ${USERNAME}
 RUN ln -s /root/.espressif $HOME
+# @geeksville - I think this is no longer necessary, now we only ~/.espressif/tools/activate_idf_v6.0.1.sh
+# from the Justfile when we build-firmware
 # Seed a sane zsh PROMPT before sourcing the ESP-IDF activate script — that
 # script uses bash-style PS1 escapes (\u\h\w\$) which zsh prints literally.
 # Setting PROMPT here means the prefix the activate script prepends is added
 # to a string zsh actually understands.
-RUN printf '%s\n' \
-        'autoload -U colors && colors' \
-        'PROMPT="%n@%m:%~%# "' \
-      >> $HOME/.zshrc
-RUN echo 'source ~/.espressif/tools/activate_idf_v6.0.1.sh' | tee -a $HOME/.bashrc $HOME/.zshrc
+#RUN printf '%s\n' \
+#        'autoload -U colors && colors' \
+#        'PROMPT="%n@%m:%~%# "' \
+#      >> $HOME/.zshrc
+#RUN echo 'source ~/.espressif/tools/activate_idf_v6.0.1.sh' | tee -a $HOME/.bashrc $HOME/.zshrc
 
 # Python tooling for the host-side protobuf workflow (touchy.proto) and the
 # embedded-side nanopb generator. Installed system-wide via --break-system-packages
