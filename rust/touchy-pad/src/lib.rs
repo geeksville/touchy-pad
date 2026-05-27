@@ -44,6 +44,7 @@ pub mod images;
 pub mod pad;
 pub mod proto;
 pub mod transport;
+pub mod transport_net;
 pub mod transport_usb;
 
 pub use error::{Result, TouchyError};

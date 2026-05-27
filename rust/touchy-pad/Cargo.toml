@@ -31,4 +31,4 @@ prost-build.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync", "io-util"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync", "io-util", "net"] }

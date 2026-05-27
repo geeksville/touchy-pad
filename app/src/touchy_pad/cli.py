@@ -30,16 +30,27 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
 @click.group(invoke_without_command=True)
 @click.version_option()
 @click.option(
-    "--sim",
-    "sim",
-    is_flag=True,
-    help="Talk to an in-process Python device simulator instead of USB. "
-    "Opens a Qt window unless --sim-headless is also given.",
+    "--sim-remote",
+    "sim_remote",
+    metavar="[HOST:PORT]",
+    is_flag=False,
+    flag_value="",  # bare --sim-remote means "default loopback"
+    default=None,
+    help="Connect to an out-of-process simulator over TCP. "
+    "Defaults to 127.0.0.1:8935; pass HOST:PORT to override.",
 )
 @click.option(
     "--sim-headless",
+    "sim_headless",
     is_flag=True,
-    help="Like --sim, but skips the GUI window. Implies --sim.",
+    help="Spawn an in-process sim server on an ephemeral loopback port "
+    "and connect to it. No GUI window.",
+)
+@click.option(
+    "--sim-gui",
+    "sim_gui",
+    is_flag=True,
+    help="Spawn an in-process sim server and open a Qt window viewing it.",
 )
 @click.option(
     "--sim-size",
@@ -75,8 +86,9 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
 @click.pass_context
 def cli(
     ctx: click.Context,
-    sim: bool,
+    sim_remote: str | None,
     sim_headless: bool,
+    sim_gui: bool,
     sim_size: tuple[int, int] | None,
     sim_serial: str,
     sim_dir: Path | None,
@@ -84,9 +96,12 @@ def cli(
 ) -> None:
     """Talk to a connected Touchy-Pad USB device."""
     ctx.ensure_object(dict)
-    sim_active = sim or sim_headless
-    sim_gui = sim and not sim_headless
+    sim_modes = [bool(sim_remote is not None), sim_headless, sim_gui]
+    if sum(sim_modes) > 1:
+        raise click.UsageError("--sim-remote, --sim-headless and --sim-gui are mutually exclusive.")
+    sim_active = any(sim_modes)
     ctx.obj["sim"] = sim_active
+    ctx.obj["sim_remote"] = sim_remote
     ctx.obj["sim_headless"] = sim_headless
     ctx.obj["sim_gui"] = sim_gui
     ctx.obj["sim_size"] = sim_size or (480, 300)
@@ -100,28 +115,47 @@ def cli(
             ctx.exit()
         return
 
-    # Build one shared SimDeviceTransport (and, in GUI mode, the
-    # Qt window pointing at its SimDevice) up-front. The subcommand
-    # then talks to that same SimDevice, so its effects (uploads,
-    # screen switches, host events) show up live in the window.
+    # Stage 63: every sim path now goes through the network transport
+    # so the wire framing is exercised identically to USB.
     #
-    # Goes through the public `create_sim_device` helper so the sim
-    # is registered in the process-wide registry — that's what makes
-    # `touchy_get_pad_ids()` and the touchydeck StreamDeck-compat
-    # enumeration hook see it too.
-    from .api import create_sim_device
+    # * --sim-remote: just connect a TcpTransport to the user-specified
+    #   (or default) host:port; no server is owned by this process.
+    # * --sim-headless / --sim-gui: spin up an in-process SimServer on
+    #   an ephemeral loopback port and connect a TcpTransport to it.
+    #   GUI mode additionally opens a Qt window viewing the server's
+    #   SimDevice. Registered with the api.sim_registry so
+    #   touchy_get_pad_ids() and the touchydeck enumerate hook still
+    #   see it.
+
+    if sim_remote is not None:
+        from .transport_net import DEFAULT_SIM_PORT, TcpTransport, parse_sim_url
+
+        if sim_remote:
+            host, tcp_port = parse_sim_url(sim_remote)
+        else:
+            host, tcp_port = ("127.0.0.1", DEFAULT_SIM_PORT)
+        for opt, val in (
+            ("--sim-size", sim_size),
+            ("--sim-serial", sim_serial if sim_serial != "SIM0000" else None),
+            ("--sim-dir", sim_dir),
+        ):
+            if val:
+                logger.warning("%s ignored under --sim-remote", opt)
+        transport = TcpTransport(host, tcp_port)
+        ctx.obj["sim_transport"] = transport
+        ctx.call_on_close(transport.close)
+        return
+
+    from .api import create_sim_device, destroy_sim_device
 
     transport = create_sim_device(
         headless=not sim_gui,
         serial=sim_serial,
         fs_root=sim_dir,
         display_size=tuple(ctx.obj["sim_size"]),
+        network=True,
     )
     ctx.obj["sim_transport"] = transport
-    # Closed after the result callback's app.exec() returns (or
-    # immediately after the subcommand in headless mode).
-    from .api import destroy_sim_device
-
     ctx.call_on_close(destroy_sim_device)
 
     if not sim_gui:
@@ -133,7 +167,7 @@ def cli(
         from .sim.window import SimWindow
     except ImportError as e:
         logger.error(
-            "PySide6 is required for the --sim GUI window "
+            "PySide6 is required for the --sim-gui window "
             "(install with `pip install 'touchy-pad[sim]'`), or pass "
             "--sim-headless to skip the window: %s",
             e,
@@ -236,6 +270,102 @@ def _open_pad():
     from .api import touchy_open
 
     return touchy_open(transport=_make_transport())
+
+
+@cli.command("simulator")
+@click.option(
+    "--headless",
+    is_flag=True,
+    help="Don't open a Qt window; just listen on TCP.",
+)
+@click.option(
+    "--bind",
+    "bind",
+    default="127.0.0.1",
+    show_default=True,
+    metavar="HOST",
+    help="Bind address. Use 0.0.0.0 to accept non-loopback clients "
+    "(prints a warning; no auth is performed).",
+)
+@click.option(
+    "--port",
+    "sim_port",
+    type=int,
+    default=None,
+    show_default=False,
+    metavar="PORT",
+    help="TCP port (default: TOUCHY_SIM_PORT constant, currently 8935).",
+)
+@click.pass_context
+def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int | None) -> None:
+    """Run the device simulator as a standalone TCP server.
+
+    Speaks the same length-prefixed nanopb framing the real device's
+    USB bulk endpoints do, so any host-side client (Python, Rust,
+    StreamController, OpenDeck plugin, ...) reaches it the same way
+    it reaches hardware.
+
+    By default opens a Qt window viewing the simulated screen. Pass
+    ``--headless`` for CI / SSH use.
+    """
+    from .sim.server import SimServer
+    from .transport_net import DEFAULT_SIM_PORT
+
+    if bind != "127.0.0.1":
+        logger.warning(
+            "sim: --bind %s is non-loopback. No authentication is performed; "
+            "anyone who can reach this port can drive the simulator.",
+            bind,
+        )
+    server = SimServer(
+        host=bind,
+        port=sim_port if sim_port is not None else DEFAULT_SIM_PORT,
+        serial=ctx.obj["sim_serial"],
+        fs_root=ctx.obj["sim_dir"],
+        display_size=tuple(ctx.obj["sim_size"]),
+    )
+    click.echo(f"sim listening on {server.host}:{server.port}", err=True)
+
+    if headless:
+        import signal
+        import threading
+
+        stop = threading.Event()
+        signal.signal(signal.SIGINT, lambda *_: stop.set())
+        signal.signal(signal.SIGTERM, lambda *_: stop.set())
+        try:
+            stop.wait()
+        finally:
+            server.close()
+        return
+
+    try:
+        from PySide6 import QtCore, QtWidgets
+
+        from .sim.window import SimWindow
+    except ImportError as e:
+        logger.error(
+            "PySide6 is required for the simulator GUI window "
+            "(install with `pip install 'touchy-pad[sim]'`), or pass "
+            "--headless to skip the window: %s",
+            e,
+        )
+        server.close()
+        sys.exit(2)
+
+    import signal
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = SimWindow(server.device, size=ctx.obj["sim_size"])
+    window.show()
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+    _tick = QtCore.QTimer()
+    _tick.start(200)
+    _tick.timeout.connect(lambda: None)
+    try:
+        app.exec()
+    finally:
+        server.close()
 
 
 @cli.command("board-info")

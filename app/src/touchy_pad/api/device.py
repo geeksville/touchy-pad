@@ -392,13 +392,24 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
         elif use_sim:
             transport = sim_transport
         else:
-            from ..transport import UsbTransport
+            # Stage 63: honour TOUCHY_SIM_URL before USB enumeration so
+            # any host-side consumer (Rust client, OpenDeck plugin,
+            # ad-hoc script) transparently picks up an out-of-process
+            # simulator just by exporting the env var.
+            from ..transport_net import TcpTransport, sim_url_from_env
 
-            # ``serial`` filtering is currently a no-op on UsbTransport
-            # (it always opens the first matching VID/PID). When
-            # multi-device support lands we'll plumb ``serial`` through.
-            del serial
-            transport = UsbTransport()
+            sim_url = sim_url_from_env()
+            if sim_url is not None:
+                del serial
+                transport = TcpTransport(*sim_url)
+            else:
+                from ..transport import UsbTransport
+
+                # ``serial`` filtering is currently a no-op on UsbTransport
+                # (it always opens the first matching VID/PID). When
+                # multi-device support lands we'll plumb ``serial`` through.
+                del serial
+                transport = UsbTransport()
 
     client = TouchyClient(transport)
     try:

@@ -26,11 +26,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ..sim.server import SimServerTransport
     from ..sim.transport import SimDeviceTransport
 
 _LOG = logging.getLogger(__name__)
 _LOCK = threading.Lock()
-_SIM_TRANSPORT: SimDeviceTransport | None = None
+_SIM_TRANSPORT: SimDeviceTransport | SimServerTransport | None = None
 _SIM_SERIAL: str | None = None
 
 
@@ -40,7 +41,8 @@ def create_sim_device(
     serial: str = "SIM0000",
     fs_root: Path | None = None,
     display_size: tuple[int, int] = (480, 300),
-) -> SimDeviceTransport:
+    network: bool = False,
+) -> SimDeviceTransport | SimServerTransport:
     """Spin up (or return the existing) in-process sim device.
 
     ``headless=False`` is currently advisory: the GUI window is owned
@@ -49,6 +51,15 @@ def create_sim_device(
     callers that they should attach a :class:`SimWindow` to the
     returned transport's ``.device``.
 
+    When ``network=True`` (Stage 63), the returned transport is a
+    :class:`~touchy_pad.sim.server.SimServerTransport`: a
+    :class:`~touchy_pad.transport_net.TcpTransport` wrapping an
+    in-process :class:`~touchy_pad.sim.server.SimServer` bound to an
+    ephemeral loopback port. Exercises the same length-prefixed nanopb
+    framing as the real USB transport. ``.device`` and ``.serial``
+    still work, so existing callers (notably the touchydeck
+    enumeration hook) don't need to change.
+
     Idempotent: subsequent calls return the already-running sim
     transport without re-checking arguments. Use
     :func:`destroy_sim_device` if you need to reconfigure.
@@ -56,6 +67,22 @@ def create_sim_device(
     global _SIM_TRANSPORT, _SIM_SERIAL
     with _LOCK:
         if _SIM_TRANSPORT is not None:
+            return _SIM_TRANSPORT
+        if network:
+            from ..sim.server import SimServerTransport
+
+            _SIM_TRANSPORT = SimServerTransport(
+                serial=serial,
+                fs_root=fs_root,
+                display_size=display_size,
+            )
+            _SIM_SERIAL = serial
+            _LOG.info(
+                "create_sim_device: sim server up on %s:%d (serial=%s)",
+                _SIM_TRANSPORT._server.host,  # type: ignore[attr-defined]
+                _SIM_TRANSPORT._server.port,  # type: ignore[attr-defined]
+                serial,
+            )
             return _SIM_TRANSPORT
         # Defer the heavy import (touches sim.fs, SimDevice, etc.) so
         # users that never call create_sim_device pay nothing for it.
@@ -86,7 +113,7 @@ def destroy_sim_device() -> None:
             _LOG.exception("destroy_sim_device: close() raised")
 
 
-def get_sim_transport() -> SimDeviceTransport | None:
+def get_sim_transport() -> SimDeviceTransport | SimServerTransport | None:
     """Return the currently-registered sim transport, or ``None``."""
     return _SIM_TRANSPORT
 

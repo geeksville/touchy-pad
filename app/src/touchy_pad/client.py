@@ -61,6 +61,14 @@ class TouchyClient:
 
     @classmethod
     def open(cls) -> TouchyClient:
+        # Stage 63: honour TOUCHY_SIM_URL before USB enumeration so a
+        # bare `TouchyClient.open()` transparently picks up an
+        # out-of-process simulator just by exporting the env var.
+        from .transport_net import TcpTransport, sim_url_from_env
+
+        url = sim_url_from_env()
+        if url is not None:
+            return cls(TcpTransport(*url))
         return cls(UsbTransport())
 
     def close(self) -> None:

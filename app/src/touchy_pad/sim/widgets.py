@@ -455,17 +455,82 @@ def _build_image(img: _proto.Image, fs: SimFs) -> QtWidgets.QWidget:
     return lbl
 
 
+def _decode_lvgl_bin(data: bytes) -> QtGui.QImage | None:
+    """Decode a raw LVGL v9 ``.bin`` image to a :class:`QImage`.
+
+    Recognises the three color formats the host PNG→bin converter in
+    :mod:`touchy_pad.api.lvgl_image` emits (``RGB565``, ``RGB565A8``,
+    ``ARGB8888``). Returns ``None`` on any malformed input so the
+    caller can fall back to the Qt image loaders.
+    """
+    import struct
+
+    from ..api.lvgl_image import LVGL_BIN_MAGIC
+
+    _CF_ARGB8888 = 0x10
+    _CF_RGB565 = 0x12
+    _CF_RGB565A8 = 0x14
+    HEADER = "<BBHHHHH"
+    HEADER_LEN = struct.calcsize(HEADER)
+
+    if len(data) < HEADER_LEN or data[0] != LVGL_BIN_MAGIC:
+        return None
+    _magic, cf, _flags, w, h, stride, _reserved = struct.unpack_from(HEADER, data, 0)
+    body = data[HEADER_LEN:]
+    if w == 0 or h == 0:
+        return None
+
+    if cf == _CF_RGB565:
+        expected = (stride or w * 2) * h
+        if len(body) < expected:
+            return None
+        # QImage with explicit bytesPerLine handles non-tight strides.
+        img = QtGui.QImage(body[:expected], w, h, stride or w * 2, QtGui.QImage.Format.Format_RGB16)
+        return img.copy()  # detach from the bytes buffer
+    if cf == _CF_ARGB8888:
+        expected = (stride or w * 4) * h
+        if len(body) < expected:
+            return None
+        img = QtGui.QImage(
+            body[:expected], w, h, stride or w * 4, QtGui.QImage.Format.Format_ARGB32
+        )
+        return img.copy()
+    if cf == _CF_RGB565A8:
+        rgb_stride = stride or w * 2
+        a_stride = w  # A8 plane is always tight per LVGL convention
+        rgb_size = rgb_stride * h
+        a_size = a_stride * h
+        if len(body) < rgb_size + a_size:
+            return None
+        rgb_plane = body[:rgb_size]
+        a_plane = body[rgb_size : rgb_size + a_size]
+        out = QtGui.QImage(w, h, QtGui.QImage.Format.Format_ARGB32)
+        for y in range(h):
+            for x in range(w):
+                lo = rgb_plane[y * rgb_stride + x * 2]
+                hi = rgb_plane[y * rgb_stride + x * 2 + 1]
+                word = (hi << 8) | lo
+                r = ((word >> 11) & 0x1F) << 3
+                g = ((word >> 5) & 0x3F) << 2
+                b = (word & 0x1F) << 3
+                a = a_plane[y * a_stride + x]
+                out.setPixel(x, y, (a << 24) | (r << 16) | (g << 8) | b)
+        return out
+    return None
+
+
 def _load_pixmap(asset: str, fs: SimFs) -> QtGui.QPixmap | None:
     if not asset:
         return None
     candidates = [asset]
     # The host DSL pre-rewrites image_button assets to ``.bin`` at
     # authoring time (see ``api/screens.py::image_button``) because the
-    # firmware only ships LVGL's native ``.bin`` decoder. The sim
-    # transport skips that conversion (needs_image_conversion = False),
-    # so the actual file on disk is the original ``.png`` / ``.jpg`` /
-    # etc. — fall through and try the common source extensions when the
-    # exact path is missing.
+    # firmware only ships LVGL's native ``.bin`` decoder. Under the
+    # in-process SimDeviceTransport the file on disk is still the
+    # original ``.png`` / ``.jpg`` / etc. (needs_image_conversion =
+    # False) — under the Stage-63 TCP sim it's a real LVGL ``.bin``.
+    # Try both: native Qt loaders for the source formats, and our
+    # in-house decoder for ``.bin``.
     if asset.lower().endswith(".bin"):
         stem = asset[: -len(".bin")]
         candidates.extend(stem + ext for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
@@ -474,6 +539,10 @@ def _load_pixmap(asset: str, fs: SimFs) -> QtGui.QPixmap | None:
             data = fs.read(path)
         except (OSError, ValueError):
             continue
+        if path.lower().endswith(".bin") or (data and data[0] == 0x19):
+            img = _decode_lvgl_bin(data)
+            if img is not None:
+                return QtGui.QPixmap.fromImage(img)
         pix = QtGui.QPixmap()
         if pix.loadFromData(data):
             return pix

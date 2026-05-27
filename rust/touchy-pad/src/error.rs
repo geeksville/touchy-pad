@@ -51,6 +51,14 @@ pub enum TouchyError {
 	/// Operation timed out.
 	#[error("operation timed out after {0:?}")]
 	Timeout(std::time::Duration),
+
+	/// Non-USB transport I/O failure (e.g. TCP sim connection).
+	#[error("transport error: {0}")]
+	Transport(String),
+
+	/// Anything else.
+	#[error("{0}")]
+	Other(String),
 }
 
 impl From<prost::EncodeError> for TouchyError {

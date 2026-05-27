@@ -15,6 +15,7 @@ use crate::error::{Result, TouchyError};
 use crate::images::{LvFormat, looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin};
 use crate::proto::{LvEvent, Screen};
 use crate::transport::Transport;
+use crate::transport_net::{TcpTransport, sim_url_from_env};
 use crate::transport_usb::UsbTransport;
 use prost::Message;
 
@@ -35,8 +36,16 @@ pub struct Touchy {
 }
 
 impl Touchy {
-	/// Open the first connected Touchy-Pad via USB.
+	/// Open the first connected Touchy-Pad.
+	///
+	/// Honours the `TOUCHY_SIM_URL` environment variable (Stage 63):
+	/// if set to e.g. `tcp://127.0.0.1:8935`, connects to that
+	/// out-of-process Python simulator instead of enumerating USB.
 	pub async fn open() -> Result<Self> {
+		if let Some((host, port)) = sim_url_from_env() {
+			let transport: Arc<dyn Transport> = Arc::new(TcpTransport::connect(&host, port).await?);
+			return Ok(Self::from_transport(transport));
+		}
 		let transport: Arc<dyn Transport> = Arc::new(UsbTransport::open().await?);
 		Ok(Self::from_transport(transport))
 	}

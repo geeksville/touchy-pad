@@ -1329,6 +1329,218 @@ demonstrates that path.
    * pressing the touch shows up as a key event in OpenDeck.
 5. Plugin survives unplug/replug without restarting OpenDeck.
 
+## Stage 63: Make the simulator "wire accurate"
+
+The Stage 30 simulator is great for fast Python unit tests but it
+cheats in two ways that increasingly hurt as the Rust client and the
+StreamController/OpenDeck plugins grow up:
+
+1. The host talks to it via a Python `Queue[bytes]` pair — no framing,
+   no socket, so it can't be reached from the Rust client, and it
+   doesn't exercise the same code paths the real USB transport uses.
+2. It accepts source-format image bytes (PNG/JPG/etc.) and decodes
+   them with Pillow, so the host-side LVGL `.bin` conversion is
+   never exercised end-to-end. That hid a real bug once already
+   (see Stage 24.x notes on image pipeline parity).
+
+Stage 63 makes the simulator behave as much like the real device as
+possible:
+
+* Same protobuf messages.
+* Same length-prefixed framing as the USB bulk endpoint pair.
+* Same image format (raw LVGL `.bin` — Pillow decode goes away on the
+  sim side).
+* Reachable over a real socket so the Rust client and any out-of-
+  process tool (StreamController inside Flatpak, OpenDeck, a fuzzer)
+  can talk to it the same way they'd talk to hardware.
+
+This also lets the GUI run *outside* the devcontainer (Qt/Wayland is
+fiddly inside containers) while clients inside the container connect
+to it over TCP.
+
+> No backwards compatibility is preserved. Existing tests that imported
+> `SimDeviceTransport` directly will be updated to use the new entry
+> points.
+
+### Plan (subject to revision)
+
+#### 1. Wire format
+
+* **Transport: plain TCP**, loopback by default. Loopback works the
+  same from host shell and from inside the devcontainer (via
+  `host.docker.internal` / `--add-host=host.docker.internal:host-gateway`),
+  needs zero setup on Windows/macOS, and is trivial to mock in tests.
+* **Port: `8935`**, exposed as a symbolic constant
+  `touchy_pad.transport_net.DEFAULT_SIM_PORT` (Python) and
+  `touchy_pad::transport_net::DEFAULT_SIM_PORT` (Rust). Picked because
+  it's well clear of common dev ports and doesn't collide with any
+  IANA assignment we care about.
+* **Framing: identical to USB bulk.** Reuse `_pack` / `_unpack` from
+  `touchy_pad.transport` verbatim — 4-byte little-endian length prefix
+  followed by the nanopb payload. The same `_MAX_FRAME` cap applies.
+* **Channels:** two logical channels (host→device commands,
+  device→host responses) multiplexed on a single TCP connection.
+  Direction is implicit from who's sending. Events stay request/
+  response: clients still poll via `EventConsumeCmd` exactly as they
+  do today over USB, so no separate "mailbox" channel is needed.
+* **Connection lifecycle:** one client at a time, mirroring USB
+  exclusivity. The server `accept()`s a single connection, processes
+  it to completion (client `close` or socket EOF), then accepts the
+  next. Concurrent connect attempts get a clean `"sim busy"` framed
+  error and disconnect.
+* **No auth / no TLS.** Loopback only by default; binding to
+  `0.0.0.0` is opt-in via `--bind`, with a startup warning.
+
+#### 2. Server: new `touchy simulator` subcommand
+
+A new top-level CLI subcommand that runs only the simulator, in its
+own process:
+
+```bash
+touchy simulator                # GUI window + TCP listener on 8935
+touchy simulator --headless     # no GUI, just listener (CI / SSH)
+touchy simulator --port 9000    # override port
+touchy simulator --bind 0.0.0.0 # opt-in non-loopback (prints warning)
+touchy simulator --serial SIM1  # override pseudo-USB serial (cache dir)
+```
+
+Implementation lands in `app/src/touchy_pad/sim/server.py`:
+
+* `SimServer` wraps the existing `SimDevice` (Stage 30) + a `socket`
+  listener thread. Per-connection worker thread reads framed commands,
+  dispatches to `SimDevice`, writes framed responses.
+* In GUI mode, `SimWindow` runs on the Qt main thread; the network
+  worker uses `QMetaObject.invokeMethod` (or a `queue.Queue` drained
+  by a `QTimer`) to marshal screen changes onto the UI thread, exactly
+  the way the in-process sim does today.
+* Graceful shutdown on SIGINT / window close.
+
+#### 3. Client: new `TcpTransport`
+
+`app/src/touchy_pad/transport_net.py`:
+
+```python
+class TcpTransport(Transport):
+    needs_image_conversion = True   # same as USB — host converts PNG → .bin
+    def __init__(self, host: str = "127.0.0.1",
+                 port: int = DEFAULT_SIM_PORT,
+                 timeout_ms: int = 5000) -> None: ...
+```
+
+`send_command` / `recv_response` use the existing `_pack` / `_unpack`
+helpers — literally the same bytes that would have gone on the USB
+bulk endpoint. A short connect retry/backoff covers the "client
+starts before server" race common in tests.
+
+Rust side: `rust/touchy-pad/src/transport_net.rs` exposing
+`TcpTransport` implementing the existing `Transport` trait. Same
+framing, same port constant.
+
+#### 4. CLI flag rework
+
+Replace the current `--sim` / `--sim-headless` pair on the root
+`touchy` command with three mutually exclusive flags, all of which
+go through the new TCP path so every code path exercises the same
+framing:
+
+| Flag | Behaviour |
+|------|-----------|
+| `--sim-remote [host:port]` | Don't start a sim. Connect a `TcpTransport` to an already-running `touchy simulator`. Default `127.0.0.1:8935`. |
+
+##### `TOUCHY_SIM_URL` env var
+
+If `TOUCHY_SIM_URL` is set (e.g. `tcp://host.docker.internal:8935`),
+**both Python and Rust clients prefer it over USB enumeration** when
+no explicit transport is selected. The lookup order becomes:
+
+1. Explicit CLI flag / API argument (`--sim-remote host:port`,
+   `Touchy::open_tcp(addr)`, an explicit `UsbTransport(...)`, etc.).
+2. `TOUCHY_SIM_URL` if set → `TcpTransport`.
+3. USB enumeration (current default).
+
+This is what makes the sim usable from *any* host-side consumer
+without code changes — the Rust OpenDeck plugin, the StreamController
+shim, ad-hoc scripts — by just exporting one env var in the shell
+that launches them. Explicit flags always win so tests are
+deterministic.
+| `--sim-headless` | Spawn an in-process `SimServer(headless=True)` on an ephemeral loopback port, connect `TcpTransport` to it, tear down on exit. Replaces today's in-process queue-backed sim for tests and CI. |
+| `--sim-gui` | Same as `--sim-headless` but with `headless=False` so a Qt window opens in the same process. Equivalent of today's `--sim`. |
+
+The current `--sim` flag is removed outright (no backwards-compat
+alias). `--sim-size`, `--sim-serial`, `--sim-dir` remain — they
+configure the embedded `SimServer` in `--sim-headless` / `--sim-gui`
+mode and are ignored (with a warning) under `--sim-remote`.
+
+#### 5. Image pipeline
+
+The big behavioural change: the sim now consumes raw LVGL `.bin`
+exactly like the firmware does. Consequences:
+
+* Drop `SimDeviceTransport.needs_image_conversion = False`; the new
+  network transport advertises `True`, so the existing host-side
+  PNG→`.bin` conversion in `touchy_pad.api.images` is exercised
+  end-to-end on every sim run.
+* `SimDevice`'s widget renderer learns to load `.bin` headers (LVGL
+  v9 image-descriptor format) and decode the underlying pixel data
+  for display in the Qt window. The Pillow code path stays only as
+  a fallback for tests that explicitly want to bypass conversion.
+* On-disk storage: `.bin` files live under the existing sim cache
+  root (`~/.cache/touchy-pad/<serial>/F/...` for LittleFS, `.../R/...`
+  for the PSRAM ramdisk), one file per host path. No format change
+  required — the bytes on disk just happen to be LVGL `.bin` now
+  instead of PNG.
+
+#### 6. Tests
+
+* `tests/test_transport_net.py` — `TcpTransport` round-trip against
+  a `SimServer` started in a pytest fixture (headless, ephemeral
+  port).
+* All existing tests that build a `make_tempdir_transport()` switch
+  to the new fixture; the in-process `SimDeviceTransport` shim is
+  deleted.
+* `tests/test_sim_window.py` keeps using the embedded `--sim-gui`
+  path so the Qt-side smoke tests still cover screen rendering.
+* New Rust integration test under `rust/touchy-pad/tests/` that
+  `Command::new("touchy")`-spawns `touchy simulator --headless`,
+  connects with the Rust `TcpTransport`, drives a screen, and
+  asserts events round-trip.
+
+#### 7. Documentation
+
+* Rewrite `docs/simulator.md` for the new flag set, including the
+  "run the GUI on your host, connect from inside the devcontainer"
+  workflow (TCP `host.docker.internal:8935`).
+* Add a short paragraph to `docs/host-api.md` noting that the wire
+  format is now identical between USB and the sim's TCP transport.
+* `docs/development.md`: mention `touchy simulator` as the
+  recommended way to develop GUI screens without flashing.
+
+### Out of scope for Stage 63
+
+* TLS / authentication — loopback only by default; explicit opt-in
+  to `--bind 0.0.0.0` with a printed warning.
+* Multi-client support — one connection at a time, like USB.
+* mDNS / Bonjour discovery — env var + CLI flag are enough.
+* Hot-attach event mailbox — clients keep polling `EventConsumeCmd`.
+  A push channel is a possible later optimisation.
+* Persisting `.bin` cache across sim restarts in any structured way
+  beyond the existing cache-dir layout.
+
+### Acceptance
+
+1. `touchy simulator --headless` listens on `127.0.0.1:8935` and
+   serves at least one client through a full screen-load + event
+   round-trip.
+2. `touchy --sim-remote` (with the above running) drives the sim and
+   shows identical behaviour to today's `--sim-headless`.
+3. `touchy --sim-gui` opens a Qt window and the in-process listener
+   accepts the embedded client.
+4. `just app-test` passes; the Pillow→`.bin` round-trip is exercised
+   by at least one test against a real `TcpTransport`.
+5. Rust `cargo test -p touchy-pad` includes a spawn-the-simulator
+   integration test that succeeds on Linux CI.
+6. `docs/simulator.md` documents the host-GUI / container-client
+   workflow and the new flags.
 
 # Old/Existing projects
 

@@ -14,7 +14,7 @@ rust-version = "1.85"
 prost = "0.13"
 prost-build = "0.13"
 nusb = { version = "0.2", features = ["tokio"] }
-tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "sync", "time", "macros", "io-util"] }
+tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "sync", "time", "macros", "io-util", "net"] }
 thiserror = "1"
 anyhow = "1"
 log = "0.4"
