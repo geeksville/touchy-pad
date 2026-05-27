@@ -22,6 +22,9 @@ image.workspace = true
 futures.workspace = true
 async-trait.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [build-dependencies]
 prost-build.workspace = true
 

@@ -52,7 +52,28 @@ impl UsbTransport {
 	/// Open a specific device identified by an already-enumerated
 	/// [`nusb::DeviceInfo`].
 	pub async fn open_info(info: &DeviceInfo) -> Result<Self> {
-		let device = info.open().await.map_err(|e| TouchyError::Usb(format!("open: {e}")))?;
+		let device = match info.open().await {
+			Ok(d) => d,
+			Err(e) => {
+				// Devcontainer fallback: `/sys` is bind-mounted but the
+				// matching `/dev/bus/usb/BBB/DDD` node may live under
+				// `/host/dev/bus/usb` instead. Mirror what the Python
+				// `_install_host_dev_fallback` does and open the node by
+				// hand, then hand the fd to nusb via `Device::from_fd`.
+				#[cfg(unix)]
+				{
+					match try_open_via_host_dev(info).await {
+						Some(Ok(d)) => d,
+						Some(Err(fe)) => return Err(fe),
+						None => return Err(TouchyError::Usb(format!("open: {e}"))),
+					}
+				}
+				#[cfg(not(unix))]
+				{
+					return Err(TouchyError::Usb(format!("open: {e}")));
+				}
+			}
+		};
 		let cfg = device.active_configuration().map_err(|e| TouchyError::Usb(format!("active_configuration: {e}")))?;
 
 		// Locate the vendor-specific interface and its two bulk endpoints.
@@ -137,5 +158,47 @@ impl Transport for UsbTransport {
 		let data: &[u8] = &completion.buffer;
 		let (payload, _consumed) = unpack(data)?;
 		Ok(payload.to_vec())
+	}
+}
+
+/// Devcontainer/sandbox fallback for `info.open()`.
+///
+/// Some sandboxed environments — notably the touchy-pad devcontainer —
+/// bind-mount `/sys/bus/usb` from the host into the container (so
+/// enumeration sees the device) but only expose live device nodes under
+/// `/host/dev/bus/usb/...`, leaving `/dev/bus/usb/...` empty. nusb's
+/// normal open path tries `/dev/bus/usb/BBB/DDD` and fails with ENOENT.
+///
+/// We mirror the Python `_install_host_dev_fallback` workaround in
+/// `app/src/touchy_pad/transport.py`: open the matching node under
+/// `/host/dev/bus/usb` ourselves and hand the fd to
+/// [`nusb::Device::from_fd`].
+///
+/// Returns `None` if the fallback root doesn't exist (so the caller
+/// surfaces the original error), `Some(Ok)` on success, or
+/// `Some(Err)` if the fallback was attempted but failed.
+#[cfg(unix)]
+async fn try_open_via_host_dev(info: &DeviceInfo) -> Option<Result<nusb::Device>> {
+	use std::fs::OpenOptions;
+	use std::os::fd::OwnedFd;
+	use std::os::unix::fs::OpenOptionsExt;
+
+	let host_root = "/host/dev/bus/usb";
+	if !std::path::Path::new(host_root).is_dir() {
+		return None;
+	}
+
+	let bus = info.busnum();
+	let addr = info.device_address();
+	let path = format!("{host_root}/{bus:03}/{addr:03}");
+
+	let file = match OpenOptions::new().read(true).write(true).custom_flags(libc::O_CLOEXEC).open(&path) {
+		Ok(f) => f,
+		Err(e) => return Some(Err(TouchyError::Usb(format!("opening fallback node {path}: {e}")))),
+	};
+	let fd: OwnedFd = file.into();
+	match nusb::Device::from_fd(fd).await {
+		Ok(d) => Some(Ok(d)),
+		Err(e) => Some(Err(TouchyError::Usb(format!("Device::from_fd({path}): {e}")))),
 	}
 }
