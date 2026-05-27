@@ -1,0 +1,19 @@
+[package]
+name = "touchy-demo"
+description = "Command-line demo exercising the touchy-pad Rust API."
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+touchy-pad = { path = "../touchy-pad" }
+tokio.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+clap.workspace = true
+image.workspace = true

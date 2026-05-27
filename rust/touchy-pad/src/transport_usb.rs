@@ -1,0 +1,141 @@
+//! USB-backed [`Transport`] using the pure-Rust [`nusb`] crate.
+//!
+//! The Touchy-Pad device exposes a composite USB descriptor; the host
+//! protocol lives on a dedicated **vendor-specific** interface
+//! (`bInterfaceClass == 0xFF`) with one bulk OUT and one bulk IN
+//! endpoint. We locate it by class, not by interface number, so the
+//! firmware can rearrange the composite descriptor without breaking
+//! us.
+//!
+//! VID/PID come from the `Constants` enum in `proto/touchy.proto`,
+//! read out of the generated [`crate::proto::Constants`] at runtime
+//! so this code stays in sync with the firmware automatically.
+
+use std::time::Duration;
+
+use async_trait::async_trait;
+use nusb::DeviceInfo;
+use nusb::descriptors::TransferType;
+use nusb::transfer::{Buffer, Bulk, Direction, In, Out};
+use tokio::sync::Mutex;
+
+use crate::error::{Result, TouchyError};
+use crate::proto::Constants;
+use crate::transport::{Transport, pack, unpack};
+
+const VENDOR_INTERFACE_CLASS: u8 = 0xFF;
+
+/// USB IDs for the Touchy-Pad device, read from the generated proto.
+pub fn usb_vid_pid() -> (u16, u16) {
+	(Constants::UsbVid as u16, Constants::UsbPid as u16)
+}
+
+/// Bulk USB transport for a connected Touchy-Pad.
+pub struct UsbTransport {
+	inner: Mutex<Inner>,
+}
+
+struct Inner {
+	ep_out: nusb::Endpoint<Bulk, Out>,
+	ep_in: nusb::Endpoint<Bulk, In>,
+	max_packet_size_in: usize,
+}
+
+impl UsbTransport {
+	/// Find and open the first connected Touchy-Pad device.
+	pub async fn open() -> Result<Self> {
+		let (vid, pid) = usb_vid_pid();
+		let info = enumerate_first(vid, pid).await?;
+		Self::open_info(&info).await
+	}
+
+	/// Open a specific device identified by an already-enumerated
+	/// [`nusb::DeviceInfo`].
+	pub async fn open_info(info: &DeviceInfo) -> Result<Self> {
+		let device = info.open().await.map_err(|e| TouchyError::Usb(format!("open: {e}")))?;
+		let cfg = device.active_configuration().map_err(|e| TouchyError::Usb(format!("active_configuration: {e}")))?;
+
+		// Locate the vendor-specific interface and its two bulk endpoints.
+		let mut iface_num = None;
+		let mut ep_out_addr = None;
+		let mut ep_in_addr = None;
+		for iface in cfg.interfaces() {
+			for alt in iface.alt_settings() {
+				if alt.class() != VENDOR_INTERFACE_CLASS {
+					continue;
+				}
+				iface_num = Some(iface.interface_number());
+				for ep in alt.endpoints() {
+					if ep.transfer_type() != TransferType::Bulk {
+						continue;
+					}
+					match ep.direction() {
+						Direction::Out => ep_out_addr = Some(ep.address()),
+						Direction::In => ep_in_addr = Some(ep.address()),
+					}
+				}
+			}
+		}
+		let iface_num = iface_num.ok_or_else(|| TouchyError::Usb("device has no vendor-specific (0xFF) interface".into()))?;
+		let ep_out_addr = ep_out_addr.ok_or_else(|| TouchyError::Usb("vendor interface missing bulk OUT endpoint".into()))?;
+		let ep_in_addr = ep_in_addr.ok_or_else(|| TouchyError::Usb("vendor interface missing bulk IN endpoint".into()))?;
+
+		let interface = device.claim_interface(iface_num).await.map_err(|e| TouchyError::Usb(format!("claim_interface({iface_num}): {e}")))?;
+
+		let ep_out = interface.endpoint::<Bulk, Out>(ep_out_addr).map_err(|e| TouchyError::Usb(format!("endpoint OUT {ep_out_addr:#04x}: {e}")))?;
+		let ep_in = interface.endpoint::<Bulk, In>(ep_in_addr).map_err(|e| TouchyError::Usb(format!("endpoint IN {ep_in_addr:#04x}: {e}")))?;
+		let max_packet_size_in = ep_in.max_packet_size();
+
+		Ok(Self {
+			inner: Mutex::new(Inner { ep_out, ep_in, max_packet_size_in }),
+		})
+	}
+}
+
+/// Enumerate every connected Touchy-Pad device matching `(vid, pid)`.
+pub async fn enumerate(vid: u16, pid: u16) -> Result<Vec<DeviceInfo>> {
+	let iter = nusb::list_devices().await.map_err(|e| TouchyError::Usb(format!("list_devices: {e}")))?;
+	Ok(iter.filter(|d| d.vendor_id() == vid && d.product_id() == pid).collect())
+}
+
+async fn enumerate_first(vid: u16, pid: u16) -> Result<DeviceInfo> {
+	enumerate(vid, pid).await?.into_iter().next().ok_or(TouchyError::DeviceNotFound { vid, pid })
+}
+
+#[async_trait]
+impl Transport for UsbTransport {
+	async fn send_command(&self, payload: &[u8]) -> Result<()> {
+		let frame = pack(payload)?;
+		let mut g = self.inner.lock().await;
+		let buf = Buffer::from(frame);
+		g.ep_out.submit(buf);
+		let completion = g.ep_out.next_complete().await;
+		completion.status.map_err(|e| TouchyError::Usb(format!("bulk OUT: {e:?}")))?;
+		Ok(())
+	}
+
+	async fn recv_response(&self, timeout: Duration) -> Result<Vec<u8>> {
+		let mut g = self.inner.lock().await;
+		let mps = g.max_packet_size_in;
+		// requested_len must be a nonzero multiple of max_packet_size;
+		// 64 KiB rounded to that boundary is plenty for any Response
+		// frame we emit.
+		let req_len = ((64 * 1024) / mps).max(1) * mps;
+		let buf = Buffer::new(req_len);
+		g.ep_in.submit(buf);
+		let completion = match tokio::time::timeout(timeout, g.ep_in.next_complete()).await {
+			Ok(c) => c,
+			Err(_) => {
+				g.ep_in.cancel_all();
+				// Drain the cancelled transfer so the endpoint isn't
+				// left with a pending completion.
+				let _ = g.ep_in.next_complete().await;
+				return Err(TouchyError::Timeout(timeout));
+			}
+		};
+		completion.status.map_err(|e| TouchyError::Usb(format!("bulk IN: {e:?}")))?;
+		let data: &[u8] = &completion.buffer;
+		let (payload, _consumed) = unpack(data)?;
+		Ok(payload.to_vec())
+	}
+}

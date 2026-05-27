@@ -1018,6 +1018,124 @@ I'm a complete noob at Rust, please be extra clear in the plan so that we can di
 * the current python code is in /src, I'm not sure the best place to put this new sister rust code.  You might even want to move /src to a better name (though that sounds painful)
 * Make a small text only rust app to exercise this API with real hardware.  It should be similar to the python "screen demo" cli test, create a few widgets (using protobufs), and write some screen/widget/image files to the device and if --listen, print log messages when the user clicks on buttons etc...
 
+### Architecture decisions
+
+After surveying `tools/OpenDeck` (the eventual downstream consumer):
+
+* **`rust/` workspace** — sister to `app/`. Cargo workspace with two members:
+  `touchy-pad` (library, published to crates.io) and `touchy-demo`
+  (binary, not published). Python `app/` stays where it is.
+* **Async-first via `tokio`** — OpenDeck is fully async (`AsyncStreamDeck`,
+  `tokio::sync::RwLock<HashMap<...>>` patterns). A sync-only library would
+  feel foreign there. Public surface uses `async fn`; the event channel
+  is a `tokio::sync::mpsc::Receiver<LvEvent>`.
+* **Protobuf codegen: `prost` + `prost-build`** — modern, used by
+  the tonic / hyper ecosystem, integrates with `build.rs` so every
+  `cargo build` regenerates if `proto/*.proto` changes (analogue of
+  `just build-proto`). Generated types live in `OUT_DIR` and are
+  re-exported under `touchy_pad::proto`.
+* **USB: `nusb`** — pure-Rust, no libusb dependency, works on
+  Windows/macOS/Linux without a native install step. (OpenDeck uses
+  `hidapi`, but that's HID-only — we use the vendor-class bulk pair so
+  we can't share that choice.)
+* **Image conversion is in scope for v0.1**: a `touchy_pad::images`
+  module decodes PNG/JPEG/BMP/GIF/WebP via the `image` crate (same
+  crate OpenDeck uses) and emits LVGL 9 `.bin` blobs (RGB565 + optional
+  RGB565A8 plane). Ported from `app/src/touchy_pad/api/lvgl_image.py`.
+* **Error type: `thiserror`** in the library (typed `TouchyError` enum
+  so downstream code can match on variants); the demo binary uses
+  `anyhow` (matches OpenDeck's app-level convention).
+* **Edition 2024**, `rustfmt.toml` with `hard_tabs = true,
+  max_width = 200` to match OpenDeck's style.
+* **No simulator transport in Rust v0.1.** Tests use an in-memory mock
+  `Transport`. Cross-language sim integration is deferred: the Python
+  simulator (Stage 30) will eventually expose a TCP / WebSocket server
+  so any-language client (Rust, Go, …) can run against it without a USB
+  device — tracked under Stage 80 / development-environment work.
+
+### Directory layout
+
+```
+rust/
+  Cargo.toml                # workspace
+  rustfmt.toml              # hard_tabs, max_width=200
+  README.md                 # build / test / run-demo
+  touchy-pad/
+    Cargo.toml              # publishable crate metadata
+    build.rs                # runs prost-build over ../../proto/*.proto
+    src/
+      lib.rs                # crate docs + public re-exports
+      error.rs              # TouchyError + Result alias
+      transport.rs          # async Transport trait + framing
+      transport_usb.rs      # nusb-backed impl
+      client.rs             # low-level RPC (file_save, screen_save, …)
+      pad.rs                # high-level Touchy: open, events, on_event
+      images.rs             # PNG/JPEG/… -> LVGL bin (auto RGB565 / RGB565A8)
+    tests/
+      framing.rs
+      client_loopback.rs    # mock Transport, mirrors test_client.py
+      pad_events.rs         # event channel + drop-join
+      images.rs             # round-trip PNG -> bin -> header check
+  touchy-demo/
+    Cargo.toml
+    src/main.rs             # clap-driven: info | demo | listen
+    assets/                 # tiny pre-converted .bin tiles
+```
+
+### Public API (sketch)
+
+```rust
+use touchy_pad::{Touchy, Result};
+use touchy_pad::proto::{Screen, Widget, widget::Kind, ImageButton, Image};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let pad = Touchy::open().await?;
+    pad.file_save("R:host/btn0.bin", &tile_bytes).await?;
+    pad.screen_save("F:host/demo.pb", &Screen {
+        widgets: vec![Widget {
+            id: "btn0".into(),
+            kind: Some(Kind::ImageButton(ImageButton {
+                released: Some(Image { path: "R:host/btn0.bin".into(), ..Default::default() }),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }],
+        ..Default::default()
+    }).await?;
+    pad.screen_load("F:host/demo.pb").await?;
+    let mut events = pad.events();
+    while let Some(evt) = events.recv().await {
+        println!("{evt:?}");
+    }
+    Ok(())
+}
+```
+
+### Justfile additions
+
+```
+rust-build:   cd rust && cargo build --workspace
+rust-test:    cd rust && cargo test --workspace
+rust-lint:    cd rust && cargo fmt --check && cargo clippy --workspace -- -D warnings
+rust-doc:     cd rust && cargo doc --workspace --no-deps
+rust-run *A:  cd rust && cargo run -p touchy-demo -- {{A}}
+```
+
+### Devcontainer
+
+Add `ghcr.io/devcontainers/features/rust:1` to install rustup + cargo
++ clippy + rustfmt. Existing udev rules already cover device access.
+
+### Out of scope
+
+* StreamDeck-compat shim (Stage 62, OpenDeck plugin).
+* TCP/WebSocket sim bridge (Stage 80).
+* Async-feature-flag-toggle to sync (the lib is async-only; sync
+  callers can use `tokio::runtime::Runtime::block_on`).
+* `cargo publish` to crates.io — the metadata will be ready but we
+  hold off shipping until the API has stabilised.
+
 ## Stage 80: development environment improvements
 * Support running a sim on the linux host?
 * Use https://lvgl.io/docs/open/debugging/gdb_plugin to faciltiate debugging

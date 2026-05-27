@@ -18,7 +18,8 @@
 			"extensions": [
 				"ms-vscode.cpptools",
 				"ms-python.python",
-				"ms-vscode.cmake-tools"
+				"ms-vscode.cmake-tools",
+				"rust-lang.rust-analyzer"
 			]
 		}
 	},
@@ -82,6 +83,7 @@
 	"features": {
 		// add git
 		"ghcr.io/devcontainers/features/git:1": {},
+		"ghcr.io/devcontainers/features/rust:1": {},
 		// add the github cli tool (gh)
 		// "ghcr.io/devcontainers/features/github-cli:1": {}
 		// https://just.systems/ — task runner used by ./Justfile
