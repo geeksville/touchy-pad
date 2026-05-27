@@ -601,6 +601,7 @@ dependencies = [
  "once_cell",
  "rustix",
  "slab",
+ "tokio",
  "windows-sys",
 ]
 
@@ -954,6 +955,7 @@ dependencies = [
  "env_logger",
  "futures",
  "image",
+ "libc",
  "log",
  "nusb",
  "prost",
