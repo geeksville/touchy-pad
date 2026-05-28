@@ -332,20 +332,22 @@ firmware-build: build-proto-c build-default-screen
     # The IDF activate script detects sourcing via ${0##*/}; when Just runs a
     # recipe the temp-script name doesn't match "bash", so sourcing would fail.
     # Run a fresh bash -c so $0 is "bash" and is_sourced() returns true.
-    exec bash -c '[ -n "${IDF_PATH:-}" ] || source ~/.espressif/tools/activate_idf_v6.0.1.sh && cmake --build firmware/build'
+    # Always source to define idf.py function (idempotent).
+    exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh 2>/dev/null && idf.py -C firmware build'
  
 firmware-reconfigure:
     #!/usr/bin/env bash
-    exec bash -c '[ -n "${IDF_PATH:-}" ] || source ~/.espressif/tools/activate_idf_v6.0.1.sh && idf.py -C firmware set-target esp32s3 && idf.py -C firmware reconfigure'
+    exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh 2>/dev/null && idf.py -C firmware set-target esp32s3 && idf.py -C firmware reconfigure'
 
 flash: firmware-build
     #!/usr/bin/env bash
     set -euo pipefail
-    # Activate IDF env if not already done (needed for esptool on PATH).
-    # The activate script checks ${0##*/}=="bash"; Just's temp-script name fails
-    # that check, so re-exec this script under a plain bash that sources it first.
-    if [ -z "${IDF_PATH:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && exec bash "$1"' -- "$0"
+    # activate_idf_v6.0.1.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
+    # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
+    # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
+    # var (not IDF_PATH) to break the re-exec loop.
+    if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
+        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
     fi
     # Pick the first readable+writable ttyACM* under /host/dev/
     port=""
@@ -381,8 +383,9 @@ flash: firmware-build
 merge-bin: firmware-build
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -z "${IDF_PATH:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && exec bash "$1"' -- "$0"
+    # Same re-exec trick as flash: pass "bash" as $0 so is_sourced() returns true.
+    if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
+        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
     fi
     out="touchy_pad_merged.bin"
     esptool_py="$(command -v esptool || command -v esptool.py)"

@@ -24,11 +24,7 @@ impl Transport for Mock {
 		// We only need to validate that EventConsume keeps coming;
 		// other commands aren't exercised by this test.
 		let cmd = Command::decode(payload).expect("decode command");
-		assert!(
-			matches!(cmd.cmd, Some(command::Cmd::EventConsume(_))),
-			"unexpected command sent during pad-events test: {:?}",
-			cmd.cmd
-		);
+		assert!(matches!(cmd.cmd, Some(command::Cmd::EventConsume(_))), "unexpected command sent during pad-events test: {:?}", cmd.cmd);
 		Ok(())
 	}
 	async fn recv_response(&self, _: Duration) -> touchy_pad::Result<Vec<u8>> {
@@ -38,7 +34,10 @@ impl Transport for Mock {
 				code: ResultCode::ResultOk as i32,
 				payload: Some(response::Payload::EventConsume(EventConsumeResponse { event: Some(evt) })),
 			},
-			None => Response { code: ResultCode::ResultNotFound as i32, payload: None },
+			None => Response {
+				code: ResultCode::ResultNotFound as i32,
+				payload: None,
+			},
 		};
 		let mut buf = Vec::with_capacity(resp.encoded_len());
 		resp.encode(&mut buf).unwrap();
@@ -51,8 +50,18 @@ async fn events_are_streamed_through() {
 	let mock = Arc::new(Mock::default());
 	{
 		let mut q = mock.events.lock().await;
-		q.push_back(LvEvent { code: 1, user_data: "btn_a".into(), host_code: 10, state: None });
-		q.push_back(LvEvent { code: 11, user_data: "btn_a".into(), host_code: 10, state: None });
+		q.push_back(LvEvent {
+			code: 1,
+			user_data: "btn_a".into(),
+			host_code: 10,
+			state: None,
+		});
+		q.push_back(LvEvent {
+			code: 11,
+			user_data: "btn_a".into(),
+			host_code: 10,
+			state: None,
+		});
 	}
 
 	let pad = Touchy::from_transport(mock as Arc<dyn Transport>);

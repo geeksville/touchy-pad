@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::client::{Client, FILE_WRITE_CHUNK};
@@ -32,7 +33,11 @@ pub struct Touchy {
 	client: Client,
 	events_rx: Mutex<Option<mpsc::Receiver<LvEvent>>>,
 	poller: Mutex<Option<JoinHandle<()>>>,
-	shutdown: Arc<tokio::sync::Notify>,
+	// `watch` instead of `Notify` because the poll task may not be
+	// polled even once before `close()` fires the shutdown signal —
+	// `Notify::notify_waiters()` only wakes already-registered
+	// waiters and would silently lose the signal in that race.
+	shutdown_tx: watch::Sender<bool>,
 }
 
 impl Touchy {
@@ -42,12 +47,22 @@ impl Touchy {
 	/// if set to e.g. `tcp://127.0.0.1:8935`, connects to that
 	/// out-of-process Python simulator instead of enumerating USB.
 	pub async fn open() -> Result<Self> {
-		if let Some((host, port)) = sim_url_from_env() {
-			let transport: Arc<dyn Transport> = Arc::new(TcpTransport::connect(&host, port).await?);
-			return Ok(Self::from_transport(transport));
+		let transport: Arc<dyn Transport> = if let Some((host, port)) = sim_url_from_env() {
+			Arc::new(TcpTransport::connect(&host, port).await?)
+		} else {
+			Arc::new(UsbTransport::open().await?)
+		};
+		let touchy = Self::from_transport(transport);
+		// Stage 64.1: drain any device-side log records / events
+		// buffered before the host connected so the first
+		// `events()` consumer doesn't see stale data and the `log`
+		// crate facade gets the boot-time ESP_LOG output. Best
+		// effort — if the device is unresponsive the regular
+		// poll loop will surface the same error shortly.
+		if let Err(e) = touchy.client.drain_pending(256).await {
+			log::debug!("drain_pending at connect: {e}");
 		}
-		let transport: Arc<dyn Transport> = Arc::new(UsbTransport::open().await?);
-		Ok(Self::from_transport(transport))
+		Ok(touchy)
 	}
 
 	/// Build a [`Touchy`] around any [`Transport`] implementation.
@@ -55,13 +70,13 @@ impl Touchy {
 	pub fn from_transport(transport: Arc<dyn Transport>) -> Self {
 		let client = Client::new(transport);
 		let (tx, rx) = mpsc::channel::<LvEvent>(64);
-		let shutdown = Arc::new(tokio::sync::Notify::new());
-		let poller = spawn_event_poller(client.clone(), tx, shutdown.clone());
+		let (shutdown_tx, shutdown_rx) = watch::channel(false);
+		let poller = spawn_event_poller(client.clone(), tx, shutdown_rx);
 		Self {
 			client,
 			events_rx: Mutex::new(Some(rx)),
 			poller: Mutex::new(Some(poller)),
-			shutdown,
+			shutdown_tx,
 		}
 	}
 
@@ -122,7 +137,7 @@ impl Touchy {
 
 	/// Stop the background event poller. Called automatically on drop.
 	pub async fn close(&self) {
-		self.shutdown.notify_waiters();
+		let _ = self.shutdown_tx.send(true);
 		if let Some(handle) = self.poller.lock().await.take() {
 			let _ = handle.await;
 		}
@@ -131,16 +146,23 @@ impl Touchy {
 
 impl Drop for Touchy {
 	fn drop(&mut self) {
-		self.shutdown.notify_waiters();
+		let _ = self.shutdown_tx.send(true);
 	}
 }
 
-fn spawn_event_poller(client: Client, tx: mpsc::Sender<LvEvent>, shutdown: Arc<tokio::sync::Notify>) -> JoinHandle<()> {
+fn spawn_event_poller(client: Client, tx: mpsc::Sender<LvEvent>, mut shutdown_rx: watch::Receiver<bool>) -> JoinHandle<()> {
 	tokio::spawn(async move {
 		let poll_interval = Duration::from_millis(50);
+		// Fast-path: shutdown may already have been signalled before
+		// this task gets its first poll. `watch::Receiver::has_changed`
+		// reports buffered state, so we can't miss the signal.
+		if *shutdown_rx.borrow() {
+			return;
+		}
 		loop {
 			tokio::select! {
-				_ = shutdown.notified() => break,
+				biased;
+				_ = shutdown_rx.changed() => break,
 				res = client.event_consume() => {
 					match res {
 						Ok(Some(evt)) => {
@@ -150,11 +172,19 @@ fn spawn_event_poller(client: Client, tx: mpsc::Sender<LvEvent>, shutdown: Arc<t
 							}
 						}
 						Ok(None) => {
-							tokio::time::sleep(poll_interval).await;
+							tokio::select! {
+								biased;
+								_ = shutdown_rx.changed() => break,
+								_ = tokio::time::sleep(poll_interval) => {}
+							}
 						}
 						Err(e) => {
 							log::warn!("event poller: {e}");
-							tokio::time::sleep(poll_interval).await;
+							tokio::select! {
+								biased;
+								_ = shutdown_rx.changed() => break,
+								_ = tokio::time::sleep(poll_interval) => {}
+							}
 						}
 					}
 				}

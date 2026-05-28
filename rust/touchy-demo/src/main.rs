@@ -11,7 +11,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use touchy_pad::Touchy;
-use touchy_pad::proto::{Action, ActionHost, Image, ImageButton, Layout, LayoutAbsolute, Rect, Screen, Widget, action, lv_event, widget, LvEventCode};
+use touchy_pad::proto::{Action, ActionHost, Image, ImageButton, Layout, LayoutAbsolute, LvEventCode, Rect, Screen, Widget, action, lv_event, widget};
 
 #[derive(Parser, Debug)]
 #[command(name = "touchy-demo", about = "Demo CLI for the touchy-pad Rust API")]
@@ -102,13 +102,14 @@ async fn upload_demo(pad: &Touchy) -> Result<()> {
 	let active = Widget {
 		id: "root".into(),
 		version: touchy_pad::proto::widget::Version::Current as i32,
-		kind: Some(widget::Kind::LayoutAbsolute(LayoutAbsolute {
-			layout: Some(Layout { children }),
-		})),
+		kind: Some(widget::Kind::LayoutAbsolute(LayoutAbsolute { layout: Some(Layout { children }) })),
 		..Default::default()
 	};
 
-	let screen = Screen { active: Some(active), ..Default::default() };
+	let screen = Screen {
+		active: Some(active),
+		..Default::default()
+	};
 	pad.screen_save("F:host/screens/rust_demo.pb", &screen).await?;
 	pad.screen_load("F:host/screens/rust_demo.pb").await?;
 	log::info!("rust_demo screen activated");
@@ -132,9 +133,7 @@ async fn cmd_listen() -> Result<()> {
 			Some(lv_event::State::Checked(c)) => format!("checked={c}"),
 			None => "-".to_string(),
 		};
-		let code_name = LvEventCode::try_from(evt.code as i32)
-			.map(|c| format!("{c:?}"))
-			.unwrap_or_else(|_| format!("{}", evt.code));
+		let code_name = LvEventCode::try_from(evt.code as i32).map(|c| format!("{c:?}")).unwrap_or_else(|_| format!("{}", evt.code));
 		println!("event: code={code_name} user_data={:?} host_code={} state={}", evt.user_data, evt.host_code, state);
 	}
 	Ok(())

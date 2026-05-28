@@ -103,8 +103,12 @@ impl UsbTransport {
 
 		let interface = device.claim_interface(iface_num).await.map_err(|e| TouchyError::Usb(format!("claim_interface({iface_num}): {e}")))?;
 
-		let ep_out = interface.endpoint::<Bulk, Out>(ep_out_addr).map_err(|e| TouchyError::Usb(format!("endpoint OUT {ep_out_addr:#04x}: {e}")))?;
-		let ep_in = interface.endpoint::<Bulk, In>(ep_in_addr).map_err(|e| TouchyError::Usb(format!("endpoint IN {ep_in_addr:#04x}: {e}")))?;
+		let ep_out = interface
+			.endpoint::<Bulk, Out>(ep_out_addr)
+			.map_err(|e| TouchyError::Usb(format!("endpoint OUT {ep_out_addr:#04x}: {e}")))?;
+		let ep_in = interface
+			.endpoint::<Bulk, In>(ep_in_addr)
+			.map_err(|e| TouchyError::Usb(format!("endpoint IN {ep_in_addr:#04x}: {e}")))?;
 		let max_packet_size_in = ep_in.max_packet_size();
 
 		Ok(Self {
@@ -142,22 +146,37 @@ impl Transport for UsbTransport {
 		// 64 KiB rounded to that boundary is plenty for any Response
 		// frame we emit.
 		let req_len = ((64 * 1024) / mps).max(1) * mps;
-		let buf = Buffer::new(req_len);
-		g.ep_in.submit(buf);
-		let completion = match tokio::time::timeout(timeout, g.ep_in.next_complete()).await {
-			Ok(c) => c,
-			Err(_) => {
-				g.ep_in.cancel_all();
-				// Drain the cancelled transfer so the endpoint isn't
-				// left with a pending completion.
-				let _ = g.ep_in.next_complete().await;
-				return Err(TouchyError::Timeout(timeout));
+		// Loop to absorb USB Zero-Length Packets (ZLPs). TinyUSB on
+		// the device appends a ZLP whenever the response payload is
+		// an exact multiple of `mps` (USB-spec requirement to mark
+		// end-of-transfer). nusb surfaces that ZLP as an Ok
+		// completion with an empty buffer on the *next* read — if we
+		// pass that straight to `unpack()` we get a bogus "short
+		// header: 0 bytes" framing error and desync. Skipping empty
+		// completions is harmless on non-ZLP devices and keeps the
+		// framing logic single-frame-at-a-time.
+		loop {
+			let buf = Buffer::new(req_len);
+			g.ep_in.submit(buf);
+			let completion = match tokio::time::timeout(timeout, g.ep_in.next_complete()).await {
+				Ok(c) => c,
+				Err(_) => {
+					g.ep_in.cancel_all();
+					// Drain the cancelled transfer so the endpoint
+					// isn't left with a pending completion.
+					let _ = g.ep_in.next_complete().await;
+					return Err(TouchyError::Timeout(timeout));
+				}
+			};
+			completion.status.map_err(|e| TouchyError::Usb(format!("bulk IN: {e:?}")))?;
+			let data: &[u8] = &completion.buffer;
+			if data.is_empty() {
+				// ZLP from a previous frame — try again.
+				continue;
 			}
-		};
-		completion.status.map_err(|e| TouchyError::Usb(format!("bulk IN: {e:?}")))?;
-		let data: &[u8] = &completion.buffer;
-		let (payload, _consumed) = unpack(data)?;
-		Ok(payload.to_vec())
+			let (payload, _consumed) = unpack(data)?;
+			return Ok(payload.to_vec());
+		}
 	}
 }
 

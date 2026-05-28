@@ -25,8 +25,9 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, and 51 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`. Highlights worth remembering:
+All stages 0–24.4, 50.2, 51, and 64.1 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 4`.
+Highlights worth remembering:
 
 - USB device is a composite class: CDC-ACM + HID (mouse + keyboard via
   report IDs 1/2) + vendor-class bulk pair (command/response) + interrupt-IN
@@ -48,6 +49,14 @@ All stages 0–24.4, 50.2, and 51 are **done**. Latest active wire-format:
   `touchy_pad.touchydeck.install()` monkey-patches
   `StreamDeck.DeviceManager.enumerate`. **Must be called explicitly** —
   no import side-effects. See `tools/StreamController/touchy_bootstrap.py`.
+- Stage 64.1 tunnels device ESP_LOG output back to the host over the
+  same `EventConsumeCmd` poll: when the event queue is empty but a log
+  is waiting the Response's `payload` oneof carries `LogRecord` (tag 5)
+  instead of `EventConsumeResponse`. Firmware hook is
+  `firmware/main/log_proto.{h,cpp}` (gated on `CONFIG_TOUCHY_LOG_OVER_PROTO`,
+  default `y` in `firmware/sdkconfig.defaults`). Host dispatchers:
+  `TouchyClient._dispatch_log_record` → `touchy_pad.device` logger;
+  Rust `dispatch_log_record` → `log` crate at target `touchy_pad::device::<TAG>`.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

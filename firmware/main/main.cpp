@@ -6,6 +6,7 @@
 #include "board.h"
 #include "display.h"
 #include "fs.h"
+#include "log_proto.h"
 #include "macros.h"
 #include "prefs.h"
 #include "screens.h"
@@ -25,6 +26,11 @@ static const char *TAG = "main";
 
 extern "C" void app_main(void)
 {
+    // Stage 64.1: hook esp_log_set_vprintf() before any other ESP_LOG
+    // call so the host can drain tunneled log records from its normal
+    // event-poll loop. No-op when CONFIG_TOUCHY_LOG_OVER_PROTO=n.
+    log_proto_start();
+
     ESP_LOGI(TAG, "touchy-pad v2 booting");
 
     // Bring USB up first so the host sees the HID device enumerate quickly,

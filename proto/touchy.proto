@@ -48,6 +48,18 @@ enum ResultCode {
     RESULT_NOT_SUPPORTED  = 6;
 }
 
+// Severity of a tunneled device log line (see LogRecord). The default
+// (`LOG_PRIORITY_TRACE`) is intentionally the noisiest level so a
+// LogRecord arriving with `priority` unset is treated as "more verbose
+// than DEBUG" rather than as a high-severity ERROR.
+enum LogPriority {
+    LOG_PRIORITY_TRACE = 0;
+    LOG_PRIORITY_DEBUG = 1;
+    LOG_PRIORITY_INFO  = 2;
+    LOG_PRIORITY_WARN  = 3;
+    LOG_PRIORITY_ERROR = 4;
+}
+
 // ---------------------------------------------------------------------------
 // Filesystem paths (stage 51)
 // ---------------------------------------------------------------------------
@@ -172,7 +184,9 @@ message SysBoardInfoResponse {
                  //           LvEvent.host_code added; events via host polling
         V3 = 3;  // stage 51: drive-letter paths, streaming file uploads,
                  //           FileDelete replaces FileReset/FileSave
-        CURRENT = 3;  // alias: always equals the latest defined version
+        V4 = 4;  // stage 64.1: Response.log_record tunneled device logs
+                 //           (returned in place of event_consume)
+        CURRENT = 4;  // alias: always equals the latest defined version
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
@@ -200,6 +214,28 @@ message EventConsumeResponse {
     LvEvent event = 1;
 }
 
+// Stage 64.1 — a single tunneled device log line, delivered to the host
+// as a `Response.log_record` payload alongside the normal
+// `EventConsumeResponse` flow. The host's existing
+// `EventConsumeCmd`-polling loop drains both queues; the dispatcher
+// returns either an event, a log record, or `RESULT_NOT_FOUND` when
+// both are empty.
+//
+// `num_dropped` is normally zero. When the firmware's log ring buffer
+// overflows or a log is emitted from an ISR / re-entrant context, the
+// record is silently discarded and a per-pending counter is bumped;
+// the next successfully-enqueued record folds that count into its
+// `num_dropped` field so no loss is silent on the host side.
+message LogRecord {
+    LogPriority priority     = 1;  // unset == LOG_PRIORITY_TRACE
+    string      message      = 2;  // pre-formatted line, no trailing '\n'
+    uint32      num_dropped  = 3;  // records dropped since last success
+    uint32      timestamp_ms = 4;  // esp_timer_get_time()/1000 at enqueue,
+                                   // truncated to uint32 (wraps every ~49d);
+                                   // 0 on sim
+    string      tag          = 5;  // ESP_LOG TAG (best-effort, may be empty)
+}
+
 // Top-level response envelope. Every command is followed by exactly one
 // Response on the response IN endpoint. `code` is the generic result, and
 // `payload` (optional) carries any command-specific data.
@@ -209,6 +245,10 @@ message Response {
         SysBoardInfoResponse  sys_board_info  = 2;
         EventConsumeResponse  event_consume   = 3;
         FileOpenWriteResponse file_open_write = 4;
+        // Stage 64.1 — tunneled device log line. Can be returned in
+        // place of `event_consume` from an `EventConsumeCmd` reply
+        // when the event queue is empty but the log queue is not.
+        LogRecord             log_record      = 5;
     }
 }
 

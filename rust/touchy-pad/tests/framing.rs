@@ -1,7 +1,7 @@
 //! Round-trip + edge-case tests for the wire framing helpers.
 
-use touchy_pad::transport::{MAX_FRAME, pack, unpack};
 use touchy_pad::TouchyError;
+use touchy_pad::transport::{MAX_FRAME, pack, unpack};
 
 #[test]
 fn round_trip_small() {

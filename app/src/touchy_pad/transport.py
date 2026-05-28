@@ -423,7 +423,15 @@ class UsbTransport(Transport):
                 want = min(want, 64 * 1024)
                 chunk = bytes(self._ep_in.read(want, timeout=timeout_ms))
                 if not chunk:
-                    raise TransportError("device returned 0-byte read")
+                    # A 0-byte read is a USB Zero-Length Packet (ZLP).
+                    # TinyUSB appends one whenever a bulk transfer's
+                    # total length is an exact multiple of
+                    # wMaxPacketSize, to signal "transfer complete" to
+                    # the host. It surfaces as a 0-byte chunk on our
+                    # next ep.read() call. Skip it and keep waiting for
+                    # real data; a true device disconnect raises
+                    # USBError on timeout instead.
+                    continue
                 accum.extend(chunk)
 
         buf = bytearray()

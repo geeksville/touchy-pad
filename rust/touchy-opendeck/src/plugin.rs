@@ -33,16 +33,16 @@ use openaction::device_plugin;
 use openaction::global_events::{GlobalEventHandler, SetBrightnessEvent, SetImageEvent};
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
-use touchy_pad::proto::LvEventCode;
 use touchy_pad::Touchy;
+use touchy_pad::proto::LvEventCode;
 use touchy_pad::proto::lv_event;
 use touchy_pad::transport_usb::{UsbTransport, enumerate, usb_vid_pid};
 
 use crate::layout;
 
-const LV_EVENT_PRESSED: u32    = LvEventCode::LvEventPressed as u32;
+const LV_EVENT_PRESSED: u32 = LvEventCode::LvEventPressed as u32;
 const LV_EVENT_PRESS_LOST: u32 = LvEventCode::LvEventPressLost as u32;
-const LV_EVENT_RELEASED: u32   = LvEventCode::LvEventReleased as u32;
+const LV_EVENT_RELEASED: u32 = LvEventCode::LvEventReleased as u32;
 
 /// Nominal key size in pixels used to compute the grid from the device's
 /// reported `display_width` / `display_height`. 96 px gives 5 × 3 on the
@@ -127,22 +127,12 @@ impl TouchyPlugin {
 
 		let board = pad.client().sys_board_info_get().await.context("sys_board_info_get")?;
 		if board.display_width == 0 || board.display_height == 0 {
-			return Err(anyhow!(
-				"{device_id} reported zero display dimensions ({}×{})",
-				board.display_width,
-				board.display_height
-			));
+			return Err(anyhow!("{device_id} reported zero display dimensions ({}×{})", board.display_width, board.display_height));
 		}
-		let cols = u8::try_from(board.display_width / KEY_PX)
-			.context("cols overflow")?;
-		let rows = u8::try_from(board.display_height / KEY_PX)
-			.context("rows overflow")?;
+		let cols = u8::try_from(board.display_width / KEY_PX).context("cols overflow")?;
+		let rows = u8::try_from(board.display_height / KEY_PX).context("rows overflow")?;
 		if cols == 0 || rows == 0 {
-			return Err(anyhow!(
-				"{device_id} display {}×{} is smaller than one key ({KEY_PX} px)",
-				board.display_width,
-				board.display_height
-			));
+			return Err(anyhow!("{device_id} display {}×{} is smaller than one key ({KEY_PX} px)", board.display_width, board.display_height));
 		}
 		let screen_path = layout::screen_path_for(device_id);
 		let screen = layout::build_screen(cols, rows, device_id);

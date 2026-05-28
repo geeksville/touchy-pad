@@ -158,6 +158,42 @@ protocol v2; previously wrapped in `Event`).
   the application assigned. Use `TouchyClient.on_host_event(code, fn)`
   to dispatch on it.
 
+### Log tunneling (Stage 64.1, protocol V4)
+
+When the firmware is built with `CONFIG_TOUCHY_LOG_OVER_PROTO=y` (the
+project default; see `firmware/main/Kconfig.projbuild`) the
+`esp_log_set_vprintf()` hook intercepts every ESP-IDF log line and
+enqueues a `LogRecord` onto a small ring buffer (depth 32). The host's
+existing `EventConsumeCmd`-polling loop drains it: when the event queue
+is empty but a log record is waiting, the response's `payload` oneof
+carries `LogRecord` (tag 5) instead of `EventConsumeResponse`. Events
+take priority on ties so a busy UI never starves log delivery.
+
+`LogRecord` fields:
+
+* `priority` — `LogPriority` enum (`TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`).
+  Unset == `TRACE`, matching the verbosity of an absent value.
+* `message` — pre-formatted line, no trailing newline, capped at
+  79 bytes on the wire (longer lines are silently truncated).
+* `tag` — ESP_LOG TAG (capped at 15 bytes).
+* `timestamp_ms` — `esp_timer_get_time() / 1000` at enqueue, truncated
+  to `uint32` (wraps every ~49 days); 0 on the sim.
+* `num_dropped` — records discarded since the last successful enqueue
+  (ISR context, reentrant emit, or queue full); folded into the next
+  surviving record so no loss is silent on the host side.
+
+The Python client routes each record onto the `touchy_pad.device`
+stdlib logger (`LOG_PRIORITY_TRACE` goes onto the noisier
+`touchy_pad.device.trace` child) with the originating tag exposed via
+`extra={"device_tag": ...}`. The Rust client forwards them through the
+`log` crate at the matching `log::Level`, with target
+`touchy_pad::device::<TAG>` for filter granularity.
+
+To opt out at build time set `CONFIG_TOUCHY_LOG_OVER_PROTO=n`; the
+host-side dispatcher still works (the device just never produces
+records). `CONFIG_TOUCHY_LOG_TO_UART=y` (default) keeps a copy on the
+UART console so JTAG debugging is unaffected.
+
 ### Actions (Stage 16)
 
 Widgets that can fire (`Button.on_click`, `Slider.on_change`,

@@ -9,9 +9,7 @@ fn tiny_png_rgb(w: u32, h: u32, r: u8, g: u8, b: u8) -> Vec<u8> {
 		*px = image::Rgb([r, g, b]);
 	}
 	let mut buf = Vec::new();
-	image::DynamicImage::ImageRgb8(img)
-		.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
-		.unwrap();
+	image::DynamicImage::ImageRgb8(img).write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png).unwrap();
 	buf
 }
 
@@ -22,9 +20,7 @@ fn tiny_png_rgba(w: u32, h: u32, r: u8, g: u8, b: u8, a: u8) -> Vec<u8> {
 		*px = image::Rgba([r, g, b, a]);
 	}
 	let mut buf = Vec::new();
-	image::DynamicImage::ImageRgba8(img)
-		.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
-		.unwrap();
+	image::DynamicImage::ImageRgba8(img).write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png).unwrap();
 	buf
 }
 

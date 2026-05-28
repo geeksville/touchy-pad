@@ -155,3 +155,11 @@ CONFIG_LV_USE_ASSERT_MALLOC=y
 CONFIG_LV_USE_ASSERT_OBJ=y
 CONFIG_LV_USE_ASSERT_STYLE=y
 
+
+# ----- Touchy-Pad project options (see firmware/main/Kconfig.projbuild) -----
+# Stage 64.1: tunnel ESP-IDF log lines to the host via Response.log_record
+# payloads on the existing host_api channel. Enabled by default; boards
+# without a real USB-CDC console (e.g. CYD2USB) keep this on and disable
+# the UART forward via CONFIG_TOUCHY_LOG_TO_UART=n.
+CONFIG_TOUCHY_LOG_OVER_PROTO=y
+CONFIG_TOUCHY_LOG_TO_UART=y

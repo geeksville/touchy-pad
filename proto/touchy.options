@@ -26,3 +26,12 @@ touchy.SysBoardInfoResponse.board_name            max_size:32
 # Event payloads — the host-assigned user_data string is typically a short
 # unique identifier; widget_value scalars need no size hint.
 touchy.LvEvent.user_data               max_size:32
+
+# Stage 64.1 — tunneled device log records. `message` is the formatted
+# ESP_LOG line minus the trailing newline; 80 bytes covers typical
+# `ESP_LOGI(TAG, "fmt", ...)` output without bloating the static TX
+# buffer. Longer lines are silently truncated at this boundary on the
+# firmware side (anything past byte 79 is dropped).
+# `tag` mirrors the ESP_LOG TAG (a short module name).
+touchy.LogRecord.message               max_size:80
+touchy.LogRecord.tag                   max_size:16

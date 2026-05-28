@@ -24,6 +24,24 @@ logger = logging.getLogger(__name__)
 # while still seeing DEBUG from the rest of the package.
 rpc_logger = logger.getChild("rpc")
 
+# Stage 64.1: tunneled device log lines are routed onto this logger
+# (with the originating ESP_LOG tag attached via ``extra``). Callers
+# can configure formatting/filtering on it just like any stdlib
+# logger; in particular the trace-level child logger isolates the
+# very noisy ``LOG_PRIORITY_TRACE`` stream so it can be silenced
+# independently.
+device_logger = logging.getLogger("touchy_pad.device")
+device_trace_logger = device_logger.getChild("trace")
+
+# Mapping from the wire-level ``LogPriority`` enum to stdlib logging
+# levels. ``LOG_PRIORITY_TRACE`` is routed to ``DEBUG`` on the trace
+# child logger; everything else goes straight onto ``device_logger``.
+_PRIORITY_TO_LEVEL: dict[int, int] = {
+    # populated lazily on first use to avoid touching the enum at
+    # import time (and to keep this module importable even if the
+    # generated proto is stale).
+}
+
 HostEventHandler = Callable[["_proto.LvEvent"], None]
 
 
@@ -58,6 +76,11 @@ class TouchyClient:
         # RPCs with foreground calls on the same transport (which would
         # cross-route the responses).
         self._rpc_lock = threading.Lock()
+        # Stage 64.1: ``drain_pending()`` may surface an ``LvEvent``
+        # while draining tunneled log records at connect time; we
+        # park it here so the next ``event_consume()`` call returns
+        # it instead of polling the device again.
+        self._pending_event: _proto.LvEvent | None = None
 
     @classmethod
     def open(cls) -> TouchyClient:
@@ -68,8 +91,20 @@ class TouchyClient:
 
         url = sim_url_from_env()
         if url is not None:
-            return cls(TcpTransport(*url))
-        return cls(UsbTransport())
+            client = cls(TcpTransport(*url))
+        else:
+            client = cls(UsbTransport())
+        # Stage 64.1: device may have buffered ESP_LOG records since
+        # boot (or across a previous host disconnect). Drain them
+        # eagerly so they surface on `device_logger` before the
+        # caller's first foreground RPC — both as user-visible
+        # context and to make sure no stale frame bytes remain in
+        # the vendor-bulk FIFO.
+        try:
+            client.drain_pending()
+        except Exception:  # noqa: BLE001 — best-effort
+            logger.debug("drain_pending() raised at open; ignoring", exc_info=True)
+        return client
 
     def close(self) -> None:
         self._t.close()
@@ -221,7 +256,55 @@ class TouchyClient:
     def event_consume(self) -> _proto.LvEvent | None:
         """Pop one pending event from the device queue, or return ``None``.
 
-        Returns ``None`` on `RESULT_NOT_FOUND` (queue empty).
+        Returns ``None`` only when the device's event *and* log queues
+        are both empty. Stage 64.1: tunneled ``LogRecord`` payloads
+        are consumed transparently (dispatched to :data:`device_logger`)
+        and we keep polling in the same call until either an
+        ``LvEvent`` surfaces or the device reports ``RESULT_NOT_FOUND``
+        — that way the caller's poll-and-sleep loop doesn't insert
+        ``poll_interval_ms`` of latency between consecutive log
+        records.
+        """
+        if self._pending_event is not None:
+            evt, self._pending_event = self._pending_event, None
+            return evt
+        while True:
+            item = self.poll()
+            if item is None:
+                return None
+            if isinstance(item, _proto.LvEvent):
+                return item
+            # LogRecord — dispatch and keep draining; there may be
+            # more logs queued, or an event right behind them.
+            self._dispatch_log_record(item)
+
+    def drain_pending(self, max_iterations: int = 256) -> None:
+        """Drain queued events and log records from the device.
+
+        Log records are dispatched to :data:`device_logger`. If an
+        ``LvEvent`` surfaces during the drain it is parked for the
+        next :meth:`event_consume` call so no event is lost. Caps at
+        ``max_iterations`` polls as a runaway guard.
+        """
+        for _ in range(max_iterations):
+            item = self.poll()
+            if item is None:
+                return
+            if isinstance(item, _proto.LvEvent):
+                # Save for the next event_consume; stop draining so
+                # subsequent logs queued behind this event are picked
+                # up by the normal polling loop (which preserves the
+                # device-side events-first ordering).
+                self._pending_event = item
+                return
+            self._dispatch_log_record(item)
+
+    def poll(self) -> _proto.LvEvent | _proto.LogRecord | None:
+        """Low-level drain: pop one event or log record from the device.
+
+        Returns whichever of an ``LvEvent`` or ``LogRecord`` the device
+        had pending (events take priority on the firmware side), or
+        ``None`` when both queues are empty.
         """
         reply = self._rpc(_proto.Command(event_consume=_proto.EventConsumeCmd()))
         if reply.code == _proto.RESULT_NOT_FOUND:
@@ -229,7 +312,47 @@ class TouchyClient:
         _check(reply)
         if reply.HasField("event_consume") and reply.event_consume.HasField("event"):
             return reply.event_consume.event
+        if reply.HasField("log_record"):
+            return reply.log_record
         return None
+
+    # -- log dispatch -------------------------------------------------------
+
+    @staticmethod
+    def _priority_to_level(priority: int) -> tuple[logging.Logger, int]:
+        if not _PRIORITY_TO_LEVEL:
+            _PRIORITY_TO_LEVEL.update(
+                {
+                    _proto.LOG_PRIORITY_TRACE: logging.DEBUG,
+                    _proto.LOG_PRIORITY_DEBUG: logging.DEBUG,
+                    _proto.LOG_PRIORITY_INFO: logging.INFO,
+                    _proto.LOG_PRIORITY_WARN: logging.WARNING,
+                    _proto.LOG_PRIORITY_ERROR: logging.ERROR,
+                }
+            )
+        level = _PRIORITY_TO_LEVEL.get(priority, logging.DEBUG)
+        # TRACE goes onto the dedicated trace child so it can be
+        # silenced without losing DEBUG output from real device DEBUG
+        # logs.
+        if priority == _proto.LOG_PRIORITY_TRACE:
+            return device_trace_logger, level
+        return device_logger, level
+
+    def _dispatch_log_record(self, rec: _proto.LogRecord) -> None:
+        target, level = self._priority_to_level(rec.priority)
+        # ``extra`` makes the originating ESP_LOG TAG visible to custom
+        # log formatters without polluting the message body.
+        target.log(
+            level,
+            "%s",
+            rec.message,
+            extra={"device_tag": rec.tag, "device_timestamp_ms": rec.timestamp_ms},
+        )
+        if rec.num_dropped:
+            device_logger.warning(
+                "device dropped %d log record(s) before this one",
+                rec.num_dropped,
+            )
 
     # -- host event dispatch ------------------------------------------------
 

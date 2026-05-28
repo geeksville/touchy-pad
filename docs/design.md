@@ -1543,19 +1543,369 @@ exactly like the firmware does. Consequences:
    workflow and the new flags.
 
 
-## Stage 61.1: tunnel device serial logs via our protocol
+## Stage 64.1: tunnel device serial logs via our protocol - DONE
 
 Some future devices don't have a 'real' USB port so we will want to tunnel our current cdcacm based serial logging over our existing protobuf protocol.
 
 * If CONFIG_TOUCHY_LOG_OVER_PROTO is set in the build try to push any log message over our protobuf channel.  Change the current boards to set this build flag.
-* Add a new log message variant to the Response protobuf.  
+* Add a new log message variant to the Response protobuf.
   * It should include a string and a priority.  If priority is not set assume TRACE level priority.  Other supported levels TRACE, DEBUG, INFO, WARN, ERROR.
   * Add a num_dropped field, which is normally not populated, but if the device had to drop messages (because the queue was full or we were printing from an isr or somesuch the next successful message will include num_dropped)
 * Hook the standard esp-idf/freertos logging/printing so that it can try to send log messages via this mechanism.
 * Be careful about reentrancy, if we are already somehow processing a log and we get asked to queue a log again, just drop that extra log and bump up the next time we send num_dropped.  This prevents nasty problems if we try to emit log messages in our logging/usb/protobuf code.
-* Change the python/rust code to emit host side logs with that same priority for any logs it receives from the client.  
+* Change the python/rust code to emit host side logs with that same priority for any logs it receives from the client.
 
-## Stage 64.2: add support for CYD2USB board
+### Plan
+
+The wire protocol today is strict request/response on the vendor bulk
+pair: the device only ever speaks when spoken to (events are drained
+by polling `EventConsumeCmd`). Log records reuse that exact same
+channel — we **do not** add a separate poll command. Instead the
+device's response to an `EventConsumeCmd` is widened to carry either
+an event, a log record, or nothing. The firmware queues log records
+into a ring buffer; the host's existing event-poll loop drains them
+as a side effect. This keeps the transport state machine unchanged
+(no unsolicited frames, no new endpoint, no new command) and reuses
+the existing length-prefixed nanopb framing on both USB and the
+Stage 63 TCP simulator transport.
+
+Bump `Screen.Version.CURRENT` from 5 → 6 (or add a new
+`SysBoardInfoResponse.ProtocolVersion` bump, whichever the existing
+"current protocol version" sentinel turns out to be — Stage 13 used
+`TOUCHY_PROTOCOL_VERSION` in `host_api.cpp`). Hosts older than the new
+version simply ignore (or fail to decode) the new
+`Response.log_record` oneof variant and the device keeps cycling
+through its log queue until the records age out, so the change is
+backwards compatible at the framing level.
+
+#### 1. Protobuf schema (`proto/touchy.proto` + `widgets.proto` unaffected)
+
+* New enum `LogPriority`:
+
+  ```proto
+  enum LogPriority {
+      LOG_PRIORITY_TRACE = 0;   // default when field unset
+      LOG_PRIORITY_DEBUG = 1;
+      LOG_PRIORITY_INFO  = 2;
+      LOG_PRIORITY_WARN  = 3;
+      LOG_PRIORITY_ERROR = 4;
+  }
+  ```
+
+  Order matches `esp_log_level_t` (NONE/ERROR/WARN/INFO/DEBUG/VERBOSE)
+  conceptually inverted so the protobuf default (0) is the safe
+  "noisy but harmless" TRACE level the spec calls for.
+
+* New `LogRecord` message — no new command. The host already polls
+  `EventConsumeCmd` on a timer; the device's response to that poll
+  is now allowed to carry **either** an event **or** a log record
+  (whichever the device pops off whichever queue first). The host
+  keeps polling at its existing cadence and dispatches on
+  `Response.which_payload`:
+
+  ```proto
+  message LogRecord {
+      LogPriority priority    = 1;   // unset == TRACE
+      string      message     = 2;   // pre-formatted line, no trailing \n
+      uint32      num_dropped = 3;   // records dropped since last successful send
+      uint64      timestamp_us = 4;  // esp_timer_get_time() at enqueue; 0 on host sim
+      string      tag         = 5;   // ESP_LOG TAG (best-effort, may be empty)
+  }
+  ```
+
+* Extend the existing `Response.payload` oneof with
+  `LogRecord log_record = N` alongside the existing `event_consume`
+  variant (pick the next free tag number; remember
+  `proto/touchy.options` needs matching nanopb size hints —
+  e.g. `LogRecord.message max_size:160`, `LogRecord.tag
+  max_size:16`). No change to `Command` — `EventConsumeCmd` is now
+  the universal "give me whatever the device has queued" poll.
+
+* Drain priority on the device: when handling `EventConsumeCmd`,
+  the dispatcher checks the event queue first (preserves today's
+  semantics and keeps UI events responsive), then falls back to the
+  log queue, then returns `RESULT_NOT_FOUND` if both are empty.
+  Events therefore never starve under a log flood; logs catch up
+  during idle frames between widget activity, which matches the
+  human-debugging use case.
+
+* Nanopb `.options` budget per record: 160 bytes of message text is
+  enough for typical ESP_LOG lines without bloating the static TX
+  buffer. Truncate longer lines on the firmware side and append `…`.
+
+#### 2. Firmware: ring buffer + log hook (`firmware/main/log_proto.{h,cpp}`)
+
+New translation unit so `host_api.cpp` and `main.cpp` stay thin.
+
+* Compile-time gate: wrap the entire implementation in
+  `#if CONFIG_TOUCHY_LOG_OVER_PROTO`. Add a Kconfig entry under
+  `firmware/main/Kconfig.projbuild` (create if missing):
+
+  ```kconfig
+  config TOUCHY_LOG_OVER_PROTO
+      bool "Tunnel ESP-IDF logs to host over the touchy protobuf channel"
+      default y
+      help
+          When enabled, esp_log_set_vprintf() is hooked so log lines
+          are queued for the host instead of (or in addition to) the
+          UART. Required for boards without a real USB-CDC port.
+  ```
+
+  Set `CONFIG_TOUCHY_LOG_OVER_PROTO=y` in
+  `firmware/sdkconfig.jc4827w543` and
+  `firmware/sdkconfig.waveshare_s3_lcd_7b` (and the Stage 64.2
+  `sdkconfig.cyd2usb` once that lands).
+
+* Public API (matches the existing `host_api_*` style):
+
+  ```cpp
+  void log_proto_start(void);                    // call from main()
+  bool log_proto_pop(touchy_LogRecord *out);     // host_api drains
+  void log_proto_emit(LogPriority p,             // optional public emit
+                      const char *tag,
+                      const char *msg);
+  ```
+
+* Storage: FreeRTOS queue of fixed-size records
+  (`struct { uint8_t priority; uint64_t ts_us; uint32_t dropped; char tag[16]; char msg[160]; }`,
+  ~200 bytes × 32 = 6.4 KiB) created in `log_proto_start()`. Using a
+  queue (not a stream buffer) lets us push from ISR context via
+  `xQueueSendFromISR()` cleanly.
+
+* Hook into the ESP-IDF logger:
+
+  ```cpp
+  static vprintf_like_t s_prev_vprintf;
+  static int touchy_vprintf(const char *fmt, va_list ap);
+
+  void log_proto_start(void) {
+      s_prev_vprintf = esp_log_set_vprintf(touchy_vprintf);
+      ...
+  }
+  ```
+
+  `touchy_vprintf` formats once with `vsnprintf` into a task-local
+  buffer, parses the leading `"X (timestamp) TAG: "` prefix that
+  ESP-IDF prepends to derive priority + tag, enqueues a `LogRecord`,
+  and *also* forwards to `s_prev_vprintf` so the UART log still
+  works (gated by another Kconfig, see below). This way nothing else
+  in the codebase has to change to start emitting tunneled logs.
+
+* Reentrancy + ISR safety:
+
+  * A thread-local (`__thread`) `bool s_in_emit` flag is set on
+    entry; if already set, increment a `pending_dropped` counter and
+    return immediately. This catches the
+    `host_api → vendor_write → ESP_LOGE → log_proto_emit → host_api`
+    loop cleanly.
+  * `xPortInIsrContext()` short-circuits to
+    `xQueueSendFromISR(..., &hpw)`; on failure bump
+    `pending_dropped` and bail. **Never** call `vsnprintf` from the
+    raw `printf` redirect when in ISR — but the only ISR path that
+    can hit us is firmware code that already calls
+    `ESP_EARLY_LOGx`, which is also routed through `vprintf` only
+    when explicitly enabled; document the limitation rather than
+    fight it.
+  * `pending_dropped` (atomic uint32) is folded into the next
+    successful enqueue's `num_dropped` field, then reset to zero.
+    The host therefore sees the cumulative loss bucketed onto the
+    next surviving record, matching the spec.
+
+* Add a `CONFIG_TOUCHY_LOG_TO_UART` Kconfig (default `y` for the
+  jc4827/waveshare boards which have CDC-ACM, default `n` for
+  Stage 64.2 cyd2usb). When unset, `touchy_vprintf` skips the
+  `s_prev_vprintf` forward.
+
+#### 3. Firmware: dispatcher integration (`firmware/main/host_api.cpp`)
+
+* Extend the existing `case touchy_Command_event_consume_tag:`
+  branch in `dispatch()` to drain events first, then logs:
+
+  ```cpp
+  touchy_LvEvent evt;
+  if (xQueueReceive(s_evt_queue, &evt, 0) == pdTRUE) {
+      resp->code          = touchy_ResultCode_RESULT_OK;
+      resp->which_payload = touchy_Response_event_consume_tag;
+      resp->payload.event_consume.has_event = true;
+      resp->payload.event_consume.event    = evt;
+      break;
+  }
+  touchy_LogRecord rec;
+  if (log_proto_pop(&rec)) {
+      resp->code          = touchy_ResultCode_RESULT_OK;
+      resp->which_payload = touchy_Response_log_record_tag;
+      resp->payload.log_record = rec;
+      break;
+  }
+  resp->code = touchy_ResultCode_RESULT_NOT_FOUND;
+  ```
+
+* Because `LogRecord.message` is a `FT_POINTER` field (per
+  `touchy.options`), use the existing `PbMessage<>` RAII pattern so
+  the encoded TX buffer copies the string and then frees on scope
+  exit.
+
+* `host_api_start()` calls `log_proto_start()` before creating the
+  dispatcher task — that way the very first `ESP_LOGI(TAG,
+  "host_api dispatcher started")` line is already tunneled.
+
+#### 4. Host (Python) — `app/src/touchy_pad/`
+
+* `client.py`:
+
+  * `event_consume()` grows a return-type union: it now hands back
+    either an `LvEvent`, a `LogRecord`, or `None`. Existing callers
+    that only care about events keep working — the helper that
+    drives `stream_events()` ignores `LogRecord` payloads and the
+    `LogRecord` branch is forwarded to the log pump instead
+    (single source of truth: the existing event-poll thread).
+  * No new `log_consume()` RPC and no separate `stream_logs()`
+    poll thread. The existing event pump (today: daemon thread that
+    calls `event_consume()` on a timer) gains a small `if isinstance
+    (item, LogRecord): _dispatch_log(item)` branch.
+  * Backwards compat for direct users of `event_consume()`: keep the
+    legacy single-value return shape but additionally surface
+    `LogRecord` via a new low-level `poll(self) -> LvEvent |
+    LogRecord | None` and rewrite `event_consume()` to call `poll()`
+    and skip records (logging them on the side). Callers that
+    relied on the old name see no behaviour change.
+  * The pump forwards each record to a dedicated `logging.Logger`
+    named `touchy_pad.device` with the mapped level:
+
+    | proto level | Python level         |
+    |-------------|----------------------|
+    | TRACE       | `logging.DEBUG - 5`  | (or just `DEBUG`; stdlib has no TRACE — go with `DEBUG` and put it on a `touchy_pad.device.trace` child logger so callers can silence) |
+    | DEBUG       | `logging.DEBUG`      |
+    | INFO        | `logging.INFO`       |
+    | WARN        | `logging.WARNING`    |
+    | ERROR       | `logging.ERROR`      |
+
+  * When `record.num_dropped > 0`, emit a `WARNING` "device dropped
+    N log records" line on `touchy_pad.device` *before* the record
+    itself so the dropped count is impossible to miss in scrollback.
+  * Tag is added via `extra={"device_tag": record.tag}` and a custom
+    format string `"[%(device_tag)s] %(message)s"` on the default
+    handler installed by `touchy_open()`.
+
+* `cli.py`: hidden `--device-log-level {trace,debug,info,warn,error}`
+  flag (default `info`) wired into the log pump on every subcommand
+  that opens a device. `touchy logs` subcommand: open the device,
+  start the pump, and block on `Ctrl-C` — pure convenience wrapper.
+
+* `transport.py` / `sim/`: no changes (records ride the existing
+  bulk pair / TCP socket).
+
+* `api/touchy.py` (or wherever `touchy_open()` lives): start the log
+  pump automatically; expose a `with_device_logs=False` opt-out for
+  programmatic callers that want raw control.
+
+#### 5. Host (Rust) — `rust/touchy-pad/`
+
+* Regenerate prost bindings from `proto/touchy.proto` (or its
+  vendored copy under `rust/touchy-pad/proto/`). The existing
+  `event_consume()` method's return type widens to an enum
+  (`PollItem::Event(LvEvent) | PollItem::Log(LogRecord) | None`);
+  the public `events()` stream continues to yield `LvEvent` only
+  and shuttles `LogRecord` items into the log pump.
+* Wire `LogRecord` into the `log` crate facade with the matching
+  level mapping (trace/debug/info/warn/error map 1:1).
+* Provide a `Client::start_log_pump()` returning a `JoinHandle` so
+  callers can shut it down; default `touchy_pad` examples start it
+  automatically. Internally it shares the same event-poll thread
+  introduced by Stage 16 — no second polling loop.
+* No `tokio` dependency: a `std::thread` pump is sufficient and
+  matches the Python design.
+
+#### 6. Simulator (`firmware`-less but transports-the-same)
+
+The simulator's Stage 63 TCP transport already carries the same
+`Command`/`Response` frames, so `EventConsumeCmd` arrives at
+`app/src/touchy_pad/sim/` exactly like any other RPC. The sim's
+handler is extended to also return `LogRecord` payloads (in the
+events-first, logs-second order described above). A synthetic
+bridge feeds the simulator's own `logging.getLogger
+("touchy_pad.sim.device")` records into a `collections.deque
+(maxlen=…)` consumed by the same handler, so a user running
+`touchy --sim-remote` sees the *same* log lines they'd see on real
+hardware. Implementation: a `logging.Handler` that pushes formatted
+records onto the deque.
+
+#### 7. Tests (`app/tests/`)
+
+* `test_logs.py`:
+  * Stand up a sim with the new log bridge, emit a handful of
+    `logging.{debug,info,error}` calls, drive the event poll, and
+    assert priority mapping + tag round-trip on the `LogRecord`
+    payloads.
+  * Mixed traffic: enqueue an event *and* a log on the sim; assert
+    the event arrives first and the log on the next poll —
+    documents the events-first drain order.
+  * Overflow case: monkeypatch the deque `maxlen` to 2, push 5
+    records, drain, assert the *next surviving record* carries
+    `num_dropped == 3`.
+  * Reentrancy: confirm a logger handler invoked from inside the
+    pump itself doesn't recurse (sentinel pattern test).
+* Extend `test_client.py` to exercise the log path against the
+  sim (events-first ordering + log dispatch into
+  `touchy_pad.device`).
+* Extend `test_transport_net.py` only if the framing changes (it
+  shouldn't).
+
+#### 8. Documentation
+
+* `docs/host-api.md`: new "Log tunneling" section documenting the
+  reuse of `EventConsumeCmd`, the new `Response.log_record` variant,
+  the priority enum, the dropped-record convention, and the
+  `CONFIG_TOUCHY_LOG_OVER_PROTO` build flag.
+* `docs/development.md`: short paragraph on `touchy logs` and the
+  `--device-log-level` flag.
+* `AGENTS.md`: bump the "latest active wire-format" line (Stage 13
+  paragraph) to the new `Screen.Version.CURRENT` / protocol
+  version.
+
+### Out of scope for Stage 64.1
+
+* Batched log drain (returning multiple records per
+  `EventConsumeCmd` response) — v1 firmware always returns at most
+  one record per poll. Add later if profiling shows the round-trip
+  cost matters; the schema can grow a `repeated LogRecord` variant
+  without breaking the single-record path.
+* Pre-mounted ESP-IDF early log lines (anything emitted before
+  `log_proto_start()` runs) — these continue to go to the UART
+  only. We can revisit by buffering in a static ring before the
+  queue exists.
+* Filtering by tag on the device side — the host gets every record
+  and filters in Python's `logging` config.
+* `printf` (non-`ESP_LOGx`) capture — `esp_log_set_vprintf` already
+  catches plain `printf` on ESP-IDF, but we don't promise it works
+  for code that bypasses the logger.
+
+### Acceptance
+
+1. `proto/touchy.proto` builds via `just build-proto`; the C and
+   Python bindings include `LogRecord` and `LogPriority`, and
+   `Response.payload` gains the `log_record` oneof variant.
+2. `just firmware-build` succeeds for both `jc4827w543` and
+   `waveshare_s3_lcd_7b` with `CONFIG_TOUCHY_LOG_OVER_PROTO=y`, and
+   ESP_LOG lines emitted from the dispatcher arrive at the host via
+   the existing event-poll loop with the correct priority + tag.
+3. With the queue artificially flooded, the first record received
+   after recovery carries a non-zero `num_dropped`, and a host
+   `WARNING` log line is emitted.
+4. Re-entrant log calls (e.g. `ESP_LOGE` from inside the host_api
+   write path) do not crash, deadlock, or recurse — they're
+   silently dropped and counted.
+5. `just app-test` adds and passes `test_logs.py` covering priority
+   mapping, dropped-counter folding, and reentrancy.
+6. `cargo test -p touchy-pad` covers the Rust log pump against the
+   simulator (`touchy simulator --headless`).
+7. `docs/host-api.md` documents the reused `EventConsumeCmd` path
+   and the priority semantics.
+
+## Stage 64.2: Make CDCACM optional
+If CONFIG_TINYUSB_CDC_COUNT is zero, do not create cdcacm devices in usb_hid.  This will help us save endpoints in our device.  This will also work well with our stage 64.1 added ability to send our logs over our private protobuf based endpoints.
+
+## Stage 64.3: add support for CYD2USB board
 
 See [here](hardware.md) for specs.  Somethings to note about this board:
 

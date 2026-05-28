@@ -96,6 +96,11 @@ class SimDevice:
         self._fs = fs
         self._lock = threading.RLock()
         self._events: Queue[_proto.LvEvent] = Queue()
+        # Stage 64.1 — tunneled "device" log queue. The sim has no
+        # ESP_LOG to bridge but tests (and host integrators that want
+        # to see sim-side diagnostics on the same logger the firmware
+        # would feed) can push records via :meth:`push_log`.
+        self._logs: Queue[_proto.LogRecord] = Queue()
         self._on_screen_change = on_screen_change
         self._on_image_update: Callable[[str], None] | None = None
         # Reported back via SysBoardInfoResponse.display_{width,height}.
@@ -330,8 +335,32 @@ class SimDevice:
         try:
             evt = self._events.get_nowait()
         except Empty:
+            pass
+        else:
+            return _result(event_consume=_proto.EventConsumeResponse(event=evt))
+        # Stage 64.1: events-first, then logs, matching firmware order.
+        try:
+            rec = self._logs.get_nowait()
+        except Empty:
             return _result(_proto.RESULT_NOT_FOUND)
-        return _result(event_consume=_proto.EventConsumeResponse(event=evt))
+        return _result(log_record=rec)
+
+    def push_log(
+        self,
+        message: str,
+        *,
+        priority: int = _proto.LOG_PRIORITY_INFO,
+        tag: str = "",
+        timestamp_ms: int = 0,
+    ) -> None:
+        """Enqueue a tunneled log record, drained on the next event_consume."""
+        rec = _proto.LogRecord(
+            priority=priority,
+            message=message,
+            tag=tag,
+            timestamp_ms=timestamp_ms,
+        )
+        self._logs.put(rec)
 
     # -- internal helpers -------------------------------------------------
 

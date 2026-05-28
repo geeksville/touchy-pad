@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Project-level Kconfig options for touchy-pad. Exposed as
+# CONFIG_TOUCHY_* macros at build time. See sdkconfig.defaults for the
+# defaults applied to every board.
+
+menu "Touchy-Pad"
+
+config TOUCHY_LOG_OVER_PROTO
+    bool "Tunnel ESP-IDF logs to host over the touchy protobuf channel"
+    default y
+    help
+        When enabled, esp_log_set_vprintf() is hooked so log lines are
+        also queued for the host. The host drains them as
+        Response.log_record payloads returned from its normal
+        EventConsumeCmd polling loop (no new endpoint, no new
+        command). Required for boards without a real USB-CDC port
+        (Stage 64.2 CYD2USB).
+
+config TOUCHY_LOG_TO_UART
+    bool "Also forward ESP-IDF logs to the original UART/CDC console"
+    depends on TOUCHY_LOG_OVER_PROTO
+    default y
+    help
+        When TOUCHY_LOG_OVER_PROTO is enabled, the original
+        esp_log_set_vprintf() handler is preserved so log lines
+        continue to appear on the UART / TinyUSB-CDC console in
+        addition to being tunneled to the host. Disable on boards
+        with no usable physical console (e.g. CYD2USB) to skip the
+        forward and save a few cycles per log line.
+
+endmenu

@@ -7,6 +7,7 @@
 #include "backlight.h"
 #include "display.h"
 #include "fs.h"
+#include "log_proto.h"
 #include "protobuf.h"
 #include "screens.h"
 #include "touchy.pb.h"
@@ -263,10 +264,21 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
             resp->which_payload = touchy_Response_event_consume_tag;
             resp->payload.event_consume.has_event = true;
             resp->payload.event_consume.event     = evt;
-        } else {
-            // Empty queue — host will stop draining on this code.
-            resp->code = touchy_ResultCode_RESULT_NOT_FOUND;
+            break;
         }
+        // Stage 64.1: the host's existing event-poll drains tunneled
+        // log records too. Events win on ties so a busy UI never
+        // starves log delivery, but a quiet UI lets logs flow out
+        // promptly.
+        touchy_LogRecord rec;
+        if (log_proto_pop(&rec)) {
+            resp->code          = touchy_ResultCode_RESULT_OK;
+            resp->which_payload = touchy_Response_log_record_tag;
+            resp->payload.log_record = rec;
+            break;
+        }
+        // Both queues empty — host will back off on this code.
+        resp->code = touchy_ResultCode_RESULT_NOT_FOUND;
         break;
     }
 

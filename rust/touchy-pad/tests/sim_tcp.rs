@@ -19,7 +19,13 @@ fn find_free_port() -> u16 {
 }
 
 fn poetry_available() -> bool {
-	Command::new("poetry").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false)
+	Command::new("poetry")
+		.arg("--version")
+		.stdout(Stdio::null())
+		.stderr(Stdio::null())
+		.status()
+		.map(|s| s.success())
+		.unwrap_or(false)
 }
 
 fn wait_for_port(port: u16, deadline: Instant) -> bool {
@@ -41,16 +47,7 @@ async fn sim_tcp_board_info() {
 	let port = find_free_port();
 	let app_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../app");
 	let mut child = Command::new("poetry")
-		.args([
-			"run",
-			"touchy",
-			"--sim-serial",
-			"SIMRUST",
-			"simulator",
-			"--headless",
-			"--port",
-			&port.to_string(),
-		])
+		.args(["run", "touchy", "--sim-serial", "SIMRUST", "simulator", "--headless", "--port", &port.to_string()])
 		.current_dir(&app_dir)
 		.env_remove("VIRTUAL_ENV")
 		.stdout(Stdio::null())
