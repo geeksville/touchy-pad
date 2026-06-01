@@ -24,7 +24,7 @@ which caps a full-frame RGB565 redraw (480×272×2 ≈ 261 KB) at roughly
 ~60 FPS regardless of how the host-side code is structured. Don't raise
 `BOARD_LCD_QSPI_CLK_HZ` without re-validating on real hardware.
 
-## CYD2USB: 2.8" resistive cheap-yellow-display variant (Also called "ESP32-2432S028R v3")
+## ESP32-2432S028Rv3: 2.8" resistive cheap-yellow-display variant (Also called "ESP32-2432S028R v3" or CYD2USB)
 
 ### Core Specifications / GPIOs / Chips
 
@@ -100,7 +100,7 @@ USB ports: this board contains both a USB-C and a USB-Micro port but they are el
 
 > **Note:** The display backlight might be hardwired to GPIO 21. Reusing GPIO 21 for general I/O or I2C SDA will cause the screen to strobe during data transmission.
 
-## ESP32-024: The 2.4" version ofCYD2USB (also called ESP32-2432S024)
+## ESP32-024: The 2.4" version of CYD2USB (also called ESP32-2432S024)
 
 More pinout information here: https://github.com/F1ATB/ESP32-2432S028-2432S024-2432S032-JC2432W328
 

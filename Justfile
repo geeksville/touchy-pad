@@ -332,12 +332,43 @@ firmware-build: build-proto-c build-default-screen
     # The IDF activate script detects sourcing via ${0##*/}; when Just runs a
     # recipe the temp-script name doesn't match "bash", so sourcing would fail.
     # Run a fresh bash -c so $0 is "bash" and is_sourced() returns true.
-    # Always source to define idf.py function (idempotent).
-    exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh 2>/dev/null && idf.py -C firmware build'
- 
-firmware-reconfigure:
+    # Try the devcontainer wrapper first; fall back to the standard export.sh
+    # used in CI and manual installs (no error if neither — idf.py may already
+    # be on PATH from an outer shell).
+    exec bash -c '
+        if [ -f "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" ]; then
+            source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" 2>/dev/null
+        elif [ -f "$HOME/esp/esp-idf/export.sh" ]; then
+            source "$HOME/esp/esp-idf/export.sh"
+        fi
+        idf.py -C firmware build
+    '
+
+# Regenerate the per-board sdkconfig from defaults.  Accepts an optional board
+# name; if omitted, honours the $BOARD env var (set by CI) and falls back to
+# the CMakeLists.txt default (jc4827w543).
+#   just firmware-reconfigure                    # use default / $BOARD
+#   just firmware-reconfigure waveshare_s3_lcd_7b
+firmware-reconfigure board="":
     #!/usr/bin/env bash
-    exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh 2>/dev/null && idf.py -C firmware set-target esp32s3 && idf.py -C firmware reconfigure'
+    # {{board}} is expanded by Just; if empty, honour $BOARD env var or fall
+    # back to the CMakeLists.txt default.
+    _just_board='{{board}}'
+    export _BOARD="${_just_board:-${BOARD:-jc4827w543}}"
+    exec bash -c '
+        if [ -f "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" ]; then
+            source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" 2>/dev/null
+        elif [ -f "$HOME/esp/esp-idf/export.sh" ]; then
+            source "$HOME/esp/esp-idf/export.sh"
+        else
+            echo "error: cannot find ESP-IDF activation script" >&2
+            echo "  tried: ~/.espressif/tools/activate_idf_v6.0.1.sh" >&2
+            echo "  tried: ~/esp/esp-idf/export.sh" >&2
+            exit 1
+        fi
+        idf.py -C firmware set-target esp32s3
+        idf.py -C firmware -DBOARD="${_BOARD}" reconfigure
+    '
 
 flash: firmware-build
     #!/usr/bin/env bash

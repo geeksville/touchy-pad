@@ -95,9 +95,7 @@ jobs:
           SYS_PYTHON="$(command -v python3)"
           export SYS_PYTHON
           just build-proto-c
-          source "$HOME/esp/esp-idf/export.sh"
-          idf.py -C firmware set-target esp32s3
-          idf.py -C firmware -DBOARD="${BOARD}" reconfigure
+          just firmware-reconfigure "${BOARD}"
           just firmware-build
 
       - name: Merge firmware into a single flashable binary

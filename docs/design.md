@@ -2202,7 +2202,7 @@ already returns NULL so the activity callback is skipped). Exactly one
 warning is logged at startup; there is no per-use logging. Validated:
 firmware builds with the flag both off (default) and on.
 
-## Stage 65: add support for CYD2USB board
+## Stage 65: add support for ESP32-2432S028Rv3 board
 
 See [here](hardware.md) for specs.  Somethings to note about this board:
 
@@ -2215,8 +2215,7 @@ See [here](hardware.md) for specs.  Somethings to note about this board:
   * make a platform.h/.cpp class in the main code.   Boards will instantiate their own correct subclass which callers can access by platform_get().
   * Add a is_multitouch() method or property to that class.  The prior boards will return true, this ESP32-2432S028R board will return false.  Have our sim trackpad class check for that property and only try to do multitouch (or anything needing more than 'left' press/drag) on the older boards. 
   * Add a has_usb() method that indicates that this board has direct USB port access to the host.  The old boards do, this CYD2USB does not.
-
-
+  
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

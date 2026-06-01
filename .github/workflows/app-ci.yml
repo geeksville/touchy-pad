@@ -134,7 +134,7 @@ jobs:
           SYS_PYTHON="$(command -v python3)"
           export SYS_PYTHON
           just build-proto-c
-          just firmware-reconfigure
+          just firmware-reconfigure "${BOARD}"
           just firmware-build
 
       - name: Stage firmware binary
