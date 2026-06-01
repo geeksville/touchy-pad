@@ -2185,6 +2185,23 @@ Per the stage request, flip on for this board only (user will revert):
 * The CYD2USB hardware-UART `SerialLink` backend itself (lands with
   Stage 65; 64.3 only proves the seam on CDC).
 
+## Stage 64.4
+
+Future devices might have initially buggy display and touchscreen drivers.  Add a kconfig TOUCHY_NO_DISPLAY.  If set, suppress the creation/use of those devices.  No need to log messages at each attempted usage, just log one warning at startup saying "Display hardware disabled due to build options."
+
+**Status: done.** `CONFIG_TOUCHY_NO_DISPLAY` (default n, in
+`firmware/main/Kconfig.projbuild`) skips `board_init()`, the backlight
+timer, `display_init()` and `touch_init()`. In their place `main.cpp`
+stands up a headless LVGL display (`display_init_headless()`): an
+off-screen RGB565 framebuffer with a no-op flush, sized by
+`CONFIG_TOUCHY_HEADLESS_HRES` / `CONFIG_TOUCHY_HEADLESS_VRES` (default
+480×272). The entire screen / host_api stack runs unchanged — screens
+still build and render into the discarded buffer, touch simply never
+produces events (`screens_set_touch(nullptr)`, and `touch_get_indev()`
+already returns NULL so the activity callback is skipped). Exactly one
+warning is logged at startup; there is no per-use logging. Validated:
+firmware builds with the flag both off (default) and on.
+
 ## Stage 65: add support for CYD2USB board
 
 See [here](hardware.md) for specs.  Somethings to note about this board:

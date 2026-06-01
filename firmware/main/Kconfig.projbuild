@@ -43,5 +43,37 @@ config TOUCHY_PROTO_OVER_SERIAL
         protocol frames — route ESP-IDF logs to the host via
         TOUCHY_LOG_OVER_PROTO instead of the protocol CDC/UART console.
 
+config TOUCHY_NO_DISPLAY
+    bool "Disable the display + touchscreen hardware"
+    default n
+    help
+        When enabled, the board's panel and touch controller are never
+        initialised. Instead an off-screen ("headless") LVGL display is
+        created so the screen / host_api stack keeps working unchanged —
+        screens still build and render into a discarded framebuffer, and
+        touch simply never produces events. Useful when bringing up a new
+        board whose display or touch drivers are still buggy: you can
+        exercise USB, the protocol and the filesystem without the panel
+        crashing the boot. A single warning is logged at startup; there is
+        no per-use logging. See TOUCHY_HEADLESS_HRES / TOUCHY_HEADLESS_VRES
+        for the off-screen resolution.
+
+config TOUCHY_HEADLESS_HRES
+    int "Headless display width (px)"
+    depends on TOUCHY_NO_DISPLAY
+    default 480
+    help
+        Horizontal resolution of the off-screen LVGL display used when
+        TOUCHY_NO_DISPLAY is set. Match your intended panel so screen
+        layouts size themselves the same as they will on real hardware.
+
+config TOUCHY_HEADLESS_VRES
+    int "Headless display height (px)"
+    depends on TOUCHY_NO_DISPLAY
+    default 272
+    help
+        Vertical resolution of the off-screen LVGL display used when
+        TOUCHY_NO_DISPLAY is set.
+
 endmenu
 

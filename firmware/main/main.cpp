@@ -17,12 +17,58 @@
 
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include <string>
 
 static const char *TAG = "main";
+
+#if CONFIG_TOUCHY_NO_DISPLAY
+// Stage 64.4: bring LVGL up against an off-screen framebuffer with a no-op
+// flush callback. This keeps the entire screen / host_api stack running
+// unchanged while the board's (possibly buggy) panel and touch drivers stay
+// completely out of the boot path. Returns the headless LVGL display, or
+// nullptr if the draw buffer could not be allocated.
+static lv_display_t *display_init_headless(void)
+{
+    lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    port_cfg.task_priority   = 4;
+    port_cfg.task_stack      = 8 * 1024;
+    port_cfg.timer_period_ms = 5;
+    ESP_ERROR_CHECK(lvgl_port_init(&port_cfg));
+
+    constexpr int    W             = CONFIG_TOUCHY_HEADLESS_HRES;
+    constexpr int    H             = CONFIG_TOUCHY_HEADLESS_VRES;
+    constexpr size_t LINES_PER_BUF = 40;
+    const size_t     buf_bytes     = (size_t)W * LINES_PER_BUF * sizeof(uint16_t);
+
+    auto *buf = heap_caps_malloc(buf_bytes, MALLOC_CAP_DEFAULT);
+    if (!buf) {
+        ESP_LOGE(TAG, "headless: failed to allocate %u-byte draw buffer",
+                 (unsigned)buf_bytes);
+        return nullptr;
+    }
+
+    lvgl_port_lock(0);
+    lv_display_t *disp = lv_display_create(W, H);
+    if (disp) {
+        lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
+        lv_display_set_buffers(disp, buf, nullptr, buf_bytes,
+                               LV_DISPLAY_RENDER_MODE_PARTIAL);
+        // Discard every rendered slice; just acknowledge it immediately.
+        lv_display_set_flush_cb(disp,
+            [](lv_display_t *d, const lv_area_t *, uint8_t *) {
+                lv_display_flush_ready(d);
+            });
+    } else {
+        ESP_LOGE(TAG, "headless: lv_display_create failed");
+    }
+    lvgl_port_unlock();
+    return disp;
+}
+#endif  // CONFIG_TOUCHY_NO_DISPLAY
 
 extern "C" void app_main(void)
 {
@@ -60,6 +106,15 @@ extern "C" void app_main(void)
     // is fully ready — the runner blocks on its queue until macros arrive.
     macros_init();
 
+#if CONFIG_TOUCHY_NO_DISPLAY
+    // Stage 64.4: the display + touchscreen hardware is disabled at build
+    // time. Skip board_init()/backlight/panel/touch entirely and stand up a
+    // headless LVGL display so the rest of the app runs unchanged. One
+    // warning here; no per-use logging anywhere else.
+    ESP_LOGW(TAG, "Display hardware disabled due to build options.");
+    lv_display_t *disp = display_init_headless();
+    esp_lcd_touch_handle_t tp = nullptr;
+#else
     board_init();
 
     // Start the backlight auto-sleep timer with the persisted timeout.
@@ -68,6 +123,8 @@ extern "C" void app_main(void)
 
     lv_display_t *disp = display_init();
     esp_lcd_touch_handle_t tp = touch_init(disp);
+#endif
+    (void)disp;  // handle not needed past bring-up (LVGL tracks the default)
 
     // display_init() calls lv_init() which clears LVGL's FS driver
     // linked list. (Re)register our 'R:' driver now so host-uploaded
