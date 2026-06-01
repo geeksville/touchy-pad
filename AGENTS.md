@@ -25,16 +25,25 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, and 64.1 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 4`.
+All stages 0–24.4, 50.2, 51, 64.1, and 64.3 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 5`.
 Highlights worth remembering:
 
 - USB device is a composite class: CDC-ACM + HID (mouse + keyboard via
   report IDs 1/2) + vendor-class bulk pair (command/response) + interrupt-IN
   mailbox endpoint (0x85) that just signals "events available".
-- Host ↔ device wire protocol = length-prefixed nanopb frames over the
-  bulk pair. See `firmware/main/host_api.cpp` and
-  `app/src/touchy_pad/transport.py`.
+- Host ↔ device wire protocol = self-synchronising frames
+  `MAGIC(0xA5 0x5A) | LEN(u16 LE) | payload | CRC8` (Stage 64.3) over the
+  bulk pair. Identical framing on every transport (USB, simulator TCP,
+  serial). One decoder per side: `firmware/main/host_api.cpp` (the
+  `HostApiLink` abstraction), `app/src/touchy_pad/transport.py`
+  (`_StreamFramedTransport` / `_FrameDecoder`), and
+  `rust/touchy-pad/src/transport.rs` (`FrameDecoder`). The serial
+  transport (`transport_serial.py`; Rust `transport_serial.rs` behind the
+  `serial` feature) always runs at 115200 baud and carries only protocol
+  frames — device logs ride the Stage 64.1 `LogRecord` tunnel, never raw
+  text on the protocol port. Firmware serial path is gated on
+  `CONFIG_TOUCHY_PROTO_OVER_SERIAL` (default n).
 - nanopb uses `FT_POINTER` (heap) for `repeated` widget/action/step
   fields and the `FileWrite` payload. RAII via `PbMessage<T>` in
   `firmware/main/protobuf.h`.

@@ -22,6 +22,12 @@ bytes.workspace = true
 image.workspace = true
 futures.workspace = true
 async-trait.workspace = true
+tokio-serial = { version = "5.4", optional = true }
+
+[features]
+# Off by default: pulls in tokio-serial (and its libudev/serialport
+# transitive deps on Linux). Enable for the serial-port transport.
+serial = ["dep:tokio-serial"]
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

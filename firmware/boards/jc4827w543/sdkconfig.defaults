@@ -16,6 +16,13 @@ CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 
+# ----- Stage 64.3 serial-protocol test override (use only if needed) -----
+# Exposes the touchy protobuf protocol over the USB-CDC ACM port so Stage 64.3
+# can be validated on this board without CYD2USB hardware. CDC was disabled in
+# Stage 64.2; re-enabling it here is intentional for this debug build only.
+#CONFIG_TOUCHY_PROTO_OVER_SERIAL=y
+#CONFIG_TINYUSB_CDC_ENABLED=y
+
 # ----- LVGL: feed pixels to the NV3041A QSPI panel in big-endian RGB565.
 # The panel expects MSB-first 16-bit colour on the wire. LVGL v9 no longer
 # has a CONFIG_LV_COLOR_16_SWAP option; the byte swap is performed by the

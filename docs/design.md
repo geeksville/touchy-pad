@@ -1937,6 +1937,14 @@ Implementation notes:
 
 ## Stage 64.3: Allow our protobuf based protocol over serial ports
 
+**Status: done.** Self-synchronising frame (`MAGIC | LEN(u16) | payload |
+CRC8`) is live on every transport; `ProtocolVersion.CURRENT == 5`. Host
+Python `SerialTransport` (pyserial) + `touchy --port`, Rust
+`SerialTransport` behind the `serial` cargo feature, firmware
+`HostApiLink` abstraction gated on `CONFIG_TOUCHY_PROTO_OVER_SERIAL`
+(default n). Validated: 143 Python tests, 11 Rust framing tests, firmware
+builds with the flag both off and on.
+
 Though we still want to include support (for some boards) for using our custom USB endpoint based transport of our protobuf based protocol - we want to ADD support for optionally running that protocol over a conventional serial port.
 
 * Use the same 'wire encoding' we used in stage 63 for our TCP based simulator protocol link.  Try to share code.  i.e. on the python/rust side a new sibling class to TCPTransport (which shares much of the code via a common baseclass)
@@ -1944,6 +1952,238 @@ Though we still want to include support (for some boards) for using our custom U
 * Add a build kconfig flag to our ESP-IDF firmware TOUCHY_PROTO_OVER_SERIAL.
 If set, include appropriate device side code to do this. 
 * To facilitate testing this on the jc4827w543 board (and only that board) set this new flag and CONFIG_TINYUSB_CDC_ENABLED (so that we can temporarily use that board for testing the feature - I'll turn these flag off later)
+
+### Plan (subject to revision)
+
+#### 0. Why this matters
+
+The vendor-class bulk transport (Stages 13+) is great but requires a
+device with native USB-OTG *and* a host that can claim a custom vendor
+interface (libusb / WinUSB). The forthcoming CYD2USB board (Stage 65)
+is plain ESP32 with **no native USB at all** — its only host link is a
+UART (through the CH340/CP210x bridge that also handles flashing). To
+reach those boards the same protobuf protocol must ride a byte-stream
+serial port. We get there in two halves: the host transport (this
+stage), and a firmware link backend (this stage, validated on
+jc4827w543 over USB-CDC so we don't need CYD2USB hardware in hand yet).
+
+#### 1. Wire format — new self-synchronising frame (all transports)
+
+Stage 64.3 replaces the bare `LEN(u32) | payload` frame with a
+self-synchronising frame used by **every** transport (USB bulk, TCP
+sim, and serial), so there's a single `_pack`/`_unpack` everywhere and
+the serial reader can recover sync after corruption or boot noise:
+
+```
+  MAGIC(2) | LEN(u16 LE) | payload | CRC8(1)
+```
+
+* **MAGIC** — a fixed 2-byte sentinel (e.g. `0xA5 0x5A`) marking a
+  frame start; the resync scan anchor.
+* **LEN** — u16 little-endian payload length. Two bytes is plenty: the
+  largest message is a `FileWriteCmd`, already capped at ~4 KiB to bound
+  device buffers, so payloads never approach the 64 KiB ceiling. This
+  shrinks the prefix from 4 → 2 bytes and makes an over-cap length
+  impossible to even express.
+* **CRC8** — a single-byte CRC (e.g. CRC-8 poly `0x07`, table-free)
+  over `LEN || payload`. Deliberately cheap: corruption on USB/TCP is
+  already caught by lower layers, and even on a real UART the odds are
+  low.
+
+Overhead is 5 bytes/frame (was 4). The on-wire size cap is now bounded
+by the u16 length; keep a logical `_MAX_FRAME` matching the ~4 KiB
+FileWrite budget + framing.
+
+**Resync algorithm** (in the shared stream reader; effectively a no-op
+on USB/TCP, essential on serial): scan bytes until `MAGIC` is seen, read
+`LEN`, read `LEN` payload bytes + the CRC8, verify; on mismatch discard
+and resume scanning one byte past the candidate magic. The host's first
+round-trip (`sys_board_info_get`) re-establishes sync, and we tolerate
+losing the very first frame after open (covered by the existing
+open-time retry in `touchy_open`).
+
+**Serial-specific consequence — the protocol port must be log-free.**
+A freshly-opened serial port may carry boot noise (ESP-IDF console
+banner, DTR/RTS line glitches), and any `ESP_LOG` bytes mixed into the
+protocol stream would corrupt frames. Device logs instead reach the
+host in-band via the Stage 64.1 `LogRecord` tunnel — exactly why 64.1
+exists. See the firmware section for keeping the console off the
+protocol port.
+
+**This is a wire-incompatible change:** bump
+`SysBoardInfoResponse.ProtocolVersion` (`CURRENT` 4 → 5) and the
+firmware's `TOUCHY_PROTOCOL_VERSION`. Because the framing itself
+changes, there's no negotiation path — an old host literally cannot
+parse a new device's frames (and vice-versa); it's a hard cutover,
+consistent with the project's "no backwards-compat preserved" stance.
+
+* **No auth / no TLS** (same as USB/TCP — physical link).
+
+#### 2. Host side — shared base class
+
+Today `TcpTransport` (Python) and `TcpTransport` (Rust) each inline the
+framing read/write over their stream object (`socket` / `TcpStream`).
+Refactor so the (now magic + CRC) framing logic lives once and the
+byte-stream is pluggable:
+
+* **Python** (`app/src/touchy_pad/transport.py` or a small new
+  `transport_stream.py`): extract a `_StreamFramedTransport(Transport)`
+  base implementing `send_command` / `recv_response` / `_recv_exact` in
+  terms of two abstract primitives:
+  * `_write_all(data: bytes) -> None`
+  * `_read_some(n: int) -> bytes` (returns `b""` on EOF)
+
+  The base owns the shared `_pack`/`_unpack` (magic + u16 len + CRC8)
+  and the magic-scan resync loop, so every transport inherits
+  corruption recovery for free. `TcpTransport` becomes a thin subclass
+  binding those to the socket.
+  New `SerialTransport(port: str, *, timeout_ms=...)` in
+  `transport_serial.py` binds them to a `serial.Serial` at a fixed
+  115200 baud. `needs_image_conversion = True` (host converts
+  PNG → LVGL `.bin`, same as USB/TCP). Thread-safety via the same
+  `threading.Lock` pattern `TcpTransport` already uses.
+* **Dependency:** add `pyserial` to `app/pyproject.toml`. Import it
+  lazily inside `SerialTransport.__init__` so a missing pyserial only
+  errors when `--port` is actually used (mirrors the pyusb/libusb
+  guarding already done for Windows CI).
+* **Rust** (`rust/touchy-pad/src/transport_serial.rs`): mirror with a
+  `SerialTransport` over `tokio-serial` (`SerialStream` implements
+  `AsyncRead`/`AsyncWrite`, so it slots straight into the existing
+  framing helpers). Gate the `tokio-serial` dep behind a cargo feature
+  (e.g. `serial`) so the dependency stays optional. Lower priority than
+  the Python path; land Python first.
+
+#### 3. CLI
+
+* A `--port PATH` option already exists on the `cli` group, currently
+  documented as "serial port for esptool-based commands (`update`)".
+  **Extend its meaning** rather than add a second flag: when `--port`
+  is set *and* no `--sim*` mode is active, the protocol commands open a
+  `SerialTransport` on that path instead of auto-discovering USB. The
+  `update` / flash paths keep using the same string for esptool (a
+  device's flashing port and protocol port are usually the same
+  `/dev/ttyACM*` / `/dev/ttyUSB*`).
+* No baud option — the serial transport always uses 115200 (the device
+  side uses the same fixed rate).
+* Plumbing: in the group callback stash `ctx.obj["serial_port"]`;
+  `_make_transport()` returns a `SerialTransport` when a port is set and
+  sim is inactive, so both `_open_pad()` and `_client()` pick it up with
+  no per-command changes. No extra hardware probing.
+
+#### 4. Firmware — pluggable host_api link
+
+`host_api.cpp`'s dispatcher (`host_api_task`) is already structured
+around two helpers, `vendor_read_exact()` and `vendor_write_frame()`,
+plus a `tud_mounted()` connectivity check. Abstract those into a small
+link interface so the same dispatch/decode/encode loop can run over a
+different byte source:
+
+```cpp
+struct HostApiLink {
+    virtual bool connected() = 0;
+    virtual bool read_exact(uint8_t *dst, size_t n) = 0;     // false on disconnect
+    virtual bool write_frame(const uint8_t *payload, size_t len) = 0;
+};
+```
+
+The link's `read_exact` / `write_frame` implement the new
+`MAGIC | LEN(u16) | payload | CRC8` framing from section 1: `write_frame`
+prepends the magic + length and appends the CRC8; the read side scans
+for the magic, validates the CRC, and resyncs on mismatch (shared with
+the host-side reader's logic, just in C). `s_rx_buf` shrinks to match
+the u16 length cap.
+
+* `VendorLink` wraps the existing TinyUSB vendor-bulk code (now using
+  the new framing).
+* `SerialLink` (new, `#if CONFIG_TOUCHY_PROTO_OVER_SERIAL`) wraps the
+  serial byte source. **For the jc4827w543 test build the serial
+  endpoint is the USB-CDC ACM interface** (hence the requirement to also
+  set `CONFIG_TINYUSB_CDC_ENABLED=y`): read via `tud_cdc_read`, write via
+  `tud_cdc_write` + `tud_cdc_write_flush`, `connected()` =
+  `tud_cdc_connected()`. Written generically enough that a future
+  hardware-UART backend (CYD2USB, Stage 65) can drop in by swapping the
+  read/write calls for `uart_read_bytes` / `uart_write_bytes`.
+* `host_api_task` takes a `HostApiLink*`. `host_api_start()` always
+  starts the vendor task and, when `CONFIG_TOUCHY_PROTO_OVER_SERIAL`,
+  starts a *second* dispatcher task bound to `SerialLink`. The two run
+  independently; the shared `s_evt_queue` is drained by whichever link's
+  `EventConsumeCmd` poll arrives first (fine for the test scenario where
+  only one host is attached at a time).
+* **Keep the console off the protocol CDC port.** When CDC is enabled
+  *for protocol use*, `usb_hid.cpp` must NOT call `tinyusb_console_init`
+  on that CDC interface, and `CONFIG_TOUCHY_LOG_TO_UART` should route
+  ESP_LOG to the real UART0 (or rely solely on the 64.1 in-band
+  `LogRecord` tunnel). Add a guard so `TOUCHY_PROTO_OVER_SERIAL`
+  suppresses the CDC console hookup.
+
+New Kconfig (`firmware/main/Kconfig.projbuild`):
+
+```
+config TOUCHY_PROTO_OVER_SERIAL
+    bool "Run the touchy protobuf protocol over a serial/CDC byte stream"
+    default n
+    help
+        Adds a second host_api dispatcher that speaks the same
+        length-prefixed nanopb framing over a UART-like byte stream
+        (USB-CDC on jc4827w543 for testing; a hardware UART on
+        USB-less boards like CYD2USB). The chosen port must be free
+        of ESP_LOG output — device logs reach the host via the
+        Stage 64.1 LogRecord tunnel instead.
+```
+
+#### 5. Test-build wiring (jc4827w543, temporary)
+
+Per the stage request, flip on for this board only (user will revert):
+
+* `firmware/sdkconfig.jc4827w543`: `CONFIG_TOUCHY_PROTO_OVER_SERIAL=y`
+  and `CONFIG_TINYUSB_CDC_ENABLED=y` (re-enabling the CDC interface that
+  Stage 64.2 turned off). Note in the file that this is a temporary
+  test override.
+* Endpoint budget: re-enabling CDC consumes the EPs that 64.2 freed;
+  acceptable for a debug build (HID + vendor + CDC fit on the S3's IN
+  endpoint budget as they did pre-64.2).
+
+#### 6. Tests / validation
+
+* **Framing unit test** (`app/tests/test_framing.py` or extend an
+  existing transport test): `_pack` → `_unpack` round-trips; a flipped
+  byte fails the CRC8 and is rejected; the reader resyncs to the next
+  good frame after injected leading garbage / a truncated frame. Mirror
+  in Rust (`#[test]`).
+* **Python unit test** (`app/tests/test_transport_serial.py`): drive
+  `SerialTransport` against a loopback pty (`os.openpty`) wired to a
+  tiny in-process echo/dispatch stub that frames responses with the new
+  `_pack`, asserting a `sys_board_info_get` round-trips. No hardware.
+* **Refactor regression:** `test_transport_net.py` and the Rust
+  `sim_tcp` test still pass after the base-class extraction *and* the
+  framing change (any hardcoded `_pack` byte expectations get updated
+  to the new layout).
+* **Manual hardware check** (documented, not CI): `touchy --port
+  /dev/ttyACM0 screens push ...` against a jc4827w543 flashed with the
+  test config.
+
+#### 6a. Docs to update
+
+* `proto/touchy.proto` — the top-of-file "Wire format" comment (no
+  longer a bare u32 prefix) and the `ProtocolVersion` enum (add `V5`,
+  move `CURRENT`).
+* `docs/host-api.md` — document the magic + u16 len + CRC8 frame and
+  serial as an alternative physical layer alongside USB bulk.
+* `docs/simulator.md` — TCP sim now uses the same new framing.
+* `docs/python-api.md` / `docs/rust-api.md` — the `--port` / `--baud`
+  options and the `SerialTransport` class.
+* `AGENTS.md` / `CLAUDE.md` — bump the "latest active wire-format"
+  line (`ProtocolVersion.CURRENT == 5`) and note the framing change.
+* `firmware/main/host_api.cpp` / `transport.py` / `transport.rs`
+  header comments that describe the old length-prefix framing.
+
+#### 7. Out of scope for 64.3
+
+* Auto-discovery / probing of serial ports — `--port` is explicit.
+* Multiplexing logs and protocol on the *same* hardware UART without the
+  64.1 tunnel.
+* The CYD2USB hardware-UART `SerialLink` backend itself (lands with
+  Stage 65; 64.3 only proves the seam on CDC).
 
 ## Stage 65: add support for CYD2USB board
 

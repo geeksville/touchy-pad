@@ -22,7 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .. import _proto
-from ..transport import _LEN_STRUCT, _MAX_FRAME, _pack
+from ..transport import _FrameDecoder, _pack
 from ..transport_net import DEFAULT_SIM_PORT, TcpTransport
 from .device import SimDevice
 from .fs import SimFs, default_cache_root
@@ -172,17 +172,15 @@ class SimServer:
     def _serve_client(self, client: socket.socket, addr: tuple) -> None:
         try:
             client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            decoder = _FrameDecoder()
             while not self._stop.is_set():
-                header = self._recv_exact(client, _LEN_STRUCT.size)
-                if header is None:
-                    return
-                (length,) = _LEN_STRUCT.unpack(header)
-                if length > _MAX_FRAME:
-                    _log.warning("sim: oversize frame from %s: %d bytes", addr, length)
-                    return
-                payload = self._recv_exact(client, length)
+                payload = decoder.next_frame()
                 if payload is None:
-                    return
+                    chunk = self._recv_some(client)
+                    if not chunk:
+                        return
+                    decoder.feed(chunk)
+                    continue
                 try:
                     reply = self._device.handle_command(payload)
                 except Exception as exc:  # noqa: BLE001 — keep server up
@@ -206,17 +204,12 @@ class SimServer:
     # -- helpers ---------------------------------------------------------
 
     @staticmethod
-    def _recv_exact(client: socket.socket, n: int) -> bytes | None:
-        buf = bytearray()
-        while len(buf) < n:
-            try:
-                chunk = client.recv(n - len(buf))
-            except OSError:
-                return None
-            if not chunk:
-                return None
-            buf.extend(chunk)
-        return bytes(buf)
+    def _recv_some(client: socket.socket) -> bytes:
+        """Read a chunk from ``client``; ``b""`` on EOF or error."""
+        try:
+            return client.recv(65536)
+        except OSError:
+            return b""
 
 
 __all__ = ["SimServer", "SimServerTransport", "make_tempdir_server_transport"]

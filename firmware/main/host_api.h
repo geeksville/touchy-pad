@@ -32,6 +32,11 @@ void host_api_start(void);
 // can forward the callback without pulling in the dispatcher internals.
 void host_api_on_rx(void);
 
+// Hook for TinyUSB's tud_cdc_rx_cb — woken when bytes arrive on the
+// USB-CDC ACM port that carries the protocol when
+// CONFIG_TOUCHY_PROTO_OVER_SERIAL is set. No-op stub otherwise.
+void host_api_on_cdc_rx(void);
+
 // Enqueue an LvEvent for the host to fetch via EventConsumeCmd. Triggers
 // a one-shot "event ready" mailbox notification on the interrupt-IN
 // endpoint (the host then drains via repeated EventConsumeCmd until

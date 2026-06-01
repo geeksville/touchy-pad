@@ -21,7 +21,7 @@ use tokio::sync::Mutex;
 
 use crate::error::{Result, TouchyError};
 use crate::proto::Constants;
-use crate::transport::{Transport, pack, unpack};
+use crate::transport::{FrameDecoder, Transport, pack};
 
 const VENDOR_INTERFACE_CLASS: u8 = 0xFF;
 
@@ -146,15 +146,14 @@ impl Transport for UsbTransport {
 		// 64 KiB rounded to that boundary is plenty for any Response
 		// frame we emit.
 		let req_len = ((64 * 1024) / mps).max(1) * mps;
-		// Loop to absorb USB Zero-Length Packets (ZLPs). TinyUSB on
-		// the device appends a ZLP whenever the response payload is
-		// an exact multiple of `mps` (USB-spec requirement to mark
-		// end-of-transfer). nusb surfaces that ZLP as an Ok
-		// completion with an empty buffer on the *next* read — if we
-		// pass that straight to `unpack()` we get a bogus "short
-		// header: 0 bytes" framing error and desync. Skipping empty
-		// completions is harmless on non-ZLP devices and keeps the
-		// framing logic single-frame-at-a-time.
+		// Loop to absorb USB Zero-Length Packets (ZLPs) and reassemble
+		// the self-synchronising frame. TinyUSB on the device appends a
+		// ZLP whenever the response payload is an exact multiple of
+		// `mps` (USB-spec requirement to mark end-of-transfer); nusb
+		// surfaces that as an Ok completion with an empty buffer. We
+		// feed every non-empty completion into a [`FrameDecoder`] which
+		// handles resync and yields one complete, CRC-validated payload.
+		let mut decoder = FrameDecoder::new();
 		loop {
 			let buf = Buffer::new(req_len);
 			g.ep_in.submit(buf);
@@ -174,8 +173,10 @@ impl Transport for UsbTransport {
 				// ZLP from a previous frame — try again.
 				continue;
 			}
-			let (payload, _consumed) = unpack(data)?;
-			return Ok(payload.to_vec());
+			decoder.feed(data);
+			if let Some(payload) = decoder.next_frame() {
+				return Ok(payload);
+			}
 		}
 	}
 }

@@ -2322,4 +2322,4 @@ sim = ["PySide6", "platformdirs"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "ba6a25b832f8c2c4485c47107daa6b0baa057dd112ac90cbc88564cfa0db7fb7"
+content-hash = "69ed97cbaf7d6e16454ace09948954592e288d8defba2f07fd79e84f364aaaaa"

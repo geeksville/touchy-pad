@@ -84,9 +84,10 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
     type=click.Path(dir_okay=False, path_type=str),
     default=None,
     metavar="PATH",
-    help="Serial port for esptool-based commands (e.g. `update`). "
-    "Ignored by commands that talk over the normal USB protocol, "
-    "which auto-discover the device by VID/PID.",
+    help="Serial port path (e.g. `/dev/ttyACM0` or `COM3`). When set, "
+    "protocol commands talk to the device over this serial port at "
+    "115200 baud instead of auto-discovering it by USB VID/PID. Also "
+    "used by esptool-based commands such as `update`.",
 )
 @click.pass_context
 def cli(
@@ -235,12 +236,21 @@ def _make_transport() -> Transport | None:
     ``None``.
     """
     ctx = click.get_current_context(silent=True)
-    if ctx is None or not ctx.obj or not ctx.obj.get("sim"):
+    if ctx is None or not ctx.obj:
         return None
-    inner = ctx.obj.get("sim_transport")
-    if inner is None:
-        return None
-    return _SharedSimTransport(inner)
+    if ctx.obj.get("sim"):
+        inner = ctx.obj.get("sim_transport")
+        if inner is None:
+            return None
+        return _SharedSimTransport(inner)
+    # Not a sim run: if the user pointed us at a serial port, talk the
+    # protocol over it instead of auto-discovering a USB device.
+    port = ctx.obj.get("port")
+    if port:
+        from .transport_serial import SerialTransport
+
+        return SerialTransport(port)
+    return None
 
 
 class _SharedSimTransport(Transport):

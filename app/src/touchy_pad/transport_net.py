@@ -25,10 +25,12 @@ from __future__ import annotations
 import logging
 import os
 import socket
-import threading
 import time
 
-from .transport import _LEN_STRUCT, _MAX_FRAME, Transport, TransportError, _pack
+from .transport import (
+    TransportError,
+    _StreamFramedTransport,
+)
 
 #: The default TCP port the out-of-process simulator listens on.
 #: Exposed as a symbolic constant so the firmware/host code never
@@ -86,8 +88,8 @@ def sim_url_from_env() -> tuple[str, int] | None:
         return None
 
 
-class TcpTransport(Transport):
-    """Transport that talks the USB-bulk wire format over a TCP socket.
+class TcpTransport(_StreamFramedTransport):
+    """Transport that talks the wire framing over a TCP socket.
 
     Parameters
     ----------
@@ -113,9 +115,8 @@ class TcpTransport(Transport):
         *,
         connect_timeout_ms: int = 5000,
     ) -> None:
+        super().__init__()
         self._addr = (host, port)
-        self._lock = threading.Lock()
-        self._closed = False
 
         deadline = time.monotonic() + connect_timeout_ms / 1000.0
         last_exc: Exception | None = None
@@ -139,29 +140,19 @@ class TcpTransport(Transport):
         _log.info("sim: TCP transport connected to %s:%d", host, port)
         del last_exc  # silence linter
 
-    # -- Transport interface --------------------------------------------
+    # -- stream primitives ----------------------------------------------
 
-    def send_command(self, payload: bytes) -> None:
-        if self._closed:
-            raise TransportError("TcpTransport is closed")
-        frame = _pack(payload)
-        with self._lock:
-            try:
-                self._sock.sendall(frame)
-            except OSError as exc:
-                self._closed = True
-                raise TransportError(f"sim TCP send failed: {exc}") from exc
+    def _write_all(self, data: bytes) -> None:
+        try:
+            self._sock.sendall(data)
+        except OSError as exc:
+            self._closed = True
+            raise TransportError(f"sim TCP send failed: {exc}") from exc
 
-    def recv_response(self, timeout_ms: int = 2000) -> bytes:
-        if self._closed:
-            raise TransportError("TcpTransport is closed")
+    def _read_some(self, timeout_ms: int) -> bytes:
         self._sock.settimeout(timeout_ms / 1000.0)
         try:
-            header = self._recv_exact(_LEN_STRUCT.size)
-            (length,) = _LEN_STRUCT.unpack(header)
-            if length > _MAX_FRAME:
-                raise TransportError(f"sim TCP frame exceeds {_MAX_FRAME}-byte cap: {length} bytes")
-            return self._recv_exact(length)
+            return self._sock.recv(65536)
         except TimeoutError as exc:
             raise TransportError(f"sim TCP: no response within {timeout_ms} ms") from exc
         except OSError as exc:
@@ -180,17 +171,6 @@ class TcpTransport(Transport):
             self._sock.close()
         except OSError:
             pass
-
-    # -- helpers --------------------------------------------------------
-
-    def _recv_exact(self, n: int) -> bytes:
-        buf = bytearray()
-        while len(buf) < n:
-            chunk = self._sock.recv(n - len(buf))
-            if not chunk:
-                raise TransportError("sim TCP: connection closed by peer")
-            buf.extend(chunk)
-        return bytes(buf)
 
 
 __all__ = [

@@ -251,8 +251,8 @@ The vendor interface exposes two bulk endpoints:
 
 | Endpoint        | Direction | Type      | `wMaxPacketSize` | Purpose                        |
 |-----------------|-----------|-----------|------------------|--------------------------------|
-| Command (OUT)   | host → device | Bulk      | 64 bytes (FS) / 512 bytes (HS) | length-prefixed `Command` |
-| Response (IN)   | device → host | Bulk      | 64 / 512 bytes   | length-prefixed `Response`     |
+| Command (OUT)   | host → device | Bulk      | 64 bytes (FS) / 512 bytes (HS) | framed `Command` |
+| Response (IN)   | device → host | Bulk      | 64 / 512 bytes   | framed `Response`     |
 
 Events are delivered by host polling on the same endpoint pair via the
 `Event_Consume` command — see *Event delivery* above. An earlier design
@@ -266,22 +266,33 @@ configuration for `bInterfaceClass == 0xFF`. See
 
 ### Wire framing
 
-Every protobuf message — `Command`, `Response`, or `Event` — is prefixed by
-a single little-endian `uint32` carrying the length of the serialised
-payload in bytes. The header is always 4 bytes wide and represents
-payloads up to 4 GiB; in practice each side caps the frame at a small
-multiple of the largest `Command` (currently ~32 KiB for `ImageSaveCmd`)
-so a corrupt or malicious length field cannot force a huge allocation.
-Large messages are sent as multiple successive USB transfers and the
-receiver concatenates them. A USB short packet (transfer length not a
-multiple of `wMaxPacketSize`, including a zero-length packet) terminates a
-frame.
+Every protobuf message — `Command`, `Response`, or `Event` — is wrapped in
+a self-synchronising frame (Stage 64.3, `ProtocolVersion.CURRENT == 5`):
 
 ```
-+---------------------------+---------------------------+
-| u32 length (little-endian)| protobuf payload (length B)|
-+---------------------------+---------------------------+
++----------+----------+--------------------+---------+
+| MAGIC(2) | LEN(u16) | payload (LEN bytes)| CRC8(1) |
+| A5 5A    | LE       | protobuf message   |         |
++----------+----------+--------------------+---------+
 ```
+
+* **MAGIC** is the constant `0xA5 0x5A`, a sync anchor that lets a reader
+  re-align to a frame boundary after garbage or a mid-stream connect.
+* **LEN** is a little-endian `uint16`, so the maximum payload is 65535
+  bytes. Each side rejects (and resyncs past) any frame whose length or
+  CRC is invalid, so a corrupt length field cannot force a huge
+  allocation.
+* **CRC8** is computed (polynomial `0x07`, init `0x00`) over the two
+  `LEN` bytes followed by the payload — i.e. everything between the magic
+  and the CRC byte.
+
+The frame is identical on every transport — USB bulk pair, the simulator
+TCP socket, and the serial-port transport — so all three share one
+encoder/decoder (`touchy_pad.transport`, `touchy_pad::transport`, and the
+firmware `host_api` link abstraction). On USB, large messages still span
+multiple successive transfers and the receiver concatenates them before
+the decoder extracts a frame. On the serial port the frame's MAGIC lets
+the host skip device boot-log noise and lock onto the first real frame.
 
 ### Channel semantics
 

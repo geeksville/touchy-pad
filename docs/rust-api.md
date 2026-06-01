@@ -2,8 +2,11 @@
 
 The `touchy-pad` crate is the async, pure-Rust counterpart to the
 [Python `touchy_pad` package](python-api.md). It talks the same
-length-prefixed protobuf protocol over the device's vendor-specific bulk
-endpoints, with no libusb dependency.
+self-synchronising protobuf protocol (see
+[wire framing](host-api.md#wire-framing)) over the device's
+vendor-specific bulk endpoints, with no libusb dependency. The TCP
+(simulator) transport is always available; an optional `serial` cargo
+feature adds a serial-port transport (via `tokio-serial`).
 
 * Source: `rust/touchy-pad/`
 * Demo binary: `rust/touchy-demo/`

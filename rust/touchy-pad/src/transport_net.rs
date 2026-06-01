@@ -15,7 +15,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
 use crate::error::{Result, TouchyError};
-use crate::transport::{MAX_FRAME, Transport, pack};
+use crate::transport::{FrameDecoder, Transport, pack};
 
 /// Default TCP port the out-of-process simulator listens on. Mirrors
 /// `touchy_pad.transport_net.DEFAULT_SIM_PORT`.
@@ -60,15 +60,18 @@ impl Transport for TcpTransport {
 	async fn recv_response(&self, timeout: Duration) -> Result<Vec<u8>> {
 		let mut g = self.inner.lock().await;
 		let fut = async {
-			let mut hdr = [0u8; 4];
-			g.read_exact(&mut hdr).await.map_err(|e| TouchyError::Transport(format!("sim TCP recv header: {e}")))?;
-			let len = u32::from_le_bytes(hdr) as usize;
-			if len > MAX_FRAME {
-				return Err(TouchyError::Framing(format!("sim TCP frame exceeds {MAX_FRAME}-byte cap: {len} bytes")));
+			let mut decoder = FrameDecoder::new();
+			let mut chunk = [0u8; 4096];
+			loop {
+				if let Some(payload) = decoder.next_frame() {
+					return Ok::<Vec<u8>, TouchyError>(payload);
+				}
+				let n = g.read(&mut chunk).await.map_err(|e| TouchyError::Transport(format!("sim TCP recv: {e}")))?;
+				if n == 0 {
+					return Err(TouchyError::Transport("sim TCP: connection closed by peer".into()));
+				}
+				decoder.feed(&chunk[..n]);
 			}
-			let mut buf = vec![0u8; len];
-			g.read_exact(&mut buf).await.map_err(|e| TouchyError::Transport(format!("sim TCP recv body: {e}")))?;
-			Ok::<Vec<u8>, TouchyError>(buf)
 		};
 		match tokio::time::timeout(timeout, fut).await {
 			Ok(r) => r,

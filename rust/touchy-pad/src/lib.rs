@@ -45,6 +45,8 @@ pub mod pad;
 pub mod proto;
 pub mod transport;
 pub mod transport_net;
+#[cfg(feature = "serial")]
+pub mod transport_serial;
 pub mod transport_usb;
 
 pub use error::{Result, TouchyError};

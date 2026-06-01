@@ -20,12 +20,35 @@ from abc import ABC, abstractmethod
 
 from .usb_ids import PID, VENDOR_INTERFACE_CLASS, VID
 
-# Wire framing: u32 little-endian length prefix, then payload bytes.
-# The header is 4 bytes, hosting a payload size up to 4 GiB; in practice
-# we cap accepted frames at _MAX_FRAME bytes so a corrupt or malicious
-# length field can't make us allocate a huge buffer.
-_LEN_STRUCT = struct.Struct("<I")
-_MAX_FRAME = 0x10_0000  # 1 MiB
+# Wire framing (Stage 64.3): a self-synchronising frame used by *every*
+# transport (USB bulk, TCP sim, serial):
+#
+#     MAGIC(2) | LEN(u16 LE) | payload | CRC8(1)
+#
+#   * MAGIC  — fixed 2-byte sentinel marking a frame start; the resync
+#              anchor a byte-stream reader scans for.
+#   * LEN    — u16 little-endian payload length. The largest message is a
+#              ~4 KiB FileWriteCmd, so two bytes (64 KiB ceiling) is ample
+#              and makes an over-cap length impossible to express.
+#   * CRC8   — single-byte CRC (poly 0x07) over LEN || payload. Cheap by
+#              design: just enough to *detect* a corrupt frame and trigger
+#              a resync, not to correct errors.
+#
+# USB/TCP are already reliable underneath, so the CRC/resync machinery is
+# effectively a no-op there; it earns its keep on a real UART.
+_MAGIC = b"\xa5\x5a"
+_LEN_STRUCT = struct.Struct("<H")
+_MAX_FRAME = 0xFFFF  # bounded by the u16 length field
+
+
+def _crc8(data: bytes) -> int:
+    """CRC-8 (poly 0x07, init 0x00) over ``data``. Table-free."""
+    crc = 0
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x07) & 0xFF if (crc & 0x80) else (crc << 1) & 0xFF
+    return crc
 
 
 class TransportError(Exception):
@@ -84,18 +107,125 @@ class Transport(ABC):
 def _pack(payload: bytes) -> bytes:
     if len(payload) > _MAX_FRAME:
         raise TransportError(f"payload exceeds {_MAX_FRAME}-byte cap: {len(payload)} bytes")
-    return _LEN_STRUCT.pack(len(payload)) + payload
+    body = _LEN_STRUCT.pack(len(payload)) + payload
+    return _MAGIC + body + bytes((_crc8(body),))
 
 
 def _unpack(buf: bytes) -> bytes:
-    if len(buf) < _LEN_STRUCT.size:
-        raise TransportError(f"short frame: got {len(buf)} bytes, need >= 2")
-    (length,) = _LEN_STRUCT.unpack_from(buf, 0)
-    if len(buf) < _LEN_STRUCT.size + length:
-        raise TransportError(
-            f"truncated frame: header says {length} bytes, got {len(buf) - _LEN_STRUCT.size}"
-        )
-    return bytes(buf[_LEN_STRUCT.size : _LEN_STRUCT.size + length])
+    """Decode exactly one framed message from ``buf`` (no resync).
+
+    Convenience for tests / callers that already hold a single complete
+    frame starting at the magic. Stream readers use :class:`_FrameDecoder`
+    instead, which tolerates leading garbage and CRC errors.
+    """
+    hdr = len(_MAGIC) + _LEN_STRUCT.size
+    if len(buf) < hdr + 1:
+        raise TransportError(f"short frame: got {len(buf)} bytes")
+    if not buf.startswith(_MAGIC):
+        raise TransportError("frame does not start with magic")
+    (length,) = _LEN_STRUCT.unpack_from(buf, len(_MAGIC))
+    end = hdr + length
+    if len(buf) < end + 1:
+        raise TransportError(f"truncated frame: header says {length} bytes, got {len(buf) - hdr}")
+    body = bytes(buf[len(_MAGIC) : end])
+    if _crc8(body) != buf[end]:
+        raise TransportError("frame CRC8 mismatch")
+    return body[_LEN_STRUCT.size :]
+
+
+class _FrameDecoder:
+    """Stateful, resynchronising decoder for the Stage 64.3 wire frame.
+
+    Feed it arbitrary byte chunks; it yields complete, CRC-validated
+    payloads. Leading garbage (boot-log noise on a UART) is skipped by
+    scanning for :data:`_MAGIC`; a CRC mismatch drops one byte past the
+    candidate magic and rescans. On reliable transports (USB/TCP) it
+    never actually has to resync — the magic is always frame-aligned.
+    """
+
+    _HDR = len(_MAGIC) + _LEN_STRUCT.size
+
+    def __init__(self) -> None:
+        self._buf = bytearray()
+
+    def feed(self, data: bytes) -> None:
+        self._buf.extend(data)
+
+    def next_frame(self) -> bytes | None:
+        """Return the next complete payload, or ``None`` if more bytes are needed."""
+        buf = self._buf
+        while True:
+            idx = buf.find(_MAGIC)
+            if idx < 0:
+                # No magic yet. Retain a trailing byte in case the magic
+                # straddles this chunk and the next one.
+                if len(buf) > 1:
+                    del buf[:-1]
+                return None
+            if idx > 0:
+                del buf[:idx]  # drop leading garbage
+            if len(buf) < self._HDR + 1:
+                return None  # need length + at least the CRC byte
+            (length,) = _LEN_STRUCT.unpack_from(buf, len(_MAGIC))
+            end = self._HDR + length
+            if len(buf) < end + 1:
+                return None  # full payload + CRC not here yet
+            body = bytes(buf[len(_MAGIC) : end])
+            if _crc8(body) == buf[end]:
+                del buf[: end + 1]
+                return body[_LEN_STRUCT.size :]
+            # CRC failed: this magic was spurious (or the frame is
+            # corrupt). Skip past it and rescan.
+            del buf[:1]
+
+
+class _StreamFramedTransport(Transport):
+    """Base for byte-stream transports (TCP, serial).
+
+    Subclasses implement the two stream primitives below; this class
+    owns the shared framing, the resync decoder, and the command lock.
+    """
+
+    needs_image_conversion = True
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._decoder = _FrameDecoder()
+        self._closed = False
+
+    # -- stream primitives (subclass-provided) --------------------------
+
+    def _write_all(self, data: bytes) -> None:  # pragma: no cover - abstract
+        raise NotImplementedError
+
+    def _read_some(self, timeout_ms: int) -> bytes:  # pragma: no cover - abstract
+        """Read and return up to a chunk of bytes; ``b""`` on EOF.
+
+        Must raise :class:`TransportError` on timeout.
+        """
+        raise NotImplementedError
+
+    # -- Transport API --------------------------------------------------
+
+    def send_command(self, payload: bytes) -> None:
+        if self._closed:
+            raise TransportError(f"{type(self).__name__} is closed")
+        frame = _pack(payload)
+        with self._lock:
+            self._write_all(frame)
+
+    def recv_response(self, timeout_ms: int = 2000) -> bytes:
+        if self._closed:
+            raise TransportError(f"{type(self).__name__} is closed")
+        while True:
+            frame = self._decoder.next_frame()
+            if frame is not None:
+                return frame
+            chunk = self._read_some(timeout_ms)
+            if not chunk:
+                self._closed = True
+                raise TransportError("connection closed by peer")
+            self._decoder.feed(chunk)
 
 
 # Some sandboxed environments — most notably the touchy-pad devcontainer —
@@ -397,6 +527,8 @@ class UsbTransport(Transport):
 
         # Serialise concurrent command/response pairs.
         self._cmd_lock = threading.Lock()
+        # Resynchronising frame decoder shared with the stream transports.
+        self._rx_decoder = _FrameDecoder()
 
     # -- Transport API ------------------------------------------------------
 
@@ -406,41 +538,30 @@ class UsbTransport(Transport):
             self._ep_out.write(framed, timeout=2000)
 
     def recv_response(self, timeout_ms: int = 2000) -> bytes:
-        # The wire framing is a 4-byte LE length followed by `length`
-        # payload bytes. libusb requires each bulk-IN read buffer to be a
-        # whole multiple of the endpoint's wMaxPacketSize (otherwise a
-        # full-size packet from the device causes EOVERFLOW), so we round
-        # every read up to the next packet boundary and stitch the chunks
-        # together until we have the full frame.
+        # The wire framing (Stage 64.3) is MAGIC | LEN(u16) | payload |
+        # CRC8. libusb requires each bulk-IN read buffer to be a whole
+        # multiple of the endpoint's wMaxPacketSize (otherwise a
+        # full-size packet from the device causes EOVERFLOW), so we read
+        # in packet-sized chunks and feed them to the shared
+        # `_FrameDecoder`, which stitches and validates one frame.
         mps = self._ep_in.wMaxPacketSize
 
-        def _read_at_least(min_bytes: int, accum: bytearray) -> None:
-            while len(accum) < min_bytes:
-                want = ((min_bytes - len(accum) + mps - 1) // mps) * mps
-                # Cap any individual URB at a sensible size — the device
-                # only sends frames up to ImageSaveCmd-equivalent (~32 KB),
-                # but using a big-enough buffer is fine.
-                want = min(want, 64 * 1024)
-                chunk = bytes(self._ep_in.read(want, timeout=timeout_ms))
-                if not chunk:
-                    # A 0-byte read is a USB Zero-Length Packet (ZLP).
-                    # TinyUSB appends one whenever a bulk transfer's
-                    # total length is an exact multiple of
-                    # wMaxPacketSize, to signal "transfer complete" to
-                    # the host. It surfaces as a 0-byte chunk on our
-                    # next ep.read() call. Skip it and keep waiting for
-                    # real data; a true device disconnect raises
-                    # USBError on timeout instead.
-                    continue
-                accum.extend(chunk)
-
-        buf = bytearray()
-        _read_at_least(_LEN_STRUCT.size, buf)
-        (length,) = _LEN_STRUCT.unpack_from(buf, 0)
-        if length > _MAX_FRAME:
-            raise TransportError(f"device announced oversize frame: {length} bytes")
-        _read_at_least(_LEN_STRUCT.size + length, buf)
-        return bytes(buf[_LEN_STRUCT.size : _LEN_STRUCT.size + length])
+        while True:
+            frame = self._rx_decoder.next_frame()
+            if frame is not None:
+                return frame
+            # Round each URB up to a packet boundary; the device only
+            # sends small frames, but a generous buffer is harmless.
+            want = min(((mps + mps - 1) // mps) * mps * 16, 64 * 1024)
+            chunk = bytes(self._ep_in.read(want, timeout=timeout_ms))
+            if not chunk:
+                # A 0-byte read is a USB Zero-Length Packet (ZLP).
+                # TinyUSB appends one whenever a bulk transfer's total
+                # length is an exact multiple of wMaxPacketSize, to
+                # signal "transfer complete". Skip it and keep waiting;
+                # a true disconnect raises USBError on timeout instead.
+                continue
+            self._rx_decoder.feed(chunk)
 
     def close(self) -> None:
         try:

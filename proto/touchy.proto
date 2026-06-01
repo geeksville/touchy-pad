@@ -9,9 +9,17 @@
 //   * Response (device -> host, bulk IN)  carries `Response` messages.
 //                                         Exactly one response per command.
 //
-// Wire format: each message is a length-prefixed serialised `Command` or
-// `Response` (proto3 binary). The length prefix is a single little-endian
-// uint32 carrying the byte count of the following payload.
+// Wire format: each message is a self-synchronising frame carrying one
+// serialised `Command` or `Response` (proto3 binary):
+//
+//     MAGIC(2) | LEN(uint16 little-endian) | payload | CRC8(1)
+//
+// MAGIC is the constant byte pair 0xA5 0x5A and lets a reader re-acquire
+// frame alignment after corruption or a mid-stream connect. LEN is the
+// byte count of `payload`. CRC8 (polynomial 0x07, init 0x00) is computed
+// over `LEN || payload` and lets the reader reject corrupt frames and
+// resync. This framing is identical across every transport (USB bulk,
+// TCP simulator, and serial port). See stage 64.3 in docs/design.md.
 //
 // Widget / screen layout types live in `widgets.proto` (same package).
 //
@@ -186,7 +194,10 @@ message SysBoardInfoResponse {
                  //           FileDelete replaces FileReset/FileSave
         V4 = 4;  // stage 64.1: Response.log_record tunneled device logs
                  //           (returned in place of event_consume)
-        CURRENT = 4;  // alias: always equals the latest defined version
+        V5 = 5;  // stage 64.3: self-synchronising frame
+                 //           (MAGIC | uint16 LEN | payload | CRC8) on every
+                 //           transport, replacing the bare uint32 length prefix
+        CURRENT = 5;  // alias: always equals the latest defined version
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number

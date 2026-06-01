@@ -5,7 +5,7 @@ develop screens, exercise the host API, and run the test suite on a
 machine with no hardware attached. The simulator implements the same
 nanopb command / response protocol as the firmware. Since Stage 63 the
 sim also speaks that protocol over **TCP**, using the exact same
-length-prefixed framing the firmware uses on its USB bulk pipes — so
+self-synchronising framing the firmware uses on its USB bulk pipes — so
 anything that talks to a real Touchy-Pad over USB also talks to the
 sim, unchanged, over a socket.
 
@@ -23,8 +23,9 @@ Plus one new subcommand:
 |-----------------------|--------------------------------------------------------------------------------------------------------|
 | `touchy simulator`    | Run a standalone sim server that listens on TCP (port 8935 by default). Optional `--headless` for no Qt window. |
 
-The wire format is identical to USB: a 4-byte little-endian length
-prefix followed by the nanopb payload, 1 MiB hard cap.
+The wire format is identical to USB: the Stage 64.3 self-synchronising
+frame `MAGIC(0xA5 0x5A) | LEN(u16 LE) | payload | CRC8`, capped at a
+65535-byte payload. See [the host-API framing section](host-api.md#wire-framing).
 
 ![sim touchpad](images/sim-home.png)
 ![sim demo](images/sim-test.png)

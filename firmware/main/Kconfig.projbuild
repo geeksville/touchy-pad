@@ -29,4 +29,19 @@ config TOUCHY_LOG_TO_UART
         with no usable physical console (e.g. CYD2USB) to skip the
         forward and save a few cycles per log line.
 
+config TOUCHY_PROTO_OVER_SERIAL
+    bool "Also serve the touchy protobuf protocol over a serial port"
+    default n
+    help
+        When enabled, a second host_api dispatcher task speaks the same
+        self-synchronising protobuf framing (MAGIC | uint16 LEN |
+        payload | CRC8) over a serial port in addition to the USB
+        vendor interface. On boards with native USB this rides the
+        USB-CDC ACM port (TINYUSB_CDC_ENABLED must also be set); on
+        boards without native USB (e.g. the future CYD2USB) it will
+        ride a hardware UART. The serial port must carry *only*
+        protocol frames — route ESP-IDF logs to the host via
+        TOUCHY_LOG_OVER_PROTO instead of the protocol CDC/UART console.
+
 endmenu
+
