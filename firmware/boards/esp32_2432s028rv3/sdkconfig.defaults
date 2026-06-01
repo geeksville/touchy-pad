@@ -14,6 +14,9 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/4M.csv"
+# Enable the dedicated Boya flash driver — boards with BY25Q64 / BY25Q128 chips
+# otherwise fall back to the generic driver and print a warning at boot.
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 
 # ----- No PSRAM on this module -----
 # (CONFIG_SPIRAM intentionally left unset.) The 'R:' ramdisk still works —
@@ -31,19 +34,27 @@ CONFIG_TOUCHY_PROTO_OVER_SERIAL=y
 # binary protocol frames. Device ESP_LOG output reaches the host through the
 # Stage 64.1 LogRecord tunnel instead (CONFIG_TOUCHY_LOG_OVER_PROTO=y, the
 # common default), so we lose nothing by silencing the raw UART console.
-CONFIG_ESP_CONSOLE_UART_NONE=y
+#CONFIG_ESP_CONSOLE_UART_NONE=y
 # CONFIG_TOUCHY_LOG_TO_UART has no effect once the console UART is disabled,
 # but set it explicitly so intent is clear.
 # CONFIG_TOUCHY_LOG_TO_UART is not set
+
+# Use default UART settings and change to log over our protobufs
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_TOUCHY_LOG_OVER_PROTO=y
 
 # ----- First-light bring-up override (manual; do NOT leave enabled) ---------
 # Before the protocol link is trusted it can be handy to see boot logs on a
 # serial monitor. For that, temporarily edit the options above:
 #   - replace CONFIG_ESP_CONSOLE_UART_NONE=y with CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 #   - replace CONFIG_TOUCHY_PROTO_OVER_SERIAL=y with CONFIG_TOUCHY_PROTO_OVER_SERIAL=n
+# CONFIG_TOUCHY_PROTO_OVER_SERIAL=n
 # That re-routes the console to UART0 (human-readable text) and disables the
 # binary protocol so the port carries logs only. NEVER ship with that config.
 #
 # NOTE: do not express those overrides here as `# CONFIG_X is not set` lines —
 # in sdkconfig syntax that is the *real* directive for X=n (not a comment) and
 # would silently undo the settings above.
+
+# Temporarily turn off display on this board for early bring-up
+# CONFIG_TOUCHY_NO_DISPLAY=y

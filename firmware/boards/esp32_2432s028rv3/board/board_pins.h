@@ -34,7 +34,7 @@
 // Backlight GPIO. The Rv3 board drives the LED via GPIO21 on most units, but
 // some early/alternate revisions use GPIO27. Flip here if the screen stays
 // dark. Active-high.
-#define BOARD_LCD_GPIO_BACKLIGHT        GPIO_NUM_21
+#define BOARD_LCD_GPIO_BACKLIGHT        GPIO_NUM_27
 
 // ST7789 v3 colour quirks. The 2432S028 v3 panel wants BGR colour order and
 // inverted pixels; older v2 boards want neither. Flip these two if reds/blues
