@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use crate::client::{Client, FILE_WRITE_CHUNK};
 use crate::error::{Result, TouchyError};
 use crate::images::{LvFormat, looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin};
-use crate::proto::{LvEvent, Screen};
+use crate::proto::{LvEvent, Screen, Widget};
 use crate::transport::Transport;
 use crate::transport_net::{TcpTransport, sim_url_from_env};
 use crate::transport_usb::UsbTransport;
@@ -127,6 +127,22 @@ impl Touchy {
 		let mut buf = Vec::with_capacity(screen.encoded_len());
 		screen.encode(&mut buf)?;
 		self.file_save(path, &buf).await?;
+		Ok(())
+	}
+
+	/// Encode a [`Widget`] and save it as a user-screen body under
+	/// [`USER_SCREENS_DIR`][crate::USER_SCREENS_DIR].
+	///
+	/// `name` is the bare stem (e.g. `"rust_demo"`); the path becomes
+	/// `F:host/uscr/<name>.pb`. The default chrome's
+	/// `widget_ref(id="page")` will cycle through these files via
+	/// the Prev / Next buttons.
+	pub async fn user_screen_save(&self, name: &str, widget: &Widget) -> Result<()> {
+		use crate::USER_SCREENS_DIR;
+		let path = format!("{USER_SCREENS_DIR}{name}.pb");
+		let mut buf = Vec::with_capacity(widget.encoded_len());
+		widget.encode(&mut buf)?;
+		self.file_save(&path, &buf).await?;
 		Ok(())
 	}
 

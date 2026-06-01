@@ -11,7 +11,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use touchy_pad::Touchy;
-use touchy_pad::proto::{Action, ActionHost, Image, ImageButton, Layout, LayoutAbsolute, LvEventCode, Rect, Screen, Widget, action, lv_event, widget};
+use touchy_pad::proto::{Action, ActionHost, Image, ImageButton, Layout, LayoutAbsolute, LvEventCode, Rect, Widget, action, lv_event, widget};
 
 #[derive(Parser, Debug)]
 #[command(name = "touchy-demo", about = "Demo CLI for the touchy-pad Rust API")]
@@ -97,23 +97,19 @@ async fn upload_demo(pad: &Touchy) -> Result<()> {
 		});
 	}
 
-	// Root layout-widget — holds the buttons. The wire-format
-	// version field lives on the root widget of each file (Stage 56);
-	// for a screen file that's `screen.active.version`.
-	let active = Widget {
+	// Root layout-widget — the body of one user-screen page.
+	// Saved to F:host/uscr/rust_demo.pb so the default chrome's
+	// widget_ref(id="page") can page through it with Prev / Next.
+	let root = Widget {
 		id: "root".into(),
 		version: touchy_pad::proto::widget::Version::Current as i32,
 		kind: Some(widget::Kind::LayoutAbsolute(LayoutAbsolute { layout: Some(Layout { children }) })),
 		..Default::default()
 	};
 
-	let screen = Screen {
-		active: Some(active),
-		..Default::default()
-	};
-	pad.screen_save("F:host/s/rust_demo.pb", &screen).await?;
-	pad.screen_load("F:host/s/rust_demo.pb").await?;
-	log::info!("rust_demo screen activated");
+	pad.user_screen_save("rust_demo", &root).await?;
+	pad.screen_load(touchy_pad::DEFAULT_SCREEN_PATH).await?;
+	log::info!("rust_demo user-screen uploaded; default chrome loaded");
 	Ok(())
 }
 

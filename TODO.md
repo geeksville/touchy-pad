@@ -48,15 +48,14 @@ Main new features: Works with StreamController app to provide arbitrary user but
 * [x] test https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/lcd/index.html to see if it could help rendering performance - NO
 * [x] investigate [opendeck](docs/opendeck.md) and possibly do a plugin for that instead-of or in-addition-to StreamController.
 * [ ] fix opendeck plugin not enumerating devices - figure out how to debug rust https://code.visualstudio.com/docs/languages/rust#_install-debugging-support
-* [ ] add plugin binary to release
+* [ ] add opendeck plugin binary to release
 * [ ] add some of the example JSON to the API docs
-* [ ] add a widget handle concept so host can say to just redraw one particular widget (only need to implement for screens/layouts/image)
+* [x] add a widget handle concept so host can say to just redraw one particular widget (only need to implement for screens/layouts/image)
 * [x] make screen sleep default timeout
 * [x] Add support for F:widgets/foo.pb widget files.  This would allow TouchyDeck to own a R:widgets/deck.pb.  Which could be nested into a F: screen.  So that dynamic StreamDeck emulated stuff could be updated independently of the configurable screens the user has selected.  Probably should add a way for the host to see dimensions of arbitrary widgets in screens/walk the screen list?
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [x] Turn off "Expensive debugging flags!" in sdkconfig.defaults
-* [ ] Support a few more board types
-* [ ] cleanup embedding of streamdeck ui into other widgets
+* [ ] cleanup embedding of streamdeck ui into other widgets (via user screens)
 * [ ] update python code to be 'finished' for StreamController (make sure press and release events work)
 * [ ] implement the StreamDeck background graphic API
 
@@ -64,6 +63,7 @@ Main new features: Works with StreamController app to provide arbitrary user but
 
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] Support a few more board types
 * [ ] try turning off GPIO matrix for SPI display writes - per https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/spi_master.html#_CPPv416spi_bus_config_t might allow increase to 80Mhz.  "You can use this structure to specify the GPIO pins of the bus. Normally, the driver will use the GPIO matrix to route the signals. An exception is made when all signals either can be routed through the IO_MUX or are -1. In that case, the IO_MUX is used. On ESP32, using GPIO matrix will bring about 25ns of input delay, which may cause incorrect read for >40MHz speeds."
 * [ ] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
