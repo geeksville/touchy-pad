@@ -28,16 +28,10 @@ More installation instructions [here](docs/installing.md).
 * Automated installer provides 'one-click' install for boards you purchased from wherever.
 * Linux, macOS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
 
-## Features coming soon
-
-* Provides a [Stream-controller](https://streamcontroller.github.io/docs/latest/) compatible API so that a graphical button array can be selected instead of touchpad.  
-* Support for more devices (including little tiny 3 or 4" displays - suitable for building into custom keyboards or PC cases)
-
-I made this little video for the streamcontroller devs showing the current proof-of-concept (click on image to see/hear the video):
-[![Watch the video](https://img.youtube.com/vi/U-vNR_TbUDM/maxresdefault.jpg)](https://youtu.be/U-vNR_TbUDM)
-
 ## [OpenDeck](https://github.com/nekename/OpenDeck) plugin
-This project includes a [plugin](rust/touchy-opendeck/) for OpenDeck.  The plugin is young and not yet in the OpenDeck 'store' so you need to [download](https://github.com/geeksville/touchy-pad/releases/latest) a ZIP file if you want to install it.  Download touchy-opendeck.sdPlugin.zip into a temp directory then inside of OpenDeck go to plugins and choose install-from-zip.  You'll end up with something like:
+This project includes a [plugin](rust/touchy-opendeck/) for OpenDeck.  It allows you to use a touchy-pad as a 'StreamDeck' like device (that costs only $15!).
+
+The plugin is young and not yet in the OpenDeck 'store' so you need to [download](https://github.com/geeksville/touchy-pad/releases/latest) a ZIP file if you want to install it.  Download touchy-opendeck.sdPlugin.zip into a temp directory then inside of OpenDeck go to plugins and choose install-from-zip.  You'll end up with something like:
 
 ![opendeck install](docs/images/opendeck-plugins.png).
 
@@ -61,6 +55,19 @@ If you'd like to see a demo of what you can do run:
 ```
 touchy screen demo --listen
 ```
+
+## [Stream-controller](https://streamcontroller.github.io/docs/latest/) plugin
+
+[Stream-controller](https://streamcontroller.github.io/docs/latest/) is a app that is someone similar to OpenDeck.  They don't yet have a full API for adding 'alternative devices' but I have made this proof-of-concept plugin to work with that app.  Alas, this plug-in is 'on-the-shelf' until they/we work through [this](https://github.com/StreamController/StreamController/pull/602) pull-request (to add an alternative device API).  If you are a StreamController dev I am eager to discuss this PR concept with you in that issue.
+
+Touchy-Pad provides a [Stream-controller](https://streamcontroller.github.io/docs/latest/) compatible API so that a graphical button array can be selected instead of touchpad.  
+
+I made this little video for the streamcontroller devs showing the current proof-of-concept (click on image to see/hear the video):
+[![Watch the video](https://img.youtube.com/vi/U-vNR_TbUDM/maxresdefault.jpg)](https://youtu.be/U-vNR_TbUDM)
+
+## Features coming soon
+
+See [TODO](docs/TODO.md) for a list of features that will be added in the next couple of months (lots more supported devices, other cool things...)
 
 ## Eventual features
 
