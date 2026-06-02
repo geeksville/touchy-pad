@@ -19,14 +19,15 @@ More installation instructions [here](docs/installing.md).
 ## Current features
 <img src="docs/images/touchy.png" alt="Project Icon" align="right" width="140" />
 
-(Note: the first public alpha release is not yet out - this project is **young**.  But the python tool and firmware are out on pypi/github if you are very brave.  The first public 'user' alpha will be the first week of June)
+Disclaimer: This project is young, but moving at a fast pace.  You can already use it for a variety of gool things:
 
-* A "premium feel" open-source multitouch USB touchpad with built-in customizable screen (for use with Mac/Linux/Windows/Android).  Even if you don't want to run our sister app.
-* Works with cheap ESP32 based display boards ($15-$30 USD depending on features) - no soldering required, just connect USB, run the installer and go.
+* It is a "premium feel" open-source multitouch USB touchpad with built-in customizable screen (for use with Mac/Linux/Windows/Android).  This works even if you don't want to run our sister app.
+* Works numerous with cheap ESP32 based display boards ($15-$30 USD depending on features) - no soldering required, just connect USB, run the installer and go. The automated installer provides 'one-click' install for boards you purchased from wherever.
 * When used as a touchpad provides a pretty water droplet touch/grab/turn/gesture visualization.
-* Allows simple key/mouse shortcut/macros without the need for leaving the (optional) stream-controller app running.  Generated entirely natively as USB events from our device.
-* Automated installer provides 'one-click' install for boards you purchased from wherever.
+* Allows simple key/mouse shortcut/macros without the need for leaving the (optional) sister app running.  Generated entirely natively as USB events from our device.
+* Also works like a "StreamDeck" via the [OpenDeck](https://github.com/nekename/OpenDeck) application.  Many different plugins automatically supported, bind behaviors and displays to your touchy-deck with a polished GUI app.
 * Linux, macOS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
+* Includes full (easy) python and rust API libraries for making your own host side apps with cool graphical controls/displays on small/cheap USB devices.
 
 ## [OpenDeck](https://github.com/nekename/OpenDeck) plugin
 This project includes a [plugin](rust/touchy-opendeck/) for OpenDeck.  It allows you to use a touchy-pad as a 'StreamDeck' like device (that costs only $15!).
