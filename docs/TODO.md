@@ -35,25 +35,24 @@ Main new features: works as a touchpad, with some basic ability to add buttons (
 
 Main new features: Works with StreamController app to provide arbitrary user buttons
 
-* [ ] add aliexress/etc... links to recommended board
+* [x] add aliexress/etc... links to recommended board
 * [x] change DSL to allow callback functions attached to actions.  completely hide "event id" from the api consumer (just map it to the callback)
-* [ ] make stand alone example.py
 * [ ] two main readme points: better touchpad (that's graphical!) with streamdeck like features (that's open source) and an easy developer platform so your desktop python/rust apps can make interactive user interfaces on (very cheap!) LCD/eink displays.
 * [x] make switchable subscreens by using widgetref?
 * [x] remove Screen.path?  I don't think we need it
 * [x] test https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/lcd/index.html to see if it could help rendering performance - NO
 * [x] investigate [opendeck](docs/opendeck.md) and possibly do a plugin for that instead-of or in-addition-to StreamController.
 * [x] fix opendeck plugin not enumerating devices - figure out how to debug rust https://code.visualstudio.com/docs/languages/rust#_install-debugging-support
-* [ ] add opendeck plugin binary to release
+* [x] add opendeck plugin binary to release
+* [ ] make stand alone example.py
 * [ ] add some of the example JSON to the API docs
-* [ ] explain opendeck plugin install
-* [ ] make opendeck example video
+* [x] explain opendeck plugin install
+* [x] make opendeck example video
 * [ ] send message to Opendeck geeks (include reverse engineer docs and video)
-* [ ] explain StreamController status
+* [x] explain StreamController status
 * [x] add a widget handle concept so host can say to just redraw one particular widget (only need to implement for screens/layouts/image)
 * [x] make screen sleep default timeout
 * [x] Add support for F:widgets/foo.pb widget files.  This would allow TouchyDeck to own a R:widgets/deck.pb.  Which could be nested into a F: screen.  So that dynamic StreamDeck emulated stuff could be updated independently of the configurable screens the user has selected.  Probably should add a way for the host to see dimensions of arbitrary widgets in screens/walk the screen list?
-* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [x] Turn off "Expensive debugging flags!" in sdkconfig.defaults
 * [x] cleanup embedding of streamdeck ui into other widgets (via user screens)
 * [x] update python code to be 'finished' for StreamController (make sure press and release events work)
@@ -68,6 +67,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] Support a few more board types
 * [ ] support eink displays in my test devices drawer
 * [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/
+* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] try turning off GPIO matrix for SPI display writes - per https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/spi_master.html#_CPPv416spi_bus_config_t might allow increase to 80Mhz.  "You can use this structure to specify the GPIO pins of the bus. Normally, the driver will use the GPIO matrix to route the signals. An exception is made when all signals either can be routed through the IO_MUX or are -1. In that case, the IO_MUX is used. On ESP32, using GPIO matrix will bring about 25ns of input delay, which may cause incorrect read for >40MHz speeds."
 * [ ] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...

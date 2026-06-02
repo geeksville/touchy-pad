@@ -7,7 +7,7 @@
 To see (and hear) a video demo click this:
 [![Watch the video](https://img.youtube.com/vi/-RXaUL3E1Vk/hqdefault.jpg)](https://youtu.be/-RXaUL3E1Vk)
 
-If you have Python installed and a [suitable device](docs/hardware.md), you can have this running on your hardware in less than a minute:
+If you have Python installed and a [suitable device $15ish device](docs/hardware.md#jc4827w543), you can have this running on your hardware in less than a minute:
 ```bash
 pip install touchy-pad
 touchy update # This will automatically install the firmware on your board - prompting you as needed

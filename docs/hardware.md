@@ -4,14 +4,16 @@ Currently this project supports two board types, but ali-express seems to have m
 
 Currently the following two boards are supported
 
-## JC4827W543: CYD "Cheap Yellow Display" ish
+## JC4827W543
 
 ![cyd](images/jc4827w543.jpg)
 
-**THIS IS THE CURRENTLY 'BEST' BOARD TO PURCHASE**
+**jc4827w543 IS THE CURRENTLY 'BEST' BOARD TO PURCHASE**
+This board costs just $15 USD, but has full multi-touch capacitive touchscreen with lots of RAM and FLASH!
 
-CYD "Cheap Yellow Display" boards such as jc4827w543 (costs just $15 USD!)
 The JC4827W543 (often sold under names like Guition or Sunton) is an ESP32-S3 board paired with a 4.3" 480x272 RGB display (using an NV3041A or ST3401A controller) and usually a GT911 capacitive touch chip. For detailed hw docs see [here](https://github.com/profi-max/JC4827W543_4.3inch_ESP32S3_board).
+
+Here's a suitable [aliexpress search](https://www.aliexpress.us/w/wholesale-JC4827W543.html?spm=a2g0o.home.search.0).  Make sure to select sellers that sell a fair number of units and have decent reviews.  Also make sure to purchase one with **CAPACITIVE** touch.  For instance [this one](https://www.aliexpress.us/item/3256806543063048.htm).
 
 ### NV3041A QSPI clock ceiling
 
@@ -21,8 +23,7 @@ corruption / dropped pixels. `BOARD_LCD_QSPI_CLK_HZ` in
 [firmware/boards/jc4827w543/board/board_pins.h](../firmware/boards/jc4827w543/board/board_pins.h)
 is set accordingly. At 32 MHz QSPI the raw wire bandwidth is ~16 MB/s,
 which caps a full-frame RGB565 redraw (480×272×2 ≈ 261 KB) at roughly
-~60 FPS regardless of how the host-side code is structured. Don't raise
-`BOARD_LCD_QSPI_CLK_HZ` without re-validating on real hardware.
+~60 FPS regardless of how the host-side code is structured. 
 
 ## ESP32-2432S028Rv3: 2.8" resistive cheap-yellow-display variant (Also called "ESP32-2432S028R v3" or CYD2USB)
 
