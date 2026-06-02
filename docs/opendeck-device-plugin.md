@@ -1,6 +1,6 @@
 # Writing an OpenDeck device plugin
 
-OpenDeck (<https://github.com/nekename/OpenDeck>) is an open-source
+[OpenDeck](https://github.com/nekename/OpenDeck) is an open-source
 StreamDeck-compatible app. Out of the box it talks to genuine Elgato
 hardware, but third-party hardware can plug in via **device plugins**:
 external processes that present some piece of hardware (USB key matrix,
@@ -8,7 +8,7 @@ LCD touchpad, MIDI controller, anything) to OpenDeck as if it were a
 StreamDeck.
 
 This guide collects what you need to know in one place. It is written
-from the perspective of a noob open deck [plugin]((https://github.com/geeksville/touchy-pad/tree/main/rust/touchy-opendeck) developer.  Hopefully it might be useful for people other than just me.  Disclaimer: I asked my AI assistant buddy to maintain/extend this document as 'we' learned things from reverse engineering the example 
+from the perspective of a noob open deck [plugin](https://github.com/geeksville/touchy-pad/tree/main/rust/touchy-opendeck) developer.  Hopefully it might be useful for people other than just me.  Disclaimer: I asked my AI assistant buddy to maintain/extend this document as 'we' learned things from reverse engineering the example 
 plugin that [@nekename](https://github.com/nekename) pointed me at (because no official docs yet on how to write a device plugin).  
 
 It assumes basic familiarity with the OpenDeck app and with whatever
