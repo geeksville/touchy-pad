@@ -230,6 +230,9 @@ jobs:
         with:
           workspaces: rust
 
+      - name: Run rust api libary tests
+        run: just rust-test
+
       - name: Build and package touchy-opendeck plugin
         run: just opendeck-package
 
