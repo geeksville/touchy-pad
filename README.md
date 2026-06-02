@@ -1,3 +1,5 @@
+
+
 # Touchy-pad
 
 ![cyd](docs/images/jc4827w543.jpg)
@@ -12,7 +14,10 @@ touchy update # This will automatically install the firmware on your board - pro
 ```
 More installation instructions [here](docs/installing.md).
 
+<br clear="right" />
+
 ## Current features
+<img src="docs/images/touchy.png" alt="Project Icon" align="right" width="140" />
 
 (Note: the first public alpha release is not yet out - this project is **young**.  But the python tool and firmware are out on pypi/github if you are very brave.  The first public 'user' alpha will be the first week of June)
 
@@ -78,6 +83,7 @@ However, in some of my other open-source projects, I've seen the current hell PR
 ## Credits/Thanks
 
 * ESP-IDF LVGL didn't have a NV3041A driver, so I (with the help of my AI buddy) cribbed a lot from [Arduno_GFX](https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp) - huge thanks to [@moononournation](https://github.com/moononournation)(?) for writing it.
+* Thank you to [Shyo Holguin Campos](mailto:shyo.holguin.campos@gmail.com) who made [the](https://www.figma.com/community/file/1508554010771921982) [CCBY04](https://creativecommons.org/licenses/by/4.0/) licensed [icon](https://www.figma.com/design/xVSEw1CnaRCy6pqe41ghYD/135-Free-Cute-Colored-Icons--Community-?node-id=2002-339&t=jaNuJU0GHwZkVNAI-4) we repurposed as the [touchy-icon](docs/images/touchy.png).
 * So far the main dev is [@geeksville](https://github.com/geeksville/). However if this seems interesting/fun to you please join me! 
 
 ## License
