@@ -297,11 +297,11 @@ rust-run *ARGS:
     cd rust && cargo run -p touchy-demo -- {{ARGS}}
 
 # Build the OpenDeck device plugin (debug binary).
-opendeck-build-debug:
+opendeck-build-debug: _rust-sync-version
     cd rust && cargo build -p touchy-opendeck
 
 # Build the OpenDeck device plugin (release binary).
-opendeck-build-release:
+opendeck-build-release: _rust-sync-version
     cd rust && cargo build -p touchy-opendeck --release
 
 # Package the .sdPlugin folder (with the host-triple binary) into a
