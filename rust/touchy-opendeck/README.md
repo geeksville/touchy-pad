@@ -177,6 +177,7 @@ bundle, so the symlink won't be committed. Then:
 ```sh
 just opendeck-run     # builds + runs OpenDeck from the tools/OpenDeck submodule
 ```
+Make sure to turn on "Developer Mode" inside of opendeck! (to see logs)
 
 Each iteration afterwards:
 

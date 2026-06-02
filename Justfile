@@ -611,6 +611,10 @@ opendeck-run:
     done
     exec dbus-run-session -- deno task tauri dev
 
+# Watch the opendeck plugin log
+opendeck-log:
+    tail -F ~/.local/share/opendeck/logs/plugins/com.geeksville.touchypad.sdPlugin.log
+
 # Remove generated artifacts. The proto outputs are rebuilt on the next
 # `just build-proto*` invocation.
 clean:
