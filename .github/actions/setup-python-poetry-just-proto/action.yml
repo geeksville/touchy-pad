@@ -6,6 +6,13 @@ inputs:
     description: Python version to install
     required: false
     default: "3.12"
+  install-app-deps:
+    description: >
+      Run `poetry install` for the app/ package after setting up tooling.
+      Set to 'true' for jobs that need to import or run the touchy_pad
+      Python package (e.g. build-app, build-rust's sim integration tests).
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -62,3 +69,9 @@ runs:
       env:
         SYS_PYTHON: python3
       run: just build-proto-py
+
+    - name: Install app dependencies
+      if: inputs.install-app-deps == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: poetry install --no-interaction --directory app

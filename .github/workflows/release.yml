@@ -23,9 +23,8 @@ jobs:
 
       - name: Set up shared Python/Poetry/just/proto tooling
         uses: ./.github/actions/setup-python-poetry-just-proto
-
-      - name: Install dependencies
-        run: poetry install --no-interaction
+        with:
+          install-app-deps: 'true'
 
       - name: Ruff lint
         run: poetry run ruff check src tests
