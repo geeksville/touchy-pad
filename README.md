@@ -7,7 +7,7 @@
 To see (and hear) a video demo click this:
 [![Watch the video](https://img.youtube.com/vi/-RXaUL3E1Vk/hqdefault.jpg)](https://youtu.be/-RXaUL3E1Vk)
 
-If you have Python installed and a [suitable device $15ish device](docs/hardware.md#jc4827w543), you can have this running on your hardware in less than a minute:
+If you have Python installed and a [suitable $15ish device](docs/hardware.md#jc4827w543), you can have this running on your hardware in less than a minute:
 ```bash
 pip install touchy-pad
 touchy update # This will automatically install the firmware on your board - prompting you as needed
@@ -17,12 +17,12 @@ More installation instructions [here](docs/installing.md).
 <br clear="right" />
 
 ## Current features
-<img src="docs/images/touchy.png" alt="Project Icon" align="right" width="140" />
+<img src="docs/images/touchy-300.png" alt="Project Icon" align="right" width="140" />
 
-Disclaimer: This project is young, but moving at a fast pace.  You can already use it for a variety of gool things:
+Disclaimer: This project is young, but moving at a fast pace.  You can already use it for a variety of cool things:
 
 * It is a "premium feel" open-source multitouch USB touchpad with built-in customizable screen (for use with Mac/Linux/Windows/Android).  This works even if you don't want to run our sister app.
-* Works numerous with cheap ESP32 based display boards ($15-$30 USD depending on features) - no soldering required, just connect USB, run the installer and go. The automated installer provides 'one-click' install for boards you purchased from wherever.
+* Works with numerous cheap ESP32 based display boards ($15-$30 USD depending on features) - no soldering required, just connect USB, run the installer and go. The automated installer provides 'one-click' install for boards you purchased from wherever.
 * When used as a touchpad provides a pretty water droplet touch/grab/turn/gesture visualization.
 * Allows simple key/mouse shortcut/macros without the need for leaving the (optional) sister app running.  Generated entirely natively as USB events from our device.
 * Also works like a "StreamDeck" via the [OpenDeck](https://github.com/nekename/OpenDeck) application.  Many different plugins automatically supported, bind behaviors and displays to your touchy-deck with a polished GUI app.
@@ -59,7 +59,7 @@ touchy screen demo --listen
 
 ## [Stream-controller](https://streamcontroller.github.io/docs/latest/) plugin
 
-[Stream-controller](https://streamcontroller.github.io/docs/latest/) is a app that is someone similar to OpenDeck.  They don't yet have a full API for adding 'alternative devices' but I have made this proof-of-concept plugin to work with that app.  Alas, this plug-in is 'on-the-shelf' until they/we work through [this](https://github.com/StreamController/StreamController/pull/602) pull-request (to add an alternative device API).  If you are a StreamController dev I am eager to discuss this PR concept with you in that issue.
+[Stream-controller](https://streamcontroller.github.io/docs/latest/) is an app that is somewhat similar to OpenDeck.  They don't yet have a full API for adding 'alternative devices' but I have made this proof-of-concept plugin to work with that app.  Alas, this plug-in is 'on-the-shelf' until they/we work through [this](https://github.com/StreamController/StreamController/pull/602) pull-request (to add an alternative device API).  If you are a StreamController dev I am eager to discuss this PR concept with you in that issue.
 
 Touchy-Pad provides a [Stream-controller](https://streamcontroller.github.io/docs/latest/) compatible API so that a graphical button array can be selected instead of touchpad.  
 
@@ -90,7 +90,7 @@ There are [lots](docs/hardware.md) of $15-ish USD "Cheap Yellow Displays" that w
 * Installing on [devices](docs/installing.md).
 * Current [design documents](docs/README.md).
 * [Developer setup](docs/development.md) — new-machine setup, `just` recipes, git hooks.
-* Current rough [TODO list](TODO.md).
+* Current rough [TODO list](docs/TODO.md).
 
 ## AI slop and development
 I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (one of my first experiments with not writing all my code 'by hand').  So far it has been pretty fun.
@@ -103,8 +103,8 @@ However, in some of my other open-source projects, I've seen the current hell PR
 
 ## Credits/Thanks
 
-* ESP-IDF LVGL didn't have a NV3041A driver, so I (with the help of my AI buddy) cribbed a lot from [Arduno_GFX](https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp) - huge thanks to [@moononournation](https://github.com/moononournation)(?) for writing it.
-* Thank you to [Shyo Holguin Campos](mailto:shyo.holguin.campos@gmail.com) who made [the](https://www.figma.com/community/file/1508554010771921982) [CCBY04](https://creativecommons.org/licenses/by/4.0/) licensed [icon](https://www.figma.com/design/xVSEw1CnaRCy6pqe41ghYD/135-Free-Cute-Colored-Icons--Community-?node-id=2002-339&t=jaNuJU0GHwZkVNAI-4) we repurposed as the [touchy-icon](docs/images/touchy.png).
+* ESP-IDF LVGL didn't have an NV3041A driver, so I (with the help of my AI buddy) cribbed a lot from [Arduino_GFX](https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp) - huge thanks to [@moononournation](https://github.com/moononournation)(?) for writing it.
+* Thank you to [Shyo Holguin Campos](mailto:shyo.holguin.campos@gmail.com) who made [the](https://www.figma.com/community/file/1508554010771921982) [CCBY04](https://creativecommons.org/licenses/by/4.0/) licensed [icon](https://www.figma.com/design/xVSEw1CnaRCy6pqe41ghYD/135-Free-Cute-Colored-Icons--Community-?node-id=2002-339&t=jaNuJU0GHwZkVNAI-4) we repurposed as the [touchy-icon](docs/images/touchy-300.png).
 * So far the main dev is [@geeksville](https://github.com/geeksville/). However if this seems interesting/fun to you please join me! 
 
 ## License
