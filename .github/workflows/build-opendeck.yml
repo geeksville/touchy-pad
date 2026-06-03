@@ -3,8 +3,8 @@ name: Build OpenDeck plugin
 # Reusable workflow (called via `uses:` from app-ci.yml and release.yml)
 # that cross-builds the `touchy-opendeck` device plugin for every target
 # listed in the plugin manifest's CodePaths, lays the per-target binaries
-# out in the .sdPlugin directory, and uploads the directory as an artifact
-# (GitHub wraps it as com.geeksville.touchypad.sdPlugin.zip on download).
+# out in the .sdPlugin directory, and packages a single installable zip with
+# com.geeksville.touchypad.sdPlugin/ as the top-level directory.
 #
 # Best practices applied:
 #   * Build each target *natively* on its own runner (incl. the free
@@ -20,10 +20,10 @@ on:
   workflow_call:
     inputs:
       artifact-name:
-        description: Artifact name for the uploaded .sdPlugin directory.
+        description: Artifact name for the uploaded .sdPlugin zip.
         required: false
         type: string
-        default: com.geeksville.touchypad.sdPlugin
+        default: opendeck-touchypad-plugin
 
 permissions:
   contents: read
@@ -117,7 +117,7 @@ jobs:
           merge-multiple: true
           path: binaries
 
-      - name: Assemble .sdPlugin directory
+      - name: Assemble and zip .sdPlugin
         shell: bash
         run: |
           set -euo pipefail
@@ -129,10 +129,18 @@ jobs:
           find "${plugin_dir}" -type f -name 'touchy-opendeck' -exec chmod +x {} +
           echo "Plugin directory contents:"
           find "${plugin_dir}" | sort
+          # Zip from within rust/touchy-opendeck so the archive contains
+          # com.geeksville.touchypad.sdPlugin/manifest.json etc. at the top level.
+          mkdir -p rust/target
+          ( cd rust/touchy-opendeck && \
+            zip -r -y "${GITHUB_WORKSPACE}/rust/target/com.geeksville.touchypad.sdPlugin.zip" \
+              com.geeksville.touchypad.sdPlugin )
+          echo "Zip contents:"
+          unzip -l rust/target/com.geeksville.touchypad.sdPlugin.zip
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
-          path: rust/touchy-opendeck/com.geeksville.touchypad.sdPlugin
+          path: rust/target/com.geeksville.touchypad.sdPlugin.zip
           if-no-files-found: error

@@ -181,14 +181,8 @@ jobs:
       - name: Download plugin artifact
         uses: actions/download-artifact@v7
         with:
-          name: com.geeksville.touchypad.sdPlugin
-          path: plugin-staging/com.geeksville.touchypad.sdPlugin/
-
-      - name: Zip plugin for release
-        run: |
-          cd plugin-staging
-          zip -r -y "${GITHUB_WORKSPACE}/firmware-dist/com.geeksville.touchypad.sdPlugin.zip" \
-            com.geeksville.touchypad.sdPlugin
+          name: opendeck-touchypad-plugin
+          path: firmware-dist/
 
       - name: List firmware files
         run: ls -lh firmware-dist/

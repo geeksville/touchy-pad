@@ -349,9 +349,9 @@ bump-version VERSION="":
     # Keep app/pyproject.toml in sync — the regex matches only the bare
     # semver on the [tool.poetry] version line, not dependency version specs.
     sed -i "s/^version = \"[0-9][0-9.]*\"/version = \"${new_ver}\"/" app/pyproject.toml
-    just _rust-sync-version
+    just rust-build # to update rust/Cargo.toml from the new VERSION
     echo "Bumped: $ver → $new_ver  (build $new_build)"
-    git add VERSION app/pyproject.toml rust/Cargo.toml
+    git add VERSION app/pyproject.toml rust/Cargo.toml rust/Cargo.lock
     git commit -m "chore: bump version to v${new_ver}"
     git tag "v${new_ver}"
     git push
@@ -626,6 +626,16 @@ opendeck-run: opendeck-build-debug
         [ -e "/dev/$_name" ] || sudo ln -sf "$_d" "/dev/$_name" 2>/dev/null || true
     done
     exec dbus-run-session -- deno task tauri dev
+
+# Configure opendeck to use my 'live' dev build of the
+opendeck-dev-start: 
+    mkdir -p ~/.config/opendeck/plugins
+    ln -sfn {{justfile_directory()}}/rust/touchy-opendeck/com.geeksville.touchypad.sdPlugin \
+            ~/.config/opendeck/plugins/com.geeksville.touchypad.sdPlugin
+
+# Remove the development version of my plugin from opendeck
+opendeck-dev-stop:
+    rm -f ~/.config/opendeck/plugins/com.geeksville.touchypad.sdPlugin
 
 # Watch the opendeck plugin log
 opendeck-log:
