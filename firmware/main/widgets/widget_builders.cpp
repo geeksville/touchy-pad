@@ -617,13 +617,17 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
 {
     // Outer clickable button — receives styles and emits click events.
     lv_obj_t *btn = lv_button_create(parent);
+    // Remove default theme padding so the inner image can fill edge-to-edge.
+    lv_obj_set_style_pad_all(btn, 0, LV_PART_MAIN);
     // Clip the inner image to the button's rounded corners so the artwork
     // doesn't paint over the radius LVGL draws for the button background.
     lv_obj_set_style_clip_corner(btn, true, LV_PART_MAIN);
-    // Inner image — non-clickable so events bubble up to the button.
+    // Inner image — fill the button and scale to fit, non-clickable so
+    // events bubble up to the button.
     lv_obj_t *img = lv_image_create(btn);
     lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_center(img);
+    lv_obj_set_size(img, lv_pct(100), lv_pct(100));
+    lv_image_set_align(img, LV_IMAGE_ALIGN_STRETCH);
 
     const touchy_ImageButton &ib = w.kind.image_button;
     const touchy_Image &released = ib.released;
