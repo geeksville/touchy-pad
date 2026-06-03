@@ -3,6 +3,8 @@
 ## Alpha 3
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] move background drawing out of trackpad widget
+* [ ] allow arbitrary image backgrounds for standard trackpad layout.  for now use the touchy icon.
 * [ ] support no-touch devices
 * [ ] add photo of the small board
 * [ ] add some of the example JSON to the API docs
