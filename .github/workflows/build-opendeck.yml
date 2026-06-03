@@ -127,13 +127,18 @@ jobs:
           cp -r binaries/* "${plugin_dir}/"
           # Ensure unix binaries are executable.
           find "${plugin_dir}" -type f -name 'touchy-opendeck' -exec chmod +x {} +
+          # Dereference all symlinks (e.g. icons/plugin.png -> ../../../../docs/...)
+          # into a staging copy so the zip contains real file content, not dangling
+          # symlinks.  cp -rL follows symlinks; exec bits on real files are kept.
+          mkdir -p plugin_staging
+          cp -rL "${plugin_dir}" plugin_staging/com.geeksville.touchypad.sdPlugin
           echo "Plugin directory contents:"
-          find "${plugin_dir}" | sort
-          # Zip from within rust/touchy-opendeck so the archive contains
-          # com.geeksville.touchypad.sdPlugin/manifest.json etc. at the top level.
+          find plugin_staging/com.geeksville.touchypad.sdPlugin | sort
+          # Zip from staging so the archive has com.geeksville.touchypad.sdPlugin/
+          # as the top-level directory.
           mkdir -p rust/target
-          ( cd rust/touchy-opendeck && \
-            zip -r -y "${GITHUB_WORKSPACE}/rust/target/com.geeksville.touchypad.sdPlugin.zip" \
+          ( cd plugin_staging && \
+            zip -r "${GITHUB_WORKSPACE}/rust/target/com.geeksville.touchypad.sdPlugin.zip" \
               com.geeksville.touchypad.sdPlugin )
           echo "Zip contents:"
           unzip -l rust/target/com.geeksville.touchypad.sdPlugin.zip
