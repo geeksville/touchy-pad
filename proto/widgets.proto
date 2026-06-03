@@ -309,6 +309,22 @@ message Style {
     // Animate the listed properties when this style is added / removed
     // from the widget's selector match. See `Transition` doc-comment.
     optional Transition transition  = 10;
+    // Border opacity, 0..255 (e.g. 102 ≈ LV_OPA_40).
+    optional uint32 border_opa      = 11;
+    // Border colour, 0xRRGGBB.
+    optional uint32 border_color    = 12;
+    // Shadow width (blur radius) in pixels.
+    optional int32  shadow_width    = 13;
+    // Shadow colour, 0xRRGGBB.
+    optional uint32 shadow_color    = 14;
+    // Shadow Y offset in pixels.
+    optional int32  shadow_offset_y = 15;
+    // Outline opacity, 0..255.
+    optional uint32 outline_opa     = 16;
+    // Outline colour, 0xRRGGBB.
+    optional uint32 outline_color   = 17;
+    // Outline width in pixels.
+    optional int32  outline_width   = 18;
 }
 
 // Single device-side keystroke step inside an `ActionMacro`.
