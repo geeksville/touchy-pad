@@ -581,9 +581,13 @@ def test_trackpad_full_kwargs_roundtrip():
 def test_build_demo_screen_trackpad_has_ripples():
     """Demo widget page ships ripple eye-candy so users see the feature."""
     _, widgets = build_demo()
-    pad = next(w for name, w in widgets if name == "trackpad")
-    decoded = _proto.Widget.FromString(pad.SerializeToString())
-    tp = decoded.trackpad
+    pad_container = next(w for name, w in widgets if name == "trackpad")
+    decoded = _proto.Widget.FromString(pad_container.SerializeToString())
+    # The trackpad page is now a 1x1 grid container; the trackpad itself is
+    # the third child (after background spacer and hint label).
+    children = list(decoded.layout_grid.layout.children)
+    tp_widget = next(c for c in children if c.WhichOneof("kind") == "trackpad")
+    tp = tp_widget.trackpad
     assert tp.HasField("touch_ripple")
     assert tp.HasField("tap_ripple")
     assert tp.HasField("left_touch_color")
@@ -785,16 +789,17 @@ def test_default_screen_json_round_trips_to_default():
     repo_root = Path(__file__).resolve().parents[2]
     raw = (repo_root / "proto" / "default_screen.json").read_text(encoding="utf-8")
     msg = json_format.Parse(raw, _proto.Screen())
-    # Same structure as build_setup_screen(): a hint label + inline trackpad.
+    # Same structure as build_setup_screen(): a hint label + a 1x1 grid
+    # container wrapping the trackpad (with background spacer and hint label).
     assert msg.active.layout_flex.flow == _proto.LayoutFlex.Flow.COLUMN
     top = list(msg.active.layout_flex.layout.children)
     assert len(top) == 2
-    hint, pad = top
+    hint, pad_container = top
     assert hint.id == "setup_hint"
     assert hint.WhichOneof("kind") == "label"
-    assert pad.id == "pad"
-    assert pad.WhichOneof("kind") == "trackpad"
-    assert pad.grow_x == 1
-    assert pad.grow_y == 1
+    assert pad_container.id == "pad_container"
+    assert pad_container.WhichOneof("kind") == "layout_grid"
+    assert pad_container.grow_x == 1
+    assert pad_container.grow_y == 1
     # The on-disk JSON must match what the DSL produces today.
     assert msg.SerializeToString() == build_setup_screen().to_proto().SerializeToString()

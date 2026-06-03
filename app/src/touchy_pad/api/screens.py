@@ -1465,27 +1465,70 @@ def _trackpad_page_widget() -> _proto.Widget:
 
     Shared by :func:`build_user_pages` (uploaded to ``F:host/uscr/``) and
     :func:`build_setup_screen` (inlined into the compiled-in fallback).
+
+    A 1×1 grid stacks three children in the same cell so LVGL draw order
+    provides layering without any custom drawing inside the trackpad widget:
+
+    1. A :func:`spacer` filled with the dark background colour (``0x1a1a2e``).
+    2. A dim hint :func:`label` ("Touch here"), content-sized and centred by
+       the grid default.
+    3. The :func:`trackpad` on top with a transparent background — it is drawn
+       last so it receives all touch events.
     """
-    return trackpad(
-        "pad",
-        left_touch_color=0x00BFFF,
-        right_touch_color=0xFFA500,
-        middle_touch_color=0xFF44FF,
-        scrollbar_color=0xADD8E6,
-        touch_ripple=ripple_animation(
-            start_opa=180,
-            max_radius=45,
-            duration_ms=400,
-            path=ANIM_PATH_EASE_OUT,
-        ),
-        tap_ripple=ripple_animation(
-            start_opa=255,
-            max_radius=70,
-            duration_ms=300,
-            path=ANIM_PATH_EASE_OUT,
-            border_width=4,
-        ),
+    container = Layer(layout=grid(cols=1, rows=1))
+
+    # Layer 1 — dark background fill.  A spacer is used instead of a label or
+    # layout widget because build_spacer() calls lv_obj_remove_style_all(),
+    # which lets the user-supplied bg_color style take effect without fighting
+    # a local lv_obj_set_style_bg_opa(LV_OPA_TRANSP) that those other widget
+    # types set internally.
+    container += cell(
+        spacer("pad_bg", style=style(bg_color=0x1A1A2E)),
+        col=0,
+        row=0,
+        grow_x=1,
+        grow_y=1,
     )
+
+    # Layer 2 — dim hint text, content-sized and centred by the grid default.
+    container += cell(
+        label("pad_hint", text="Touch here", font_size=30, style=style(text_color=0x334466)),
+        col=0,
+        row=0,
+    )
+
+    # Layer 3 — transparent trackpad on top; snarfs all touch events because
+    # LVGL dispatches input to the topmost (last-drawn) object.
+    container += cell(
+        trackpad(
+            "pad",
+            left_touch_color=0x00BFFF,
+            right_touch_color=0xFFA500,
+            middle_touch_color=0xFF44FF,
+            scrollbar_color=0xADD8E6,
+            touch_ripple=ripple_animation(
+                start_opa=180,
+                max_radius=45,
+                duration_ms=400,
+                path=ANIM_PATH_EASE_OUT,
+            ),
+            tap_ripple=ripple_animation(
+                start_opa=255,
+                max_radius=70,
+                duration_ms=300,
+                path=ANIM_PATH_EASE_OUT,
+                border_width=4,
+            ),
+        ),
+        col=0,
+        row=0,
+        grow_x=1,
+        grow_y=1,
+    )
+
+    result = _proto.Widget(id="pad_container")
+    container.copy_into(result)
+    return result
 
 
 def build_user_pages() -> list[tuple[str, _proto.Widget]]:
