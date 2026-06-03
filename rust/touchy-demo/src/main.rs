@@ -85,7 +85,6 @@ async fn upload_demo(pad: &Touchy) -> Result<()> {
 				y: 16,
 				w: 64,
 				h: 64,
-				flex_grow: 0,
 			})),
 			kind: Some(widget::Kind::ImageButton(ImageButton {
 				released: Some(img),

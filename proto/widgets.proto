@@ -34,13 +34,6 @@ message Rect {
     int32 y = 2;
     int32 w = 3;
     int32 h = 4;
-    // Stage 68 — LVGL flex-grow factor. Only honoured when this widget
-    // is a child of a flex (ROW/COLUMN) layout. 0 (default) leaves the
-    // widget content-sized; a value > 0 makes it grow to share the
-    // parent's free space along the main axis in proportion to the
-    // factor (maps to `lv_obj_set_flex_grow`). Ignored under absolute /
-    // grid parents.
-    int32 flex_grow = 5;
 }
 
 // LVGL event codes — mirrors lv_event_code_t from
@@ -756,7 +749,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 19;
+        CURRENT         = 20;
     }
     Version version = 6;
 
@@ -770,6 +763,24 @@ message Widget {
     // parallel on `this` widget for the lifetime of the LVGL object;
     // see the `Animation` doc-comment.
     repeated Animation animations = 7;
+    // Stage 72 — per-axis "grow to fill" opt-in. Honoured for widgets that
+    // are children of a flex (ROW/COLUMN) or grid layout; ignored under an
+    // absolute parent (there `Rect.w`/`h` already control size). Independent
+    // of the `placement` oneof below — a widget grows the same way whether
+    // it is placed via `rect` (flex) or `cell` (grid).
+    //
+    // The default (0) leaves the widget content-sized on that axis — so a
+    // button shrinks to its label instead of stretching to fill its slot.
+    //
+    //   * Flex *main* axis (grow_x for ROW, grow_y for COLUMN): a value > 0
+    //     is a true `lv_obj_set_flex_grow` factor — children share the
+    //     parent's free main-axis space in proportion to their factors.
+    //   * Flex *cross* axis (grow_y for ROW, grow_x for COLUMN) and *grid*
+    //     (both axes): LVGL has no proportional per-child grow there, so
+    //     any value > 0 simply means "fill" — `lv_pct(100)` under flex,
+    //     `LV_GRID_ALIGN_STRETCH` under grid. The magnitude is ignored.
+    int32 grow_x = 8;
+    int32 grow_y = 9;
     // Where this widget sits inside its parent layout. `rect` is used by
     // absolute and flex parents; `cell` by grid parents. Renamed from
     // `layout` in Stage 24.2 to disambiguate from the layout-widget

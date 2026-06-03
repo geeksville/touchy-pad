@@ -32,14 +32,18 @@ void apply_layout(lv_obj_t *parent, const touchy_Widget &w);
 // Apply `Widget.placement.rect` to `obj`. When `absolute_layout` is
 // true (parent has no layout manager) we also write the x/y position;
 // under a flex/grid layout the parent owns position so we only set
-// the size. Zero/negative width or height becomes LV_SIZE_CONTENT,
-// except on the *cross* axis of a flex parent (`parent_layout`), where
-// an unset size fills the parent (LV_PCT(100)) so children span the
-// full width of a COLUMN / full height of a ROW.
+// the size. Zero/negative width or height becomes LV_SIZE_CONTENT.
+//
+// Stage 72 — cross-axis / main-axis "grow to fill" is driven by
+// `Widget.grow_x` / `Widget.grow_y` (not the Rect). Under a flex
+// parent the main axis maps to `lv_obj_set_flex_grow` and the cross
+// axis to `lv_pct(100)`; see the field doc in widgets.proto.
 void apply_rect(lv_obj_t *obj, const touchy_Widget &w, bool absolute_layout,
                 const touchy_Widget *parent_layout = nullptr);
 
 // Place `obj` in its parent grid cell using `Widget.placement.cell` (or
 // the (0,0) cell with span 1 when no cell is set). All values clamp to
-// non-negative; `*_span` defaults to 1.
+// non-negative; `*_span` defaults to 1. Stage 72 — `Widget.grow_x` /
+// `grow_y` select per-axis LV_GRID_ALIGN_STRETCH (grow > 0) vs
+// LV_GRID_ALIGN_CENTER (content-sized, the default).
 void apply_grid_cell(lv_obj_t *obj, const touchy_Widget &w);

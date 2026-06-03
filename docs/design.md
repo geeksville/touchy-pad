@@ -2533,9 +2533,10 @@ macros, Rust `lib.rs` consts). The prev/next chrome is now a single default
 screen `host/s/default.pb` built by
 `touchy_pad.api.screens.build_default_screen()` — a vertical flex `col`
 holding a content-sized prev/next chrome row plus a flex-growing body
-`widget_ref(id="page")`. The new additive `int32 flex_grow` field on `Rect`
-maps to `lv_obj_set_flex_grow` (honoured only under flex parents) and drives
-the growing body. User page bodies live under `host/uscr/` and are uploaded
+`widget_ref(id="page")`. The original additive `int32 flex_grow` field on
+`Rect` mapped to `lv_obj_set_flex_grow` (honoured only under flex parents)
+and drove the growing body. (Stage 72 later replaced this with
+`Widget.grow_x` / `grow_y`; see that stage.) User page bodies live under `host/uscr/` and are uploaded
 with `Touchy.user_screen_save(name, widget)`; `build_user_pages()` returns
 the `trackpad` + `test` bodies. The `touchy screen init` CLI provisions the
 chrome + a trackpad page; `screen demo` reuses `_do_screen_init` then adds
@@ -3280,6 +3281,56 @@ Firmware was **not** compiled in the implementing environment (no ESP-IDF
 in PATH); all field names were cross-checked against the regenerated
 `firmware/main/proto/touchy.pb.h`. Rust (`cargo build`/`test`/`clippy`),
 Python (`just app-test`, 160 passing), and lint are all green.
+
+## Stage 72: opt-in sizing via `Widget.grow_x` / `grow_y` — DONE
+
+**Problem.** Flex/grid children stretched to fill by default: `apply_rect`
+forced COLUMN flex children to `lv_pct(100)` width (an implicit cross-axis
+fill) and `apply_grid_cell` always used `LV_GRID_ALIGN_STRETCH`. Buttons in
+a row therefore ballooned to the full row width instead of shrinking to
+their label. There was no way to ask for content-sizing.
+
+**Decision (locked with the user).** Sizing becomes **opt-in**. Two new
+`int32` fields — `grow_x` and `grow_y` — live on **`Widget` itself** (not on
+`Rect`/`GridCell`), so they apply uniformly regardless of the `placement`
+oneof. Default `0` = content-sized. The old `Rect.flex_grow` field
+(introduced in Stage 68) is **removed** (pre-1.0, clean break — no
+back-compat shim). `Widget.Version.CURRENT` bumped 19→20; the transport
+`ProtocolVersion` is unchanged.
+
+**Semantics** (depend on parent flow + axis):
+* **Flex main axis** — `grow_x` under a ROW parent, `grow_y` under a COLUMN
+  parent — maps to `lv_obj_set_flex_grow(obj, factor)`; the value is a
+  proportional weight, so magnitude matters.
+* **Flex cross axis** (`grow_y` in a ROW, `grow_x` in a COLUMN) and **grid**
+  (both axes) treat any value `> 0` as "fill" (magnitude ignored):
+  cross-axis flex → `lv_pct(100)`; grid → `LV_GRID_ALIGN_STRETCH`. Grid
+  cells now **CENTER** by default (previously always stretched). The
+  implicit COLUMN cross-fill is gone — callers must set `grow_x=1` for
+  full-width COLUMN children.
+
+**Implementation.**
+* `proto/widgets.proto` (+ Rust copy): `Rect` reverted to 4 fields;
+  `grow_x = 8` / `grow_y = 9` added to `Widget`; version bumped to 20.
+* Firmware `firmware/main/widgets/screen_layout.cpp`: `apply_rect` now
+  computes parent flow (`parent_layout` arg, also stored on `ActiveRef` for
+  the Stage-57 widget-ref rebuild) and applies main-axis `lv_obj_set_flex_grow`
+  + cross-axis `lv_pct(100)`; `apply_grid_cell` keys per-axis
+  `LV_GRID_ALIGN_STRETCH` vs `CENTER` off `grow_x`/`grow_y`.
+* Python DSL `app/src/touchy_pad/api/screens.py`: new `grow(widget, *, x=,
+  y=)` helper; `cell(..., grow_x=, grow_y=)`; `build_default_screen()` uses
+  `grow()` on the chrome row, the `chrome_gap` spacer, and the page body;
+  `build_user_pages()` showcase grid cells set `grow_x=1, grow_y=1` to keep
+  their filled look. Re-exported from `touchy_pad.api`.
+* Simulator `sim/widgets.py`: grid uses per-axis Qt alignment (center unless
+  grow>0); flex maps main-axis grow to a Qt stretch factor and pins the
+  cross axis unless cross-grow is set.
+* `proto/default_screen.json` + `firmware/main/default_screen_pb.h`
+  regenerated from the DSL (`growX`/`growY` on the chrome/spacer/body).
+* Rust `touchy-demo` Rect literal dropped the obsolete `flex_grow`.
+
+Validated: `just build-proto`, `just app-test` (160 passed), `just app-lint`
+(clean).
 
 # Old/Existing projects
 

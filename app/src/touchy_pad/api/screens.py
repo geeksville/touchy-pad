@@ -45,6 +45,7 @@ __all__ = [
     "grid",
     "cell",
     "rect",
+    "grow",
     "style",
     "transition",
     "anim_track",
@@ -74,6 +75,7 @@ __all__ = [
     "build_demo_screen",
     "build_demo",
     "build_default_screen",
+    "build_setup_screen",
     "build_user_pages",
     # LvState / LvPart selector bits (see widgets.proto:LvState).
     "STATE_DEFAULT",
@@ -122,6 +124,11 @@ __all__ = [
     "ANIM_PATH_OVERSHOOT",
     "ANIM_PATH_BOUNCE",
     "ANIM_PATH_STEP",
+    # Label horizontal text alignment.
+    "TEXT_ALIGN_AUTO",
+    "TEXT_ALIGN_LEFT",
+    "TEXT_ALIGN_CENTER",
+    "TEXT_ALIGN_RIGHT",
 ]
 
 
@@ -187,6 +194,13 @@ ANIM_PATH_OVERSHOOT = _proto.AnimPath.ANIM_PATH_OVERSHOOT
 ANIM_PATH_BOUNCE = _proto.AnimPath.ANIM_PATH_BOUNCE
 ANIM_PATH_STEP = _proto.AnimPath.ANIM_PATH_STEP
 
+# Horizontal text alignment for `label(..., text_align=...)` (see
+# widgets.proto:TextAlign). Maps to LVGL `lv_text_align_t`.
+TEXT_ALIGN_AUTO = _proto.TextAlign.TEXT_ALIGN_AUTO
+TEXT_ALIGN_LEFT = _proto.TextAlign.TEXT_ALIGN_LEFT
+TEXT_ALIGN_CENTER = _proto.TextAlign.TEXT_ALIGN_CENTER
+TEXT_ALIGN_RIGHT = _proto.TextAlign.TEXT_ALIGN_RIGHT
+
 
 # ---------------------------------------------------------------------------
 # Layout / style / action helpers
@@ -247,11 +261,18 @@ def cell(
     row: int = 0,
     col_span: int = 1,
     row_span: int = 1,
+    *,
+    grow_x: int = 0,
+    grow_y: int = 0,
 ) -> _proto.Widget:
     """Place ``widget`` inside a grid-layout parent and return it.
 
     Only meaningful when the enclosing :class:`Screen` was created
     with a :func:`grid` layout. Span defaults to 1x1.
+
+    By default the widget is content-sized and centred in its cell. Pass
+    ``grow_x`` / ``grow_y`` (any value ``> 0``) to stretch it to fill the
+    cell on that axis — a convenience wrapper around :func:`grow`.
     """
     if col < 0 or row < 0:
         raise ValueError("grid cell col/row must be >= 0")
@@ -263,12 +284,39 @@ def cell(
         widget.cell.col_span = col_span
     if row_span != 1:
         widget.cell.row_span = row_span
+    if grow_x:
+        widget.grow_x = int(grow_x)
+    if grow_y:
+        widget.grow_y = int(grow_y)
     return widget
 
 
 def rect(x: int = 0, y: int = 0, w: int = 0, h: int = 0) -> _proto.Rect:
     """Pixel-space placement. ``0`` for w/h means "size to content"."""
     return _proto.Rect(x=x, y=y, w=w, h=h)
+
+
+def grow(widget: _proto.Widget, *, x: int = 0, y: int = 0) -> _proto.Widget:
+    """Opt ``widget`` into "grow to fill" on either axis; returns it.
+
+    By default every widget is content-sized within its layout slot — a
+    button shrinks to its label rather than stretching to fill the row.
+    Set ``x`` / ``y`` to grow the widget along that axis:
+
+    * **Flex main axis** (``x`` under a :func:`row`, ``y`` under a
+      :func:`col`): the value is an LVGL ``flex_grow`` *factor* — children
+      share the parent's free main-axis space in proportion to their
+      factors (so ``2`` grows twice as fast as ``1``).
+    * **Flex cross axis** (``y`` under a :func:`row`, ``x`` under a
+      :func:`col`) and **grid** (both axes): there is no proportional
+      grow, so any value ``> 0`` simply means "fill" (full width/height
+      under flex, ``STRETCH`` under grid). The magnitude is ignored.
+
+    ``bool`` is accepted too (``grow(w, x=True)`` ≡ ``grow(w, x=1)``).
+    """
+    widget.grow_x = int(x)
+    widget.grow_y = int(y)
+    return widget
 
 
 def style(
@@ -725,14 +773,22 @@ def label(
     id: str,
     text: str = "",
     font_size: int = 0,
+    text_align: int = TEXT_ALIGN_AUTO,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
-    """Static text. ``font_size = 0`` uses the theme default."""
+    """Static text. ``font_size = 0`` uses the theme default.
+
+    ``text_align`` controls horizontal alignment of the text *within the
+    label's box* (``TEXT_ALIGN_*``; default ``AUTO`` follows LVGL). To
+    actually centre across the screen, also give the label full width
+    (e.g. ``grow(label(...), x=1)`` under a column).
+    """
     w = _widget(id, rect=rect, style=style, animations=animations)
     w.label.text = text
     w.label.font_size = font_size
+    w.label.text_align = text_align
     return w
 
 
@@ -1322,11 +1378,14 @@ def build_default_screen() -> Screen:
 
     * a content-sized top chrome row holding ``< Prev`` / ``Next >``
       buttons (sized to their content — the column flow shrinks the row
-      to just the button heights), and
+      to just the button heights). The row opts into full width via
+      ``grow(..., x=1)`` so the prev/next buttons sit at the screen edges.
     * a ``widget_ref(id="page")`` **body** that grows to fill the rest of
-      the screen (``rect.flex_grow = 1``). It initially points at
-      :data:`USER_SCREENS_DIR` ``trackpad.pb``; the prev/next buttons step
-      the ref through :data:`USER_SCREENS_DIR` on-device.
+      the screen — ``grow(..., x=1, y=1)``: ``y=1`` is the column main-axis
+      flex-grow (fills remaining height), ``x=1`` fills the cross-axis
+      width. It initially points at :data:`USER_SCREENS_DIR`
+      ``trackpad.pb``; the prev/next buttons step the ref through
+      :data:`USER_SCREENS_DIR` on-device.
 
     Users normally leave this screen alone and just push page bodies into
     ``host/uscr/`` (see :func:`build_user_pages`); replacing
@@ -1338,19 +1397,17 @@ def build_default_screen() -> Screen:
 
     screen = Screen("default", layout=col(gap=8))
 
-    # Content-sized chrome row (a nested flex row → no grow, shrinks to
-    # the buttons' height inside the column flow). A flex-grow spacer
-    # between the buttons pushes `< Prev` to the left edge and `Next >`
-    # to the right edge of the full-width row.
+    # Content-sized chrome row (a nested flex row → no main-axis grow, so
+    # it shrinks to the buttons' height inside the column flow), opted into
+    # full width with grow(x=1). A flex-grow spacer between the buttons
+    # pushes `< Prev` to the left edge and `Next >` to the right edge.
     chrome = Layer(layout=row(gap=8))
     chrome += button(
         "prev",
         text="< Prev",
         on_click=prev_widget_action(PAGE_ID, USER_SCREENS_DIR),
     )
-    gap = rect()
-    gap.flex_grow = 1
-    chrome += spacer("chrome_gap", rect=gap)
+    chrome += grow(spacer("chrome_gap"), x=1)
     chrome += button(
         "next",
         text="Next >",
@@ -1358,14 +1415,77 @@ def build_default_screen() -> Screen:
     )
     chrome_widget = _proto.Widget()
     chrome.copy_into(chrome_widget)
+    grow(chrome_widget, x=1)  # span the full screen width
     screen += chrome_widget
 
-    # Body — grows to fill the remaining height below the chrome row.
+    # Body — fills the remaining height (y=1 = column main-axis flex-grow)
+    # and the full width (x=1 = cross-axis fill) below the chrome row.
     body = widget_ref(user_screen_path("trackpad"), id=PAGE_ID)
-    body.rect.flex_grow = 1
+    grow(body, x=1, y=1)
     screen += body
 
     return screen
+
+
+def build_setup_screen() -> Screen:
+    """Build the compiled-in firmware fallback screen.
+
+    This is the screen a *virgin* device shows when no host screens have
+    been provisioned yet (``proto/default_screen.json`` →
+    ``firmware/main/default_screen_pb.h``). Unlike
+    :func:`build_default_screen` it is fully self-contained — no
+    ``widget_ref`` into ``F:host/uscr/`` (which doesn't exist yet) and no
+    prev/next chrome (there are no other pages to step to). It is a
+    vertical flex column with:
+
+    * a content-sized hint label telling the user to run ``touchy init``;
+    * an inlined :func:`trackpad` that grows to fill the rest of the
+      screen, so the device is immediately usable as a touchpad.
+    """
+    screen = Screen("default", layout=col(gap=8))
+
+    hint = label(
+        "setup_hint",
+        text="Run 'touchy init' to set up",
+        text_align=TEXT_ALIGN_CENTER,
+        style=style(text_color=0xFFFFFF),
+    )
+    grow(hint, x=1)  # full width so the centred text spans the screen
+    screen += hint
+
+    pad = _trackpad_page_widget()
+    grow(pad, x=1, y=1)  # fill the remaining height + full width
+    screen += pad
+
+    return screen
+
+
+def _trackpad_page_widget() -> _proto.Widget:
+    """The baseline full-bleed multitouch trackpad page body.
+
+    Shared by :func:`build_user_pages` (uploaded to ``F:host/uscr/``) and
+    :func:`build_setup_screen` (inlined into the compiled-in fallback).
+    """
+    return trackpad(
+        "pad",
+        left_touch_color=0x00BFFF,
+        right_touch_color=0xFFA500,
+        middle_touch_color=0xFF44FF,
+        scrollbar_color=0xADD8E6,
+        touch_ripple=ripple_animation(
+            start_opa=180,
+            max_radius=45,
+            duration_ms=400,
+            path=ANIM_PATH_EASE_OUT,
+        ),
+        tap_ripple=ripple_animation(
+            start_opa=255,
+            max_radius=70,
+            duration_ms=300,
+            path=ANIM_PATH_EASE_OUT,
+            border_width=4,
+        ),
+    )
 
 
 def build_user_pages() -> list[tuple[str, _proto.Widget]]:
@@ -1388,26 +1508,7 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
     from . import macros as m
 
     # ── trackpad page widget ──────────────────────────────────────────
-    pad = trackpad(
-        "pad",
-        left_touch_color=0x00BFFF,
-        right_touch_color=0xFFA500,
-        middle_touch_color=0xFF44FF,
-        scrollbar_color=0xADD8E6,
-        touch_ripple=ripple_animation(
-            start_opa=180,
-            max_radius=45,
-            duration_ms=400,
-            path=ANIM_PATH_EASE_OUT,
-        ),
-        tap_ripple=ripple_animation(
-            start_opa=255,
-            max_radius=70,
-            duration_ms=300,
-            path=ANIM_PATH_EASE_OUT,
-            border_width=4,
-        ),
-    )
+    pad = _trackpad_page_widget()
 
     # ── test page widget (grid container) ─────────────────────────────
     showcase = Layer(layout=grid(cols=4, rows=7, gap=8))
@@ -1429,6 +1530,8 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
         ),
         col=0,
         row=0,
+        grow_x=1,
+        grow_y=1,
     )
     showcase += cell(
         button(
@@ -1439,6 +1542,8 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
         col=1,
         row=0,
         col_span=3,
+        grow_x=1,
+        grow_y=1,
     )
     showcase += cell(
         slider(
@@ -1453,6 +1558,8 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
         col=0,
         row=1,
         col_span=3,
+        grow_x=1,
+        grow_y=1,
     )
     showcase += cell(
         checkbox(
@@ -1465,6 +1572,8 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
         ),
         col=0,
         row=2,
+        grow_x=1,
+        grow_y=1,
     )
     showcase += cell(
         image_button(
@@ -1493,10 +1602,12 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
         col=1,
         row=2,
         col_span=2,
+        grow_x=1,
+        grow_y=1,
     )
-    showcase += cell(force_render("force"), col=3, row=1)
-    showcase += cell(fps("fps"), col=3, row=2)
-    showcase += cell(log_line("log"), col=0, row=3, col_span=4, row_span=4)
+    showcase += cell(force_render("force"), col=3, row=1, grow_x=1, grow_y=1)
+    showcase += cell(fps("fps"), col=3, row=2, grow_x=1, grow_y=1)
+    showcase += cell(log_line("log"), col=0, row=3, col_span=4, row_span=4, grow_x=1, grow_y=1)
 
     grid_widget = _proto.Widget()
     showcase.copy_into(grid_widget)

@@ -22,35 +22,52 @@ void apply_rect(lv_obj_t *obj, const touchy_Widget &w, bool absolute_layout,
 {
     const bool has_rect = (w.which_placement == touchy_Widget_rect_tag);
 
-    // Under a COLUMN flex parent, default the child *width* (the cross
-    // axis) to LV_PCT(100) so rows/bodies span the full width instead of
-    // shrinking to their content. LVGL v9 flex has no STRETCH cross-align,
-    // so we size children directly. We deliberately do NOT force full
-    // *height* on ROW children: a row is usually content-height, and a
-    // pct(100) child height against a content-height parent is a circular
-    // dependency that collapses the row. Row children keep their natural
-    // (content) height, which is what button toolbars want anyway.
-    bool fill_w = false;
+    // Stage 72 — the "grow to fill" opt-in moved to `Widget.grow_x` /
+    // `Widget.grow_y` (independent of the placement oneof). Under a flex
+    // parent each axis splits into a main axis (a true flex-grow factor)
+    // and a cross axis (LVGL has no STRETCH cross-align in v9, so a grow
+    // there just means "fill the parent" → lv_pct(100)). Work out which
+    // of grow_x / grow_y is the parent's main axis so we can apply each
+    // correctly.
+    bool parent_is_flex = false;
+    bool parent_is_row = false;  // only meaningful when parent_is_flex
     if (!absolute_layout && parent_layout &&
         parent_layout->which_kind == touchy_Widget_layout_flex_tag) {
+        parent_is_flex = true;
         switch (parent_layout->kind.layout_flex.flow) {
-        case touchy_LayoutFlex_Flow_COLUMN:
-        case touchy_LayoutFlex_Flow_COLUMN_WRAP:
-        case touchy_LayoutFlex_Flow_COLUMN_REVERSE:
-        case touchy_LayoutFlex_Flow_COLUMN_WRAP_REVERSE:
-            fill_w = true;  // cross axis of a column is the width
+        case touchy_LayoutFlex_Flow_ROW:
+        case touchy_LayoutFlex_Flow_ROW_WRAP:
+        case touchy_LayoutFlex_Flow_ROW_REVERSE:
+        case touchy_LayoutFlex_Flow_ROW_WRAP_REVERSE:
+            parent_is_row = true;
             break;
         default:
-            break;
+            break;  // COLUMN family — main axis is the height (grow_y)
         }
     }
 
-    // Outside absolute layouts, an absent rect normally means "let the
-    // layout manager decide" — nothing to set. BUT a COLUMN-flex child
-    // still needs its cross-axis width forced to pct(100) even when it
-    // carries no rect (e.g. the chrome row, which only declares a flex
-    // layout), so only bail when there is genuinely nothing to apply.
-    if (!has_rect && !absolute_layout && !fill_w) return;
+    // Cross-axis "fill the parent" requests (lv_pct(100)) derived from the
+    // grow flags. For a ROW parent the cross axis is the height (grow_y);
+    // for a COLUMN parent it is the width (grow_x). We deliberately do NOT
+    // fill the cross axis of a ROW with grow_y unless asked: a pct(100)
+    // height against a content-height row is a circular dependency that
+    // collapses the row.
+    const bool fill_w = parent_is_flex && !parent_is_row && w.grow_x > 0;
+    const bool fill_h = parent_is_flex && parent_is_row && w.grow_y > 0;
+
+    // Main-axis flex-grow factor (a ROW parent's main axis is the width →
+    // grow_x; a COLUMN parent's is the height → grow_y). A positive factor
+    // lets this child share the parent's free space — e.g. a spacer that
+    // pushes its siblings to opposite edges, or a body that fills the area
+    // below a content-sized chrome row.
+    const int32_t main_grow =
+        parent_is_flex ? (parent_is_row ? w.grow_x : w.grow_y) : 0;
+
+    // Nothing to apply: no rect, not absolute, no cross-axis fill, and no
+    // main-axis grow. (A bare layout child with no grow simply lets the
+    // layout manager size it to content.)
+    if (!has_rect && !absolute_layout && !fill_w && !fill_h && main_grow <= 0)
+        return;
 
     const touchy_Rect empty_rect = touchy_Rect_init_zero;
     const auto &r = has_rect ? w.placement.rect : empty_rect;
@@ -62,24 +79,23 @@ void apply_rect(lv_obj_t *obj, const touchy_Widget &w, bool absolute_layout,
     int32_t w_ = r.w > 0 ? r.w
                  : (absolute_layout || fill_w ? lv_pct(100) : LV_SIZE_CONTENT);
     int32_t h_ = r.h > 0 ? r.h
-                 : (absolute_layout ? lv_pct(100) : LV_SIZE_CONTENT);
+                 : (absolute_layout || fill_h ? lv_pct(100) : LV_SIZE_CONTENT);
     lv_obj_set_size(obj, w_, h_);
 
     ESP_LOGD(TAG,
              "apply_rect id='%s' kind=%d has_rect=%d r=(%ld,%ld,%ld,%ld) "
-             "grow=%ld abs=%d fill_w=%d -> w=%s h=%s",
+             "grow=(%ld,%ld) abs=%d fill=(%d,%d) -> w=%s h=%s",
              w.id, (int)w.which_kind, (int)has_rect,
-             (long)r.x, (long)r.y, (long)r.w, (long)r.h, (long)r.flex_grow,
-             (int)absolute_layout, (int)fill_w,
+             (long)r.x, (long)r.y, (long)r.w, (long)r.h,
+             (long)w.grow_x, (long)w.grow_y,
+             (int)absolute_layout, (int)fill_w, (int)fill_h,
              w_ == LV_SIZE_CONTENT ? "CONTENT" : (w_ == lv_pct(100) ? "100%" : "px"),
              h_ == LV_SIZE_CONTENT ? "CONTENT" : (h_ == lv_pct(100) ? "100%" : "px"));
 
-    // Stage 68 — flex-grow: in a flex (non-absolute) parent a positive
-    // factor lets this child share the parent's free main-axis space
-    // (e.g. a screen body that fills below a content-sized chrome row).
-    // No-op under absolute / grid parents.
-    if (!absolute_layout && r.flex_grow > 0) {
-        lv_obj_set_flex_grow(obj, (uint8_t)r.flex_grow);
+    // Stage 72 — main-axis flex-grow: apply the factor computed above so
+    // this child shares the parent's free space along the main axis.
+    if (main_grow > 0) {
+        lv_obj_set_flex_grow(obj, (uint8_t)main_grow);
     }
 }
 
@@ -102,11 +118,20 @@ void apply_grid_cell(lv_obj_t *obj, const touchy_Widget &w)
         col_span = w.placement.cell.has_col_span ? w.placement.cell.col_span : 1;
         row_span = w.placement.cell.has_row_span ? w.placement.cell.row_span : 1;
     }
-    ESP_LOGD(TAG, "apply_grid_cell id='%s' col=%ld row=%ld col_span=%ld row_span=%ld",
-             w.id, (long)col, (long)row, (long)col_span, (long)row_span);
+    // Stage 72 — `Widget.grow_x` / `grow_y` opt the child into filling its
+    // track(s): grow > 0 → LV_GRID_ALIGN_STRETCH on that axis, otherwise
+    // LV_GRID_ALIGN_CENTER so the widget sits content-sized at the centre
+    // of its cell. (Grid tracks have no proportional per-child grow, so the
+    // magnitude is ignored.)
+    lv_grid_align_t col_align = w.grow_x > 0 ? LV_GRID_ALIGN_STRETCH : LV_GRID_ALIGN_CENTER;
+    lv_grid_align_t row_align = w.grow_y > 0 ? LV_GRID_ALIGN_STRETCH : LV_GRID_ALIGN_CENTER;
+    ESP_LOGD(TAG, "apply_grid_cell id='%s' col=%ld row=%ld col_span=%ld row_span=%ld "
+             "grow=(%ld,%ld)",
+             w.id, (long)col, (long)row, (long)col_span, (long)row_span,
+             (long)w.grow_x, (long)w.grow_y);
     lv_obj_set_grid_cell(obj,
-                         LV_GRID_ALIGN_STRETCH, col, col_span,
-                         LV_GRID_ALIGN_STRETCH, row, row_span);
+                         col_align, col, col_span,
+                         row_align, row, row_span);
 }
 
 namespace {

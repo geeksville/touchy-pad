@@ -25,7 +25,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, and 68 are **done**. Latest active wire-format:
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, and 72 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 6`.
 Highlights worth remembering:
 
@@ -103,18 +103,29 @@ Highlights worth remembering:
   `host/s/` via symbolic path constants. The prev/next chrome is now one
   default screen `host/s/default.pb` built from
   `touchy_pad.api.screens.build_default_screen()` — a vertical flex column
-  (`col`) holding a prev/next chrome row plus a flex-growing body
-  `widget_ref(id="page")` (this is what the new `int32 flex_grow` field on
-  `Rect` is for: maps to `lv_obj_set_flex_grow`, honoured only under flex
-  parents). Flex children also fill the *cross* axis for COLUMN parents:
-  LVGL v9 has no `STRETCH` flex-align, so `apply_rect` sizes COLUMN
-  children to `lv_pct(100)` width (full width). It deliberately does NOT
-  force ROW children to full height — a pct(100) child height under a
-  content-height row is a circular dependency that collapses the row. The
-  parent flow is threaded into `apply_rect` via its `parent_layout` arg
-  (also stored on `ActiveRef` so the Stage-57 widget-ref rebuild path
-  keeps the cross-fill). The sim mirrors this via Qt box-layout stretch
-  factors. A flex-grow spacer between the prev/next buttons pushes them to
+  (`col`) holding a prev/next chrome row plus a growing body
+  `widget_ref(id="page")`.
+- **Sizing is opt-in via `Widget.grow_x` / `grow_y` (Stage 72).** These
+  two `int32` fields live on `Widget` itself (NOT on `Rect`/`GridCell`),
+  so they work the same regardless of the `placement` oneof. Default
+  `0` = content-sized (children no longer auto-stretch). Semantics depend
+  on the parent and axis:
+  - **Flex main axis** (`grow_x` for a ROW parent, `grow_y` for a COLUMN
+    parent) maps to `lv_obj_set_flex_grow(obj, factor)` — proportional,
+    so the magnitude matters.
+  - **Flex cross axis** (`grow_y` in a ROW, `grow_x` in a COLUMN) and
+    **grid** (both axes) treat any value `> 0` as "fill" (magnitude
+    ignored): cross-axis flex → `lv_pct(100)`, grid → `LV_GRID_ALIGN_STRETCH`
+    (otherwise grid cells now CENTER, the new default). There is no more
+    implicit COLUMN cross-fill — callers must set `grow_x=1` to get
+    full-width COLUMN children. `screens.grow(widget, x=, y=)` is the DSL
+    helper; `cell(..., grow_x=, grow_y=)` sets it on grid children. The
+    firmware reads it in `apply_rect`/`apply_grid_cell`
+    (`screen_layout.cpp`); the parent flow is threaded via the
+    `parent_layout` arg (also stored on `ActiveRef` so the Stage-57
+    widget-ref rebuild keeps the fill). The sim mirrors this via Qt
+    box-layout stretch factors + per-axis alignment.
+- A `grow_x=1` spacer between the prev/next buttons pushes them to
   opposite edges. User page bodies live in `host/uscr/` and are uploaded via
   `Touchy.user_screen_save(name, widget)`. The `touchy screen init` CLI
   provisions the chrome + a trackpad page; `screen demo` adds a smiley test

@@ -559,7 +559,7 @@ def _do_screen_init(pad) -> None:
     Uploads ``F:host/s/default.pb`` (the persistent prev/next chrome with
     a ``widget_ref(id="page")`` body) and the baseline ``trackpad`` page
     into ``F:host/uscr/`` so the device has a usable layout out of the
-    box. Shared by ``screen init`` and ``screen demo``.
+    box. Shared by ``touchy init`` and ``screen demo``.
     """
     from .api.screens import build_default_screen, build_user_pages
     from .paths import DEFAULT_SCREEN_PATH
@@ -574,28 +574,6 @@ def _do_screen_init(pad) -> None:
 
     pad.screen_load(DEFAULT_SCREEN_PATH)
     logger.info("loaded %s", DEFAULT_SCREEN_PATH)
-
-
-@screen.command("init")
-def screen_init() -> None:
-    """Write the default chrome screen + baseline trackpad page.
-
-    Creates ``F:host/s/default.pb`` (the persistent prev/next chrome) and
-    ``F:host/uscr/trackpad.pb`` (the baseline page), then loads the
-    default screen. Run this once to give a freshly-wiped device a usable
-    layout; afterwards push your own pages into ``F:host/uscr/`` with the
-    Python API's :meth:`Touchy.user_screen_save`.
-    """
-    with _open_pad() as pad:
-        if pad.board_info is not None:
-            info = pad.board_info
-            logger.info(
-                "board %s  firmware %s  protocol %s",
-                info.board_name or "(unknown)",
-                info.firmware_version_str or str(info.firmware_version),
-                str(info.protocol_version),
-            )
-        _do_screen_init(pad)
 
 
 @screen.command("demo")
@@ -615,7 +593,7 @@ def screen_init() -> None:
 def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
     """Upload the sample demo on top of the default chrome.
 
-    Runs ``screen init`` first (writing ``F:host/s/default.pb`` plus the
+    Runs ``touchy init`` first (writing ``F:host/s/default.pb`` plus the
     baseline ``F:host/uscr/trackpad.pb``), then adds the widget-showcase
     ``test`` page into ``F:host/uscr/`` and the 16x16 smiley image asset.
 
@@ -696,6 +674,30 @@ def reboot_bootloader() -> None:
     """Reboot the device into its USB DFU bootloader."""
     with _client() as c:
         c.sys_reboot_bootloader()
+
+
+@cli.command("init")
+def init() -> None:
+    """Write the default chrome screen and baseline trackpad page.
+
+    Creates ``F:host/s/default.pb`` (the persistent ``[< Prev | Next >]``
+    chrome with a ``widget_ref(id="page")`` body) and
+    ``F:host/uscr/trackpad.pb`` (the baseline multitouch trackpad page),
+    then loads the default screen. Run this once to give a freshly-wiped
+    device a usable layout; afterwards push your own pages into
+    ``F:host/uscr/`` with the Python API's
+    :meth:`~touchy_pad.api.Touchy.user_screen_save`.
+    """
+    with _open_pad() as pad:
+        if pad.board_info is not None:
+            info = pad.board_info
+            logger.info(
+                "board %s  firmware %s  protocol %s",
+                info.board_name or "(unknown)",
+                info.firmware_version_str or str(info.firmware_version),
+                str(info.protocol_version),
+            )
+        _do_screen_init(pad)
 
 
 def main() -> None:

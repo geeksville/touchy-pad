@@ -19,6 +19,7 @@ from touchy_pad.api import (
     arc,
     build_default_screen,
     build_demo,
+    build_setup_screen,
     build_user_pages,
     button,
     change_widget_ref_action,
@@ -666,8 +667,9 @@ def test_build_demo_returns_screen_and_widgets():
     assert body.id == "page"
     assert body.WhichOneof("kind") == "widget_ref"
     assert body.widget_ref.path == "F:host/uscr/trackpad.pb"
-    # The body grows to fill the column (Stage 68 flex_grow).
-    assert body.rect.flex_grow == 1
+    # The body grows to fill the column (Stage 72 grow_x/grow_y).
+    assert body.grow_y == 1
+    assert body.grow_x == 1
     # Two named user pages, sorted by build order.
     names = [n for n, _ in widgets]
     assert names == ["test", "trackpad"]
@@ -750,13 +752,16 @@ def test_build_default_screen_is_vertical_flex_with_growing_body():
     assert chrome_ids == ["prev", "chrome_gap", "next"]
     spacer_w = chrome_kids[1]
     assert spacer_w.WhichOneof("kind") == "spacer"
-    assert spacer_w.rect.flex_grow == 1
-    assert chrome.rect.flex_grow == 0
+    assert spacer_w.grow_x == 1
+    # The chrome row spans the full width but stays content-height.
+    assert chrome.grow_x == 1
+    assert chrome.grow_y == 0
     # Body is the page widget_ref that fills the remaining height.
     assert body.id == "page"
     assert body.WhichOneof("kind") == "widget_ref"
     assert body.widget_ref.path == "F:host/uscr/trackpad.pb"
-    assert body.rect.flex_grow == 1
+    assert body.grow_y == 1
+    assert body.grow_x == 1
 
 
 def test_build_user_pages_targets_user_screens_dir():
@@ -774,19 +779,22 @@ def test_build_user_pages_targets_user_screens_dir():
 
 
 def test_default_screen_json_round_trips_to_default():
-    """proto/default_screen.json decodes to the same chrome layout."""
+    """proto/default_screen.json decodes to the compiled-in setup screen."""
     from google.protobuf import json_format
 
     repo_root = Path(__file__).resolve().parents[2]
     raw = (repo_root / "proto" / "default_screen.json").read_text(encoding="utf-8")
     msg = json_format.Parse(raw, _proto.Screen())
-    # Same structure as build_default_screen().
+    # Same structure as build_setup_screen(): a hint label + inline trackpad.
     assert msg.active.layout_flex.flow == _proto.LayoutFlex.Flow.COLUMN
     top = list(msg.active.layout_flex.layout.children)
     assert len(top) == 2
-    body = top[1]
-    assert body.id == "page"
-    assert body.widget_ref.path == "F:host/uscr/trackpad.pb"
-    assert body.rect.flex_grow == 1
+    hint, pad = top
+    assert hint.id == "setup_hint"
+    assert hint.WhichOneof("kind") == "label"
+    assert pad.id == "pad"
+    assert pad.WhichOneof("kind") == "trackpad"
+    assert pad.grow_x == 1
+    assert pad.grow_y == 1
     # The on-disk JSON must match what the DSL produces today.
-    assert msg.SerializeToString() == build_default_screen().to_proto().SerializeToString()
+    assert msg.SerializeToString() == build_setup_screen().to_proto().SerializeToString()

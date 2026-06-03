@@ -5,11 +5,12 @@
 The firmware ships a built-in fallback screen (shown when no
 host-uploaded screens are present on the device filesystem). Rather than
 hand-maintain that layout twice, it is generated from the single source
-of truth in :func:`touchy_pad.api.screens.build_default_screen` — the
-same vertical-flex prev/next chrome the host CLI's ``screen init``
-uploads. This script serialises that screen to protobuf JSON;
-``proto/embed_screen_json.py`` then turns the JSON into the embedded C
-header ``firmware/main/default_screen_pb.h``.
+of truth in :func:`touchy_pad.api.screens.build_setup_screen` — a
+self-contained "run ``touchy init``" hint plus an inlined trackpad (no
+``widget_ref`` into ``F:host/uscr/``, which doesn't exist on a virgin
+device, and no prev/next chrome). This script serialises that screen to
+protobuf JSON; ``proto/embed_screen_json.py`` then turns the JSON into
+the embedded C header ``firmware/main/default_screen_pb.h``.
 
 Usage::
 
@@ -46,9 +47,9 @@ def main() -> int:
 
     from google.protobuf import json_format  # noqa: E402
 
-    from touchy_pad.api.screens import build_default_screen  # noqa: E402
+    from touchy_pad.api.screens import build_setup_screen  # noqa: E402
 
-    screen = build_default_screen()
+    screen = build_setup_screen()
     msg = screen.to_proto()
     body = json_format.MessageToJson(msg, indent=2)
 

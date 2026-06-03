@@ -173,7 +173,17 @@ def _build_layout(
             cell = child.cell if child.WhichOneof("placement") == "cell" else _proto.GridCell()
             col_span = int(cell.col_span) if cell.HasField("col_span") else 1
             row_span = int(cell.row_span) if cell.HasField("row_span") else 1
-            lay.addWidget(cw, int(cell.row), int(cell.col), row_span, col_span)
+            # Stage 72 — Widget.grow_x / grow_y opt the child into filling
+            # its cell on each axis (LV_GRID_ALIGN_STRETCH on firmware).
+            # Without a grow flag the widget is content-sized and centred,
+            # so mirror that with a per-axis Qt alignment (a set alignment
+            # makes QGridLayout use the size hint instead of stretching).
+            align = QtCore.Qt.AlignmentFlag(0)
+            if int(child.grow_x) <= 0:
+                align |= QtCore.Qt.AlignmentFlag.AlignHCenter
+            if int(child.grow_y) <= 0:
+                align |= QtCore.Qt.AlignmentFlag.AlignVCenter
+            lay.addWidget(cw, int(cell.row), int(cell.col), row_span, col_span, align)
         return container
 
     if kind == "layout_flex":
@@ -192,13 +202,23 @@ def _build_layout(
         lay.setContentsMargins(0, 0, 0, 0)
         for child in f.layout.children:
             cw = build_widget(child, fs, on_event, overrides, registry)
-            # Honour Rect.flex_grow as the Qt stretch factor so a body
-            # with flex_grow=1 fills the main axis while content-sized
-            # siblings (e.g. a chrome row) keep their size hint — mirrors
-            # the firmware's lv_obj_set_flex_grow. QBoxLayout already
-            # stretches children across the cross axis to fill the parent.
-            grow = int(child.rect.flex_grow) if child.WhichOneof("placement") == "rect" else 0
-            lay.addWidget(cw, grow)
+            # Stage 72 — per-axis "grow to fill" lives on Widget.grow_x /
+            # grow_y. The flex *main* axis (grow_x for ROW, grow_y for
+            # COLUMN) is the Qt stretch factor (proportional share). The
+            # flex *cross* axis only fills when its grow flag is set; by
+            # default the child is content-sized, so we pin it with a
+            # cross-axis alignment (QBoxLayout otherwise stretches a child
+            # across the cross axis to fill the parent).
+            if is_column:
+                main_grow = int(child.grow_y)
+                cross_grow = int(child.grow_x)
+                cross_align = QtCore.Qt.AlignmentFlag.AlignLeft
+            else:
+                main_grow = int(child.grow_x)
+                cross_grow = int(child.grow_y)
+                cross_align = QtCore.Qt.AlignmentFlag.AlignVCenter
+            align = QtCore.Qt.AlignmentFlag(0) if cross_grow > 0 else cross_align
+            lay.addWidget(cw, max(0, main_grow), align)
         return container
 
     # layout_absolute: no Qt layout — children are placed via setGeometry

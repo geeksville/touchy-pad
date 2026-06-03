@@ -7,62 +7,41 @@
       "layout": {
         "children": [
           {
-            "layoutFlex": {
-              "gap": 8,
-              "layout": {
-                "children": [
-                  {
-                    "id": "prev",
-                    "button": {
-                      "text": "< Prev",
-                      "onClick": [
-                        {
-                          "device": {
-                            "changeWidgetRef": {
-                              "behavior": "PREVIOUS",
-                              "path": "F:host/uscr/",
-                              "targetId": "page"
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "id": "chrome_gap",
-                    "rect": {
-                      "flexGrow": 1
-                    },
-                    "spacer": {}
-                  },
-                  {
-                    "id": "next",
-                    "button": {
-                      "text": "Next >",
-                      "onClick": [
-                        {
-                          "device": {
-                            "changeWidgetRef": {
-                              "behavior": "NEXT",
-                              "path": "F:host/uscr/",
-                              "targetId": "page"
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  }
-                ]
+            "id": "setup_hint",
+            "styles": [
+              {
+                "textColor": 16777215
               }
+            ],
+            "growX": 1,
+            "label": {
+              "text": "Run 'touchy init' to set up",
+              "textAlign": "TEXT_ALIGN_CENTER"
             }
           },
           {
-            "id": "page",
-            "rect": {
-              "flexGrow": 1
-            },
-            "widgetRef": {
-              "path": "F:host/uscr/trackpad.pb"
+            "id": "pad",
+            "growX": 1,
+            "growY": 1,
+            "trackpad": {
+              "leftTouchColor": 49151,
+              "rightTouchColor": 16753920,
+              "middleTouchColor": 16729343,
+              "touchRipple": {
+                "startOpa": 180,
+                "maxRadius": 45,
+                "durationMs": 400,
+                "path": "ANIM_PATH_EASE_OUT",
+                "borderWidth": 0
+              },
+              "tapRipple": {
+                "startOpa": 255,
+                "maxRadius": 70,
+                "durationMs": 300,
+                "path": "ANIM_PATH_EASE_OUT",
+                "borderWidth": 4
+              },
+              "scrollbarColor": 11393254
             }
           }
         ]
