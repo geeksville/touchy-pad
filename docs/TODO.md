@@ -37,7 +37,6 @@ Main new features: Works with StreamController app to provide arbitrary user but
 
 * [x] add aliexress/etc... links to recommended board
 * [x] change DSL to allow callback functions attached to actions.  completely hide "event id" from the api consumer (just map it to the callback)
-* [ ] two main readme points: better touchpad (that's graphical!) with streamdeck like features (that's open source) and an easy developer platform so your desktop python/rust apps can make interactive user interfaces on (very cheap!) LCD/eink displays.
 * [x] make switchable subscreens by using widgetref?
 * [x] remove Screen.path?  I don't think we need it
 * [x] test https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/lcd/index.html to see if it could help rendering performance - NO
@@ -56,14 +55,14 @@ Main new features: Works with StreamController app to provide arbitrary user but
 * [x] cleanup embedding of streamdeck ui into other widgets (via user screens)
 * [x] update python code to be 'finished' for StreamController (make sure press and release events work)
 * [ ] reddit post
-* [ ] support no-touch devices
 * [ ] photo of small board
-* [ ] include prebuilt win/os-x exes in the opendeck release zip. "Cross-compiling for every target is the usual sticking point. CI matrices and cargo zigbuild / cross are the standard answers." per https://github.com/geeksville/touchy-pad/blob/main/docs/opendeck-device-plugin.md#3-manifest-essentials
+* [x] include prebuilt win/os-x exes in the opendeck release zip. "Cross-compiling for every target is the usual sticking point. CI matrices and cargo zigbuild / cross are the standard answers." per https://github.com/geeksville/touchy-pad/blob/main/docs/opendeck-device-plugin.md#3-manifest-essentials
 
 ## For release Alpha 3
 
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] support no-touch devices
 * [ ] add some of the example JSON to the API docs
 * [ ] shrink images slightly in opendeck plugin
 * [ ] implement the StreamDeck background graphic API
