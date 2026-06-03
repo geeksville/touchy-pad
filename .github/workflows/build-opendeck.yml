@@ -3,7 +3,8 @@ name: Build OpenDeck plugin
 # Reusable workflow (called via `uses:` from app-ci.yml and release.yml)
 # that cross-builds the `touchy-opendeck` device plugin for every target
 # listed in the plugin manifest's CodePaths, lays the per-target binaries
-# out in the .sdPlugin directory, and packages a single installable zip.
+# out in the .sdPlugin directory, and uploads the directory as an artifact
+# (GitHub wraps it as com.geeksville.touchypad.sdPlugin.zip on download).
 #
 # Best practices applied:
 #   * Build each target *natively* on its own runner (incl. the free
@@ -19,10 +20,10 @@ on:
   workflow_call:
     inputs:
       artifact-name:
-        description: Name for the uploaded .sdPlugin.zip artifact.
+        description: Artifact name for the uploaded .sdPlugin directory.
         required: false
         type: string
-        default: touchy-opendeck-plugin
+        default: com.geeksville.touchypad.sdPlugin
 
 permissions:
   contents: read
@@ -116,7 +117,7 @@ jobs:
           merge-multiple: true
           path: binaries
 
-      - name: Assemble and zip the .sdPlugin
+      - name: Assemble .sdPlugin directory
         shell: bash
         run: |
           set -euo pipefail
@@ -124,19 +125,14 @@ jobs:
           # Lay the per-target trees (<target>/bin/touchy-opendeck[.exe])
           # next to manifest.json + icons/.
           cp -r binaries/* "${plugin_dir}/"
-          # Make sure the unix binaries are executable before zipping.
+          # Ensure unix binaries are executable.
           find "${plugin_dir}" -type f -name 'touchy-opendeck' -exec chmod +x {} +
-          mkdir -p rust/target
-          rm -f rust/target/com.geeksville.touchypad.sdPlugin.zip
-          ( cd rust/touchy-opendeck && \
-            zip -r -y "${GITHUB_WORKSPACE}/rust/target/com.geeksville.touchypad.sdPlugin.zip" \
-              com.geeksville.touchypad.sdPlugin )
-          echo "Packaged plugin contents:"
-          unzip -l rust/target/com.geeksville.touchypad.sdPlugin.zip
+          echo "Plugin directory contents:"
+          find "${plugin_dir}" | sort
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
-          path: rust/target/com.geeksville.touchypad.sdPlugin.zip
+          path: rust/touchy-opendeck/com.geeksville.touchypad.sdPlugin
           if-no-files-found: error
