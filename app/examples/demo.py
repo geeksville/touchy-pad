@@ -26,16 +26,14 @@ def build_page() -> protobuf.Widget:
     """Build the demo page and return it as a single ``Widget``.
 
     We use a ``col`` (vertical) layout, so every widget we add with
-    ``+=`` simply stacks below the previous one -- one row per widget,
-    no grid coordinates to think about.
+    ``+=`` simply stacks below the previous one -- one row per widget.
 
     The interesting part is the ``on_click`` / ``on_change`` arguments:
 
     * ``macro_action(...)`` runs entirely *on the device* -- here it
       makes the Touchy-Pad act like a USB keyboard and type some text.
     * ``host_action(on_event=...)`` sends an event back to *this* Python
-      script, so your ``lambda`` runs on your computer. Great for wiring
-      a button up to whatever you like (launch an app, hit an API, ...).
+      script, so your ``lambda`` runs on your computer. 
     """
     page = Layer(layout=col(gap=8))
 
@@ -97,11 +95,10 @@ def main() -> None:
     with touchy_open() as pad:
         # Say hello to whatever we connected to.
         info = pad.board_info
-        if info is not None:
-            print(
-                f"Connected to {info.board_name or 'device'} "
-                f"(firmware {info.firmware_version_str or info.firmware_version})"
-            )
+        print(
+            f"Connected to {info.board_name} "
+            f"(firmware {info.firmware_version_str})"
+        )
 
         # 1. Upload the smiley image so the image_button has something to
         #    show. ``file_save`` takes a drive-prefixed path: "F:" is

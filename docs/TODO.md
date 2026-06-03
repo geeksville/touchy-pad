@@ -44,8 +44,7 @@ Main new features: Works with StreamController app to provide arbitrary user but
 * [x] investigate [opendeck](docs/opendeck.md) and possibly do a plugin for that instead-of or in-addition-to StreamController.
 * [x] fix opendeck plugin not enumerating devices - figure out how to debug rust https://code.visualstudio.com/docs/languages/rust#_install-debugging-support
 * [x] add opendeck plugin binary to release
-* [ ] make stand alone example.py
-* [ ] add some of the example JSON to the API docs
+* [x] make stand alone example.py
 * [x] explain opendeck plugin install
 * [x] make opendeck example video
 * [x] send message to Opendeck geeks (include reverse engineer docs and video)
@@ -65,6 +64,7 @@ Main new features: Works with StreamController app to provide arbitrary user but
 
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] add some of the example JSON to the API docs
 * [ ] shrink images slightly in opendeck plugin
 * [ ] implement the StreamDeck background graphic API
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)

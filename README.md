@@ -1,6 +1,12 @@
 
 
 # Touchy-pad
+Touchy-pad is an open-source app that turns various cheap ($15-$30) 'aliexpress' displays into:
+* A high end graphical touchpad, with multitouch gestures, scrolling, dragging, etc...
+* A 'StreamDeck' like graphical macropad via an [OpenDeck](https://github.com/nekename/OpenDeck) plugin.
+* A tool to allow you to run your own custom python (or other language) code on your PC, but attached to cheap-embeddable LCD panels (with no embedded programming required)
+
+Read on for more info...
 
 ![cyd](docs/images/jc4827w543.jpg)
 
@@ -13,8 +19,6 @@ pip install touchy-pad
 touchy update # This will automatically install the firmware on your board - prompting you as needed
 ```
 More installation instructions [here](docs/installing.md).
-
-<br clear="right" />
 
 ## Current features
 <img src="docs/images/touchy-300.png" alt="Project Icon" align="right" width="140" />
@@ -56,6 +60,10 @@ If you'd like to see a demo of what you can do run:
 ```
 touchy screen demo --listen
 ```
+
+![demo](docs/images/demo.jpg)
+
+If you'd like a starting example.py you can edit see this [tutorial](docs/python-demo.md).
 
 ## [Stream-controller](https://streamcontroller.github.io/docs/latest/) plugin
 
