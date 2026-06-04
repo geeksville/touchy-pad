@@ -32,7 +32,9 @@
                     "id": "pad_bg",
                     "styles": [
                       {
-                        "bgColor": 1710638
+                        "bgColor": 1710638,
+                        "radius": 16,
+                        "borderW": 2
                       }
                     ],
                     "cell": {},

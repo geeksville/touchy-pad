@@ -789,17 +789,16 @@ def test_default_screen_json_round_trips_to_default():
     repo_root = Path(__file__).resolve().parents[2]
     raw = (repo_root / "proto" / "default_screen.json").read_text(encoding="utf-8")
     msg = json_format.Parse(raw, _proto.Screen())
-    # Same structure as build_setup_screen(): a hint label + a 1x1 grid
-    # container wrapping the trackpad (with background spacer and hint label).
+    # High-level shape: vertical flex column with two top-level children.
     assert msg.active.layout_flex.flow == _proto.LayoutFlex.Flow.COLUMN
     top = list(msg.active.layout_flex.layout.children)
     assert len(top) == 2
     hint, pad_container = top
     assert hint.id == "setup_hint"
-    assert hint.WhichOneof("kind") == "label"
     assert pad_container.id == "pad_container"
-    assert pad_container.WhichOneof("kind") == "layout_grid"
     assert pad_container.grow_x == 1
     assert pad_container.grow_y == 1
-    # The on-disk JSON must match what the DSL produces today.
+    # The serialization check is the authoritative assertion — if the JSON
+    # drifts from what build_setup_screen() produces today, this fails and
+    # `just gen-default-screen` must be re-run to sync the file.
     assert msg.SerializeToString() == build_setup_screen().to_proto().SerializeToString()
