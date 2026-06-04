@@ -163,6 +163,41 @@ def test_image_save_binary_round_trip(make_client):
     assert state["writes"] >= 1
 
 
+def test_gif_save_is_uploaded_verbatim(make_client):
+    """GIFs bypass LVGL-bin conversion and keep their ``.gif`` path."""
+    import io as _io
+
+    from PIL import Image
+
+    state = {"buf": bytearray(), "path": None}
+
+    def server(cmd, _t):
+        kind = cmd.WhichOneof("cmd")
+        if kind == "file_open_write":
+            state["path"] = cmd.file_open_write.path
+            return _proto.Response(
+                code=_proto.RESULT_OK,
+                file_open_write=_proto.FileOpenWriteResponse(handle=1),
+            )
+        if kind == "file_write":
+            state["buf"].extend(cmd.file_write.data)
+            return _proto.Response(code=_proto.RESULT_OK)
+        if kind == "file_close":
+            return _proto.Response(code=_proto.RESULT_OK)
+        raise AssertionError(f"unexpected command {kind!r}")
+
+    buf = _io.BytesIO()
+    Image.new("P", (8, 6), 0).save(buf, format="GIF")
+    gif = buf.getvalue()
+
+    with make_client(server) as c:
+        c.file_save("F:host/images/bg.gif", gif)
+    # Path kept verbatim (NOT rewritten to .bin) and bytes uploaded as-is.
+    assert state["path"] == "F:host/images/bg.gif"
+    assert bytes(state["buf"]) == gif
+    assert bytes(state["buf"]).startswith((b"GIF87a", b"GIF89a"))
+
+
 def test_event_consume_empty_returns_none(make_client):
     def server(cmd, _t):
         assert cmd.WhichOneof("cmd") == "event_consume"

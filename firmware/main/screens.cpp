@@ -510,6 +510,14 @@ bool active_screen_references_path(const std::string &path)
 
 }  // namespace
 
+void screens_prepare_file_overwrite(const char *path)
+{
+    if (!path || !*path) return;
+    lvgl_port_lock(0);
+    widget_image_registry_release_gif(path);
+    lvgl_port_unlock();
+}
+
 void screens_notify_file_changed(const char *path)
 {
     if (!path || !*path) return;

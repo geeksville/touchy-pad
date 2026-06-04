@@ -96,6 +96,11 @@ CONFIG_LV_FS_POSIX_PATH="/littlefs"
 # decoder only feeds line-by-line via get_area_cb, so transforming an
 # image renders garbage (random pixels from adjacent file data).
 CONFIG_LV_BIN_DECODER_RAM_LOAD=y
+# Stage 80: native animated-GIF decoder (lv_gif). The host uploads GIFs
+# verbatim and the firmware renders them in RGB565 with auto-pause when
+# off-screen. Frame buffers are allocated via LVGL's CLIB malloc, which
+# prefers PSRAM on boards that have it.
+CONFIG_LV_USE_GIF=y
 # Doesnt increase FPS
 # CONFIG_LV_USE_DRAW_SW_ASM=255
 

@@ -25,6 +25,7 @@
 
 #include "esp_log.h"
 #include "lvgl.h"
+#include <strings.h>  // strcasecmp (POSIX) for the Stage 80 `.gif` suffix test
 // Not exposed via lvgl.h umbrella; reach into the LVGL tree to grab
 // `lv_image_cache_drop()` so we can evict stale decoder entries when a
 // path-backed image is overwritten in place (Stage 60).
@@ -281,6 +282,17 @@ std::string to_lvgl_path(const char *wire)
     return std::string(wire);
 }
 
+// Stage 80: a wire path ending in `.gif` (case-insensitive) selects the
+// native `lv_gif` animated decoder instead of the static image path.
+#if LV_USE_GIF
+static bool path_is_gif(const char *wire)
+{
+    if (!wire) return false;
+    size_t n = strlen(wire);
+    return n >= 4 && strcasecmp(wire + n - 4, ".gif") == 0;
+}
+#endif
+
 // Apply the bytes at `wire_path` as `img`'s source. If `*dsc_inout` is
 // non-null on entry, that dsc was the previously-applied alias into
 // FS storage and is freed after LVGL has been pointed somewhere else
@@ -298,6 +310,22 @@ void apply_image_src_from_path(lv_obj_t *img,
 {
     lv_image_dsc_t *old_dsc = *dsc_inout;
     lv_image_dsc_t *new_dsc = nullptr;
+#if LV_USE_GIF
+    if (path_is_gif(wire_path)) {
+        // Stage 80: animated GIF — drive the native lv_gif decoder
+        // instead of the static image path. lv_gif is an lv_image
+        // subclass, so the scale/rotation/align in apply_image_attrs and
+        // the Stage 60 in-place reload registry both keep working; we
+        // just swap the source setter here. Force RGB565 frame buffers
+        // (matches the panel, halves RAM vs ARGB8888) and auto-pause
+        // while off-screen so paged-away bodies stop burning CPU. There
+        // is no mmap dsc — the decoder owns its own frame buffer.
+        lv_gif_set_color_format(img, LV_COLOR_FORMAT_RGB565);
+        lv_gif_set_auto_pause_invisible(img, true);
+        std::string lv_path = to_lvgl_path(wire_path);
+        lv_gif_set_src(img, lv_path.c_str());
+    } else
+#endif
     if (wire_path && wire_path[0]) {
         // Stage 52 fast path: if the asset lives on a mmappable FS
         // (R:) and its on-disk pixel format matches the display
@@ -418,7 +446,21 @@ void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
 
 lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
 {
-    lv_obj_t *img = lv_image_create(parent);
+    const touchy_Image &im = w.kind.image;
+    lv_obj_t *img;
+#if LV_USE_GIF
+    // Stage 80: `.gif` assets are rendered by the animated lv_gif
+    // decoder. Only the LVGL object class differs here — every other
+    // image behavior (scale/rotation/align plus the Stage 60 in-place
+    // reload-on-overwrite registry) flows through the shared
+    // apply_image_attrs / apply_image_src_from_path path, which keys off
+    // the `.gif` suffix to pick lv_gif_set_src.
+    const bool is_gif = path_is_gif(im.path);
+    img = is_gif ? lv_gif_create(parent) : lv_image_create(parent);
+#else
+    const bool is_gif = false;
+    img = lv_image_create(parent);
+#endif
     // The wire `asset` is already drive-prefixed (e.g.
     // `F:host/images/avatar.bin` for persistent flash, or
     // `R:host/images/avatar.bin` for the transient RAM filesystem).
@@ -427,8 +469,9 @@ lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
     // from the in-memory RamFs. The LVGL native `.bin` decoder is
     // always built in; BMP/PNG/JPG require their respective
     // `LV_USE_*` flag in sdkconfig.
-    ESP_LOGI(TAG, "build_image id='%s' src='%s'", w.id, w.kind.image.path);
-    apply_image_attrs(img, w.kind.image);
+    ESP_LOGI(TAG, "build_image%s id='%s' src='%s'",
+             is_gif ? "(gif)" : "", w.id, im.path);
+    apply_image_attrs(img, im);
     return img;
 }
 
@@ -789,6 +832,29 @@ lv_obj_t *build_layout(lv_obj_t *parent, const touchy_Widget &w)
 // ---------------------------------------------------------------------------
 // Stage 60 — public image-binding registry entry point.
 // ---------------------------------------------------------------------------
+
+void widget_image_registry_release_gif(const char *wire_path)
+{
+#if LV_USE_GIF
+    if (!wire_path || !*wire_path) return;
+    if (!path_is_gif(wire_path)) return;
+    // Stage 80: lv_gif keeps its source file open for the whole
+    // animation (the gifdec FILE handle lives as long as the widget
+    // points at it). A flash overwrite commits via rename-over-dest,
+    // which fails with EBUSY while that handle is open. Setting the
+    // source to NULL tears the decoder down and closes the lv_fs
+    // handle; the subsequent widget_image_registry_notify() re-applies
+    // the source (reopening the freshly-renamed file).
+    for (auto &b : g_plain_bindings) {
+        if (b.path != wire_path) continue;
+        ESP_LOGI(TAG, "image_registry: releasing gif '%s' before overwrite",
+                 wire_path);
+        lv_gif_set_src(b.img_obj, NULL);
+    }
+#else
+    (void)wire_path;
+#endif
+}
 
 bool widget_image_registry_notify(const char *wire_path)
 {

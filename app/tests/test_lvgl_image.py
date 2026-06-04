@@ -9,8 +9,10 @@ import pytest
 
 from touchy_pad.api.lvgl_image import (
     LVGL_BIN_MAGIC,
+    is_gif,
     is_lvgl_bin,
     looks_like_supported_image,
+    rescale_gif,
     rewrite_to_bin_path,
     to_lvgl_bin,
 )
@@ -25,6 +27,25 @@ def _png_bytes(
     img = Image.new("RGBA", (w, h), color)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _gif_bytes(w: int = 8, h: int = 6, frames: int = 3) -> bytes:
+    imgs = []
+    for i in range(frames):
+        im = Image.new("P", (w, h), color=i % 2)
+        # Distinct palette so frames don't collapse to one on save.
+        im.putpalette([0, 0, 0, 255, 0, 0] + [0] * (256 * 3 - 6))
+        imgs.append(im)
+    buf = io.BytesIO()
+    imgs[0].save(
+        buf,
+        format="GIF",
+        save_all=True,
+        append_images=imgs[1:],
+        duration=100,
+        loop=0,
+    )
     return buf.getvalue()
 
 
@@ -83,6 +104,37 @@ def test_rewrite_to_bin_path_passes_through_unknown_extensions():
     assert rewrite_to_bin_path("screens/home.pb") == "screens/home.pb"
     assert rewrite_to_bin_path("images/foo.bin") == "images/foo.bin"
     assert rewrite_to_bin_path("notes.txt") == "notes.txt"
+
+
+def test_gif_is_a_supported_image_but_keeps_its_extension():
+    gif = _gif_bytes()
+    assert is_gif(gif) is True
+    assert looks_like_supported_image(gif) is True
+    # Stage 80: GIFs are NOT rewritten to .bin — the firmware's lv_gif
+    # decoder is selected by the .gif suffix.
+    assert rewrite_to_bin_path("F:host/images/bg.gif") == "F:host/images/bg.gif"
+    assert rewrite_to_bin_path("F:host/images/bg.GIF") == "F:host/images/bg.GIF"
+
+
+def test_is_gif_rejects_non_gif():
+    assert is_gif(_png_bytes()) is False
+    assert is_gif(b"not a gif") is False
+
+
+def test_rescale_gif_shrinks_frames_preserving_animation():
+    gif = _gif_bytes(w=40, h=30, frames=3)
+    out = rescale_gif(gif, max_width=10, max_height=10)
+    assert is_gif(out) is True
+    img = Image.open(io.BytesIO(out))
+    assert img.width <= 10 and img.height <= 10
+    # Aspect ratio preserved (40x30 -> 10x7/8) and animation intact.
+    assert getattr(img, "n_frames", 1) == 3
+
+
+def test_rescale_gif_noop_when_within_limits():
+    gif = _gif_bytes(w=8, h=6)
+    assert rescale_gif(gif, max_width=180, max_height=180) is gif
+    assert rescale_gif(gif) is gif
 
 
 def test_to_lvgl_bin_auto_picks_rgb565_for_opaque_png(caplog):

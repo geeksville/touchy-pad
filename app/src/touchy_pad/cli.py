@@ -760,10 +760,16 @@ def touchpad_image(url: str) -> None:
         image_data = resp.read()
     logger.info("fetched %d bytes", len(image_data))
 
+    from .api.lvgl_image import is_gif
+
+    # GIFs keep their extension (the firmware's lv_gif decoder is selected
+    # by the `.gif` suffix); everything else converts to LVGL `.bin`.
+    bg_path = "F:host/images/user-background.gif" if is_gif(image_data) else _USER_BG_IMG_PATH
+
     with _open_pad() as pad:
-        pad.file_save(_USER_BG_IMG_PATH, image_data, max_width=180, max_height=180)
-        logger.info("sent %s", _USER_BG_IMG_PATH)
-        _do_write_trackpad(pad, _USER_BG_IMG_PATH)
+        pad.file_save(bg_path, image_data, max_width=180, max_height=180)
+        logger.info("sent %s", bg_path)
+        _do_write_trackpad(pad, bg_path)
 
 
 def main() -> None:

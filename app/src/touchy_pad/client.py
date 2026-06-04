@@ -231,9 +231,23 @@ class TouchyClient:
             data = data.encode("utf-8")
         else:
             data = bytes(data)
-        from .api.lvgl_image import looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin
+        from .api.lvgl_image import (
+            is_gif,
+            looks_like_supported_image,
+            rescale_gif,
+            rewrite_to_bin_path,
+            to_lvgl_bin,
+        )
 
-        if looks_like_supported_image(data) and self._t.needs_image_conversion:
+        if is_gif(data):
+            # GIFs are uploaded verbatim — the firmware renders them with
+            # its native lv_gif decoder (Stage 80) and the `.gif` path is
+            # the discriminator, so we never convert to LVGL `.bin`. Only
+            # rescale the frames when a size limit is requested.
+            if max_width is not None or max_height is not None:
+                data = rescale_gif(data, max_width=max_width, max_height=max_height)
+            logger.debug("file_save: %s (%d bytes gif, unconverted)", path, len(data))
+        elif looks_like_supported_image(data) and self._t.needs_image_conversion:
             original_len = len(data)
             data = to_lvgl_bin(data, dest_path=path, max_width=max_width, max_height=max_height)
             # LVGL's bin decoder selects itself by extension, so the

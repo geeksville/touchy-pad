@@ -109,3 +109,14 @@ bool        widget_refs_change(const char *target_id, const char *new_path);
 // ---------------------------------------------------------------------------
 
 bool widget_image_registry_notify(const char *wire_path);
+
+// Stage 80 — release any animated GIF decoder currently rendering
+// `wire_path` so a flash atomic overwrite (rename-over-destination)
+// can succeed. lv_gif holds the source file open for the lifetime of
+// its animation; this sets the source to NULL, closing the lv_fs
+// handle. No-op unless `wire_path` is a `.gif` referenced by an active
+// Image widget (and unless LV_USE_GIF is enabled). The follow-up
+// widget_image_registry_notify() reopens the new file.
+//
+// Caller must hold the LVGL lock.
+void widget_image_registry_release_gif(const char *wire_path);

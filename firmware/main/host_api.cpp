@@ -462,6 +462,14 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
 
     case touchy_Command_file_close_tag: {
         const auto &fc = cmd->cmd.file_close;
+        // Stage 80: a flash commit renames the temp file over the
+        // destination. If an animated GIF on the active screen is still
+        // rendering that destination, its decoder holds the file open
+        // and the rename fails with EBUSY. Release that handle first;
+        // the screens_notify_file_changed() below re-applies the source.
+        if (fc.commit && !s_active_write_path.empty()) {
+            screens_prepare_file_overwrite(s_active_write_path.c_str());
+        }
         bool ok = fs_close_write(fc.handle, fc.commit);
         if (ok && fc.commit && !s_active_write_path.empty()) {
             // Hand the freshly-committed file to the screen registry;

@@ -94,6 +94,16 @@ const char *screens_current_path(void);
 // call from any task; takes the LVGL port lock internally.
 void screens_notify_file_changed(const char *path);
 
+// Stage 80: called just before a host upload commits (renames the temp
+// file over `path`). If an animated GIF on the active screen is
+// rendering `path`, its decoder holds the source file open, which would
+// make the atomic rename-over-destination fail with EBUSY. This releases
+// that decoder's file handle so the commit can proceed; the follow-up
+// screens_notify_file_changed() re-applies the source. No-op for
+// non-GIF paths. Safe to call from any task; takes the LVGL port lock
+// internally.
+void screens_prepare_file_overwrite(const char *path);
+
 #ifdef __cplusplus
 }
 #endif

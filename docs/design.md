@@ -3466,6 +3466,15 @@ Done as planned, with these concrete landing points:
   lives in the **shared** `apply_image_src_from_path()`. So scale/rotation/
   align (`apply_image_attrs`) and the Stage 60 reload-on-overwrite registry
   (`widget_image_registry_notify`) both work for GIFs unchanged.
+* **Re-upload over a playing GIF.** `lv_gif`'s decoder holds the source
+  file open for the whole animation, so a flash commit (which renames the
+  temp file over the destination) failed with EBUSY when re-uploading a GIF
+  that was already on screen. `file_close` now calls
+  `screens_prepare_file_overwrite()` →
+  `widget_image_registry_release_gif()` (`lv_gif_set_src(img, NULL)`) just
+  before `fs_close_write()`, closing the handle so the rename succeeds; the
+  existing `screens_notify_file_changed()` re-applies the source afterward,
+  reopening the freshly-written file.
 * **Host.** `api/lvgl_image.py`: new `is_gif()` / `rescale_gif()`; `.gif`
   removed from `_CONVERTIBLE_EXTS` so `rewrite_to_bin_path()` preserves it.
   `client.file_save()` detects GIFs and uploads them verbatim (no
