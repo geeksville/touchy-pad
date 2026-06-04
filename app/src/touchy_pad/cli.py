@@ -772,6 +772,26 @@ def touchpad_image(url: str) -> None:
         _do_write_trackpad(pad, bg_path)
 
 
+@touchpad.command("gif")
+def touchpad_gif() -> None:
+    """Set the bundled animated cat GIF as the trackpad background.
+
+    Uploads the packaged ``touchy_pad/assets/cat-space.gif`` (scaled to fit
+    within 180×180 px) and regenerates the trackpad page to reference it,
+    just like ``touchpad image URL`` but with no network fetch.
+    """
+    from importlib import resources
+
+    image_data = resources.files("touchy_pad.assets").joinpath("cat-space.gif").read_bytes()
+    logger.info("loaded bundled cat-space.gif (%d bytes)", len(image_data))
+
+    bg_path = "F:host/images/user-background.gif"
+    with _open_pad() as pad:
+        pad.file_save(bg_path, image_data, max_width=180, max_height=180)
+        logger.info("sent %s", bg_path)
+        _do_write_trackpad(pad, bg_path)
+
+
 def main() -> None:
     from rich.logging import RichHandler
 

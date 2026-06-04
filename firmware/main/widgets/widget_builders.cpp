@@ -321,7 +321,7 @@ void apply_image_src_from_path(lv_obj_t *img,
         // while off-screen so paged-away bodies stop burning CPU. There
         // is no mmap dsc — the decoder owns its own frame buffer.
         lv_gif_set_color_format(img, LV_COLOR_FORMAT_RGB565);
-        lv_gif_set_auto_pause_invisible(img, true);
+        //lv_gif_set_auto_pause_invisible(img, true);
         std::string lv_path = to_lvgl_path(wire_path);
         lv_gif_set_src(img, lv_path.c_str());
     } else
