@@ -252,7 +252,7 @@ app-run *ARGS: build-proto-py
 
 # Change touchpad image to a custom graphic
 app-touchpad-image:
-    env -u VIRTUAL_ENV poetry run --directory app touchy touchpad image https://www.geeksville.com/robots.png
+    just app-run touchpad image https://www.geeksville.com/robots.png
 
 # Change touchpad image to the bundled cute cat gif
 app-touchpad-gif:
