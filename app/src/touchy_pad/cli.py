@@ -572,7 +572,7 @@ def _do_screen_init(pad) -> None:
     logger.info("sent %s", DEFAULT_SCREEN_PATH)
 
     touchy_png = make_touchy_png()
-    pad.file_save(_TOUCHY_IMG_PATH, touchy_png)
+    pad.file_save(_TOUCHY_IMG_PATH, touchy_png, max_width=128, max_height=128)
     logger.info("sent %s (%d bytes source)", _TOUCHY_IMG_PATH, len(touchy_png))
 
     _, trackpad_widget = _trackpad_page.build(background_image=_TOUCHY_IMG_PATH)

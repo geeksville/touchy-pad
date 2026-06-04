@@ -205,6 +205,8 @@ def to_lvgl_bin(
     *,
     cf: str | None = None,
     dest_path: str | None = None,
+    max_width: int | None = None,
+    max_height: int | None = None,
 ) -> bytes:
     """Convert *source* (image bytes or a path) to an LVGL ``.bin`` blob.
 
@@ -219,6 +221,11 @@ def to_lvgl_bin(
       (flash) never mmaps, so the fallback is silent there.
     * ``"RGB565"`` — force opaque RGB565 (alpha is dropped).
     * ``"RGB565A8"`` — force RGB565 + A8 plane.
+
+    *max_width* and *max_height* \u2014 if given, the image is scaled down
+    (preserving aspect ratio using :data:`PIL.Image.LANCZOS`) so that
+    neither dimension exceeds the respective limit.  Has no effect when
+    the image is already within the bounds.
 
     Requires Pillow at runtime; raises :class:`ImportError` with a
     helpful hint otherwise.
@@ -239,6 +246,12 @@ def to_lvgl_bin(
         raise TypeError(f"unsupported source type: {type(source).__name__}")
 
     img.load()  # force decoding now so the BytesIO can be GC'd
+
+    if max_width is not None or max_height is not None:
+        limit_w = max_width or img.width
+        limit_h = max_height or img.height
+        if img.width > limit_w or img.height > limit_h:
+            img.thumbnail((limit_w, limit_h), Image.LANCZOS)
 
     chosen = (cf or "").upper()
     if chosen == "":

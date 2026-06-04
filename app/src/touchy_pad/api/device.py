@@ -180,7 +180,14 @@ class Touchy:
         """Wipe every file from the device's flash host-upload area."""
         self._client.file_delete("F:host")
 
-    def file_save(self, path: str, data: bytes | str) -> None:
+    def file_save(
+        self,
+        path: str,
+        data: bytes | str,
+        *,
+        max_width: int | None = None,
+        max_height: int | None = None,
+    ) -> None:
         """Upload a single file to *path* on the device.
 
         *path* must be drive-prefixed
@@ -191,8 +198,13 @@ class Touchy:
         client. Internally this issues the streaming
         ``FileOpenWrite`` / ``FileWrite`` / ``FileClose`` sequence, but
         callers see a single atomic operation.
+
+        *max_width* and *max_height* — if given, the image is scaled down
+        (preserving aspect ratio) so that neither dimension exceeds the
+        respective limit before conversion.  Non-image payloads silently
+        ignore these parameters.
         """
-        self._client.file_save(path, data)
+        self._client.file_save(path, data, max_width=max_width, max_height=max_height)
 
     def screen_load(self, path: str) -> None:
         """Activate the screen at the given drive-prefixed *path*.

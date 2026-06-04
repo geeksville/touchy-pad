@@ -38,6 +38,19 @@ def build(background_image: str | None = None) -> tuple[str, _proto.Widget]:
     """
     container = Layer(layout=grid(cols=1, rows=1))
 
+    # Layer 1 — dark background fill.  A spacer is used instead of a label
+    # or layout widget because build_spacer() calls lv_obj_remove_style_all(),
+    # which lets the user-supplied bg_color style take effect without fighting
+    # a local lv_obj_set_style_bg_opa(LV_OPA_TRANSP) that those other widget
+    # types set internally.
+    container += cell(
+        spacer("pad_bg", style=style(bg_color=0x1A1A2E, radius=16, border_w=2)),
+        col=0,
+        row=0,
+        grow_x=1,
+        grow_y=1,
+    )
+
     if background_image is not None:
         # Single image layer fills the cell.
         container += cell(
@@ -48,19 +61,6 @@ def build(background_image: str | None = None) -> tuple[str, _proto.Widget]:
             grow_y=1,
         )
     else:
-        # Layer 1 — dark background fill.  A spacer is used instead of a label
-        # or layout widget because build_spacer() calls lv_obj_remove_style_all(),
-        # which lets the user-supplied bg_color style take effect without fighting
-        # a local lv_obj_set_style_bg_opa(LV_OPA_TRANSP) that those other widget
-        # types set internally.
-        container += cell(
-            spacer("pad_bg", style=style(bg_color=0x1A1A2E)),
-            col=0,
-            row=0,
-            grow_x=1,
-            grow_y=1,
-        )
-
         # Layer 2 — dim hint text, content-sized and centred by the grid default.
         container += cell(
             label("pad_hint", text="Touch here", font_size=30, style=style(text_color=0x334466)),

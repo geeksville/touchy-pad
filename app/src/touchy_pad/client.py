@@ -194,7 +194,14 @@ class TouchyClient:
             self._rpc(_proto.Command(file_close=_proto.FileCloseCmd(handle=handle, commit=commit)))
         )
 
-    def file_save(self, path: str, data: bytes | str) -> None:
+    def file_save(
+        self,
+        path: str,
+        data: bytes | str,
+        *,
+        max_width: int | None = None,
+        max_height: int | None = None,
+    ) -> None:
         """Write a file to the device filesystem in one logical call.
 
         *path* is the drive-prefixed filesystem path
@@ -208,6 +215,11 @@ class TouchyClient:
         format before upload, so the firmware only needs its always-on
         built-in image decoder. Already-converted ``.bin`` blobs and
         non-image payloads are passed through unchanged.
+
+        *max_width* and *max_height* — if given, the image is scaled down
+        (preserving aspect ratio) so that neither dimension exceeds the
+        respective limit before conversion.  Values are in pixels.  Non-image
+        payloads silently ignore these parameters.
 
         On the wire this issues a ``FileOpenWrite`` command, one or more
         ``FileWrite`` chunks (≤ 4 KiB each so the on-wire frame fits in
@@ -223,7 +235,7 @@ class TouchyClient:
 
         if looks_like_supported_image(data) and self._t.needs_image_conversion:
             original_len = len(data)
-            data = to_lvgl_bin(data, dest_path=path)
+            data = to_lvgl_bin(data, dest_path=path, max_width=max_width, max_height=max_height)
             # LVGL's bin decoder selects itself by extension, so the
             # on-device file has to be named *.bin even though the
             # caller likely passed e.g. "F:host/images/avatar.png".
