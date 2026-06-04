@@ -244,11 +244,11 @@ bool load_decoded(std::unique_ptr<ScreenMsg> holder, const char *log_name)
     // boot-time apply_rect logs get dropped under load).
     lvgl_port_lock(0);
     lv_obj_update_layout(scr);
-    ESP_LOGI(TAG, "geom scr -> w=%ld h=%ld", (long)lv_obj_get_width(scr),
+    ESP_LOGD(TAG, "geom scr -> w=%ld h=%ld", (long)lv_obj_get_width(scr),
              (long)lv_obj_get_height(scr));
     for (uint32_t i = 0; i < lv_obj_get_child_count(scr); i++) {
         lv_obj_t *c = lv_obj_get_child(scr, i);
-        ESP_LOGI(TAG, "geom child[%lu] -> x=%ld y=%ld w=%ld h=%ld",
+        ESP_LOGD(TAG, "geom child[%lu] -> x=%ld y=%ld w=%ld h=%ld",
                  (unsigned long)i, (long)lv_obj_get_x(c), (long)lv_obj_get_y(c),
                  (long)lv_obj_get_width(c), (long)lv_obj_get_height(c));
     }

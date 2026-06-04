@@ -311,7 +311,7 @@ void apply_image_src_from_path(lv_obj_t *img,
         } else {
             if (dsc) delete dsc;
             if (why && *why) {
-                ESP_LOGW(TAG, "image %s: mmap declined (%s); using file read",
+                ESP_LOGD(TAG, "image %s: mmap declined (%s); using file read",
                          wire_path, why);
             }
             // File-read fallback: drop any LVGL cache entry for this

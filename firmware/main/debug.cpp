@@ -13,7 +13,7 @@ static const char *TAG = "debug";
 
 void dump_critical_info()
 {
-    ESP_LOGI(TAG, "heap: free=%u  min_ever=%u  internal=%u  psram=%u",
+    ESP_LOGD(TAG, "heap: free=%u  min_ever=%u  internal=%u  psram=%u",
              (unsigned)esp_get_free_heap_size(),
              (unsigned)esp_get_minimum_free_heap_size(),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -38,7 +38,7 @@ void dump_critical_info()
         const char *level =
             hwm_b >= configMINIMAL_STACK_SIZE       ? "  OK" :
             hwm_b >= configMINIMAL_STACK_SIZE / 4u  ? "WARN" : "!!!!";
-        ESP_LOGI(TAG, "  task %-16s  stack_free=%5u B  [%s]",
+        ESP_LOGD(TAG, "  task %-16s  stack_free=%5u B  [%s]",
                  tasks[i].pcTaskName, hwm_b, level);
     }
     delete[] tasks;

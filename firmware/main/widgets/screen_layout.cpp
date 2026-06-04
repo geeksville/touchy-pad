@@ -160,7 +160,7 @@ void apply_layout(lv_obj_t *parent, const touchy_Widget &w)
     case touchy_Widget_layout_flex_tag: {
         const touchy_LayoutFlex &fl = w.kind.layout_flex;
         lv_obj_set_flex_flow(parent, flex_flow_from_proto(fl.flow));
-        ESP_LOGI(TAG, "apply_layout flex id='%s' flow=%d gap=%ld",
+        ESP_LOGD(TAG, "apply_layout flex id='%s' flow=%d gap=%ld",
                  w.id, (int)fl.flow, (long)fl.gap);
         if (fl.gap > 0) {
             lv_obj_set_style_pad_column(parent, fl.gap, 0);
