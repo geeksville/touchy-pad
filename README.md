@@ -83,7 +83,7 @@ This project is intended to be 'open' to make it easy for host side code to mana
 
 If you'd like to see a demo of what you can do run:
 ```
-touchy screen demo --listen
+touchy --listen screen demo
 ```
 
 ![demo](docs/images/demo.jpg)

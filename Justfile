@@ -258,12 +258,12 @@ app-run *ARGS: build-proto-py
     fi
 
 # Change touchpad image to a custom graphic
-app-touchpad-image:
-    just app-run touchpad image https://www.geeksville.com/robots.png
+app-touchpad-image *ARGS:
+    just app-run {{ARGS}} touchpad image https://www.geeksville.com/robots.png 
 
 # Change touchpad image to the bundled cute cat gif
-app-touchpad-gif:
-    just app-run touchpad gif
+app-touchpad-gif *ARGS:
+    just app-run {{ARGS}} touchpad gif 
 
 # ---------------------------------------------------------------------------
 # Rust library + demo (rust/) — pure-Rust async client.

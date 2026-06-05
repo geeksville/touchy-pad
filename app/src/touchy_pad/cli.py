@@ -89,6 +89,12 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
     "115200 baud instead of auto-discovering it by USB VID/PID. Also "
     "used by esptool-based commands such as `update`.",
 )
+@click.option(
+    "--listen",
+    is_flag=True,
+    help="After the subcommand finishes, stream device logs and host events "
+    "until Ctrl-C. Works with any subcommand.",
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -100,6 +106,7 @@ def cli(
     sim_serial: str,
     sim_dir: Path | None,
     port: str | None,
+    listen: bool,
 ) -> None:
     """Talk to a connected Touchy-Pad USB device."""
     # Configure logging level
@@ -125,6 +132,7 @@ def cli(
     ctx.obj["sim_serial"] = sim_serial
     ctx.obj["sim_dir"] = sim_dir
     ctx.obj["port"] = port
+    ctx.obj["listen"] = listen
 
     if not sim_active:
         if ctx.invoked_subcommand is None:
@@ -208,9 +216,26 @@ def _after_subcommand(ctx: click.Context, _result, **_kwargs) -> None:
     then we hand control to ``QApplication.exec()`` so the window
     stays interactive until the user closes it or hits Ctrl+C.
     """
+    if ctx.obj.get("listen") and not ctx.obj.get("sim_gui"):
+        # Park the main thread: open a fresh client and stream device
+        # logs (dispatched transparently via event_consume) + host events.
+        logger.info("streaming device logs and events (Ctrl-C to stop)\u2026")
+        client = _client()
+        try:
+            for evt in client.stream_events():
+                logger.info("host-event code=0x%x", evt.host_code)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            client.close()
+        return
+
     if not ctx.obj.get("sim_gui"):
         return
     app = ctx.obj["sim_app"]
+
+    if ctx.obj.get("listen"):
+        logger.info("listening for host events; close the sim window or press Ctrl-C to stop.")
 
     import signal
 
@@ -599,19 +624,13 @@ def _do_screen_init(pad) -> None:
 
 @screen.command("demo")
 @click.option(
-    "--listen",
-    is_flag=True,
-    help="After uploading, stream host events from the demo screen until "
-    "Ctrl-C. Registers handlers for the demo's host action codes.",
-)
-@click.option(
     "--json",
     "as_json",
     is_flag=True,
     help="Print the screen definition as protobuf JSON to stdout; " "do not talk to the device.",
 )
 @click.pass_context
-def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
+def screens_demo(ctx: click.Context, as_json: bool) -> None:
     """Upload the sample demo on top of the default chrome.
 
     Runs ``touchy init`` first (writing ``F:host/s/default.pb`` plus the
@@ -622,9 +641,8 @@ def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
     body ``widget_ref`` through ``F:host/uscr/``; flip to the ``test``
     page on-device with ``Next >``.
 
-    With ``--listen`` the CLI parks and the Stage-67 inline
-    ``host_action(on_event=...)`` callbacks on the ``test`` page print
-    incoming events.
+    Pass the top-level ``--listen`` flag to stream host events after
+    uploading: ``touchy --listen screen demo``.
     """
     from .api.images import make_smiley_png
     from .api.screens import build_default_screen, build_user_pages
@@ -665,29 +683,6 @@ def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
         logger.info("loaded %s", DEFAULT_SCREEN_PATH)
         pad.show_user_screen("test")
         logger.info("showing F:host/uscr/test.pb")
-
-        if listen:
-            # Stage 67: the demo widgets carry inline ``host_action(on_event=...)``
-            # callbacks, registered automatically by ``user_screen_save`` /
-            # ``screen_save`` above. Nothing left to wire up here — just park
-            # and let the background event thread dispatch them.
-            if ctx.obj.get("sim_gui"):
-                # The group's result callback runs QApplication.exec()
-                # right after this returns, which both keeps the
-                # window interactive *and* parks the main thread
-                # — host events fire from the sim's worker thread
-                # and print straight to stdout from there.
-                logger.info(
-                    "listening for host events; close the sim window or press Ctrl-C to stop."
-                )
-            else:
-                logger.info("listening for host events (Ctrl-C to stop)...")
-                try:
-                    import threading
-
-                    threading.Event().wait()
-                except KeyboardInterrupt:
-                    pass
 
 
 @cli.command("reboot-bootloader")
