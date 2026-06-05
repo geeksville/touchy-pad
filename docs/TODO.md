@@ -15,6 +15,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] implement the StreamDeck background graphic API
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
 * [ ] Support a few more board types
+* [ ] Give user friendly error msg if firmware or py code is too old
 * [ ] Allow setting a persistent device pref for 'min-log-level' logs with lower pri than this will not be queued for the host, just drop em.  default threshold is ERROR. Update python cli to add a "set-log-level FOO" cmd.  Also add a "boot-delay" param, to cause a sleep early on - to allow time for debug logging connection establishment.
 * [ ] support eink displays in my test devices drawer
 * [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/
