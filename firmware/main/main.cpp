@@ -4,6 +4,7 @@
 
 #include "backlight.h"
 #include "board.h"
+#include "coredump_report.h"
 #include "display.h"
 #include "fs.h"
 #include "host_api.h"
@@ -77,6 +78,12 @@ extern "C" void app_main(void)
     // call so the host can drain tunneled log records from its normal
     // event-poll loop. No-op when CONFIG_TOUCHY_LOG_OVER_PROTO=n.
     log_proto_start();
+
+    // If the previous boot panicked, decode the saved core dump and log
+    // its summary now — first thing, so the report lands in the first
+    // few proto log records and survives the boot flood before the host
+    // connects. Erases the image so it reports exactly once.
+    coredump_report_check_and_log();
 
     ESP_LOGI(TAG, "touchy-pad v2 booting");
 

@@ -4,3 +4,7 @@ nvs,      data, nvs,     0x9000,   0x6000,
 phy_init, data, phy,     0xf000,   0x1000,
 factory,  app,  factory, 0x10000,  4M,
 storage,  data, littlefs,,         8M,
+# Panic core dump (ELF). Placed last so `storage` keeps its offset and
+# existing LittleFS contents survive this layout change. 64 KB is plenty
+# for an ELF summary dump of the faulting task's stack + registers.
+coredump, data, coredump,,         0x10000,

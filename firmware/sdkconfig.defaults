@@ -68,8 +68,7 @@ CONFIG_TINYUSB_VENDOR_COUNT=1
 # malloc/memcpy/memset/sprintf (replaces v8's LV_MEM_CUSTOM=y).
 
 # per https://lvgl.io/docs/open/integration/chip_vendors/espressif/tips_and_tricks LVGL speedups
-CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
-CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
 
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y
@@ -80,7 +79,7 @@ CONFIG_LV_USE_CLIB_SPRINTF=y
 # Keep the FAST_MEM attribute as a no-op until upstream resolves this.
 # CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM is not set
 CONFIG_LV_COLOR_DEPTH_16=y
-CONFIG_LV_USE_PERF_MONITOR=n
+# CONFIG_LV_USE_PERF_MONITOR=y
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_30=y
 # Stage 20: LVGL POSIX filesystem bridge so host-uploaded image assets
@@ -105,13 +104,16 @@ CONFIG_LV_USE_GIF=y
 # CONFIG_LV_USE_DRAW_SW_ASM=255
 
 # ----- Log -----
-CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+# DEBUG (4) so ESP_LOGD lines are both *compiled in* (MAXIMUM_LEVEL) and
+# *emitted at runtime* (DEFAULT_LEVEL). The Stage 80 GIF reload probes
+# and any other ESP_LOGD diagnostics are invisible unless both are >= 4;
+# with the default INFO the compiler strips ESP_LOGD bodies entirely.
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y
 
 # ----- Custom partition table (filename supplied per-board) -----
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
-# The following debug flags collectively cost us 6 FPS (from 26 -> 20 FPS) but worth it for
-# now for better debugging.
 # ----- Crash / panic diagnostics -----
 # Goal: when the firmware faults, get as much useful info out of UART0
 # (and the post-reboot CDC console) as possible before the device resets.
@@ -135,6 +137,36 @@ CONFIG_ESP_INT_WDT_TIMEOUT_MS=300
 CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_PANIC=y
 
+# Save an ELF core dump to the `coredump` flash partition on panic. We
+# have no UART console wired on the shipped boards, so the only way to
+# recover a real backtrace is to persist it across the reboot and stream
+# it back over the proto log tunnel — coredump_report.cpp decodes the
+# summary (faulting task, PC, backtrace) on the next boot, logs it, then
+# erases the image. Enabling this auto-selects ELF format + SHA256
+# checksum, which is what esp_core_dump_get_summary() consumes.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+
+# ----- LVGL runtime asserts -----
+# Catch the most common LVGL misuse 
+# at the point of misuse, with an LV_LOG_ERROR + backtrace, instead of
+# letting it cascade into an unprintable memory-corruption panic.
+CONFIG_LV_USE_LOG=y
+CONFIG_LV_LOG_LEVEL_WARN=y
+CONFIG_LV_USE_ASSERT_NULL=y
+CONFIG_LV_USE_ASSERT_MALLOC=y
+CONFIG_LV_USE_ASSERT_OBJ=y
+CONFIG_LV_USE_ASSERT_STYLE=y
+
+# ----- Touchy-Pad project options (see firmware/main/Kconfig.projbuild) -----
+# Stage 64.1: tunnel ESP-IDF log lines to the host via Response.log_record
+# payloads on the existing host_api channel. Enabled by default; boards
+# without a real USB-CDC console (e.g. CYD2USB) keep this on and disable
+# the UART forward via CONFIG_TOUCHY_LOG_TO_UART=n.
+CONFIG_TOUCHY_LOG_OVER_PROTO=y
+CONFIG_TOUCHY_LOG_TO_UART=y
+
+# The following debug flags collectively cost us 6 FPS (from 26 -> 20 FPS) but worth it for
+# now for better debugging.
 # Expensive debugging flags!
 # Catch heap corruption at the point of the bad write rather than waiting
 # for a downstream allocator crash. Comprehensive mode adds head/tail
@@ -155,22 +187,3 @@ CONFIG_ESP_TASK_WDT_PANIC=y
 # call sites (exception tables present anyway).
 #CONFIG_ESP_SYSTEM_USE_EH_FRAME=y
 
-# ----- LVGL runtime asserts -----
-# Catch the most common LVGL misuse 
-# at the point of misuse, with an LV_LOG_ERROR + backtrace, instead of
-# letting it cascade into an unprintable memory-corruption panic.
-CONFIG_LV_USE_LOG=y
-CONFIG_LV_LOG_LEVEL_WARN=y
-CONFIG_LV_USE_ASSERT_NULL=y
-CONFIG_LV_USE_ASSERT_MALLOC=y
-CONFIG_LV_USE_ASSERT_OBJ=y
-CONFIG_LV_USE_ASSERT_STYLE=y
-
-
-# ----- Touchy-Pad project options (see firmware/main/Kconfig.projbuild) -----
-# Stage 64.1: tunnel ESP-IDF log lines to the host via Response.log_record
-# payloads on the existing host_api channel. Enabled by default; boards
-# without a real USB-CDC console (e.g. CYD2USB) keep this on and disable
-# the UART forward via CONFIG_TOUCHY_LOG_TO_UART=n.
-CONFIG_TOUCHY_LOG_OVER_PROTO=y
-CONFIG_TOUCHY_LOG_TO_UART=y
