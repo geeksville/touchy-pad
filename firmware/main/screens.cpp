@@ -242,22 +242,22 @@ bool load_decoded(std::unique_ptr<ScreenMsg> holder, const char *log_name)
     // holders alongside the new active screen so their heap arrays
     // remain alive for action-slot pointers in the new LVGL tree.
     widget_refs_commit();
-    lvgl_port_unlock();
-
-    // Persist last-loaded so a reboot restores it. The built-in fallback
-    // is given the sentinel path "<built-in>" by its caller; we skip
-    // persisting that so a real screen, once loaded, always wins.
-    if (!g_current_path.empty() && g_current_path[0] != '<') {
-        Prefs::instance().set_current_screen(g_current_path);
-    }
-
-    ESP_LOGI(TAG, "loaded screen '%s'", log_name);
 
     // Stage 68 debug — force a layout pass and dump the geometry LVGL
     // actually computed for the screen and its immediate children, so we
     // can tell whether apply_rect's pct(100) sizing took effect (the
     // boot-time apply_rect logs get dropped under load).
-    lvgl_port_lock(0);
+    //
+    // CRITICAL: keep this inside the SAME lock region as the screen swap
+    // above. The previous code released the LVGL lock here (to persist
+    // prefs to flash) and then re-acquired it for this dump while still
+    // holding the raw `scr` pointer. During that unlocked window the
+    // LVGL task could run a queued `lv_async_call` from
+    // `screens_notify_file_changed` — i.e. another `screens_load` →
+    // `load_decoded` that does `lv_obj_delete(old_scr)` on the very
+    // screen we just made active. `scr` then dangled and
+    // `lv_obj_update_layout(scr)` walked a freed object
+    // (`lv_obj_get_screen` use-after-free), crashing the host_api task.
     lv_obj_update_layout(scr);
     ESP_LOGD(TAG, "geom scr -> w=%ld h=%ld", (long)lv_obj_get_width(scr),
              (long)lv_obj_get_height(scr));
@@ -268,6 +268,16 @@ bool load_decoded(std::unique_ptr<ScreenMsg> holder, const char *log_name)
                  (long)lv_obj_get_width(c), (long)lv_obj_get_height(c));
     }
     lvgl_port_unlock();
+
+    // Persist last-loaded so a reboot restores it. The built-in fallback
+    // is given the sentinel path "<built-in>" by its caller; we skip
+    // persisting that so a real screen, once loaded, always wins. This is
+    // flash I/O, so do it AFTER releasing the LVGL lock above.
+    if (!g_current_path.empty() && g_current_path[0] != '<') {
+        Prefs::instance().set_current_screen(g_current_path);
+    }
+
+    ESP_LOGI(TAG, "loaded screen '%s'", log_name);
 
     dump_critical_info();
     return true;
