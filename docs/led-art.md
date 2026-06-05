@@ -14,6 +14,7 @@ Probably best done as seperate projects:
 * voicebot: use a local (coral based?) voice->text, text->voice AI.  possibly add homekit integration support so it can be an entirely local smart homekit controller.  Via MCP?
 * creep3r: uses lightbar and voicebot to do its art.  probably runs on the same hw with voicebot
 
+https://github.com/Xylopyrographer/LiteLED - high perf esp driver
 https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf 
 https://www.superlightingled.com/PDF/Addressable-Flex-LED-Pixel-Panel.pdf
 https://github.com/AaronLiddiment/LEDText/wiki
@@ -25,6 +26,14 @@ https://github.com/fastled/fastled#-documentation--support
 * Update: ESP32-P4 is an even better processor choice
 * Max of 4 bit lanes per box module, max of 4 modules (16 display panels - each panel 8x32 pixel).  Initially try just one lane per box module (4 displays daisy chained) and see how bad it is...
 * 12V 200W in, internally use little 12V->buck converters to power the esp32 board and 5V device control
+* include a small fan to help convection
+
+### Similar projects?
+
+https://kno.wled.ge/features/effects/
+
+### Firmware OTA
+https://github.com/gibz104/SafeGithubOTA
 
 ### BOM
 
@@ -53,6 +62,21 @@ Switching to a 12V WS2815 matrix solves this. The higher voltage allows each pix
 ### esp32 selection
 
 https://github.com/espressif/esp-idf/issues/18071 says PARLIO based approaches (see below) are probably fine on any supporting arch.  Therefore probably a ESP32-P4 + ESP32-C6 (to get wifi) module is best.  This one: https://www.aliexpress.us/item/3256810578584433.html
+
+### frame rate
+For a single, continuous chain of 1,024 WS2815 (or WS2812B) LEDs, your maximum theoretical framerate is **~32.2 FPS**.
+
+Here is the exact math behind that hardware limit:
+
+1. **Bit Time:** The WS2815 protocol runs at 800 kHz. This means transmitting a single bit of data takes **1.25 microseconds (µs)**.
+2. **LED Time:** Each LED requires 24 bits of color data (8 bits each for Red, Green, and Blue). So, one LED takes `24 * 1.25 µs =` **30 µs**.
+3. **Transmission Time:** For 1,024 LEDs, the MCU must push data continuously for `1024 * 30 µs =` **30,720 µs (or 30.72 milliseconds)**.
+4. **The Reset Latch:** Once the data is pushed, the data line must be held low for the LEDs to "latch" the data and display it. For modern WS2815/WS2812B chips, this reset pulse requires a minimum of **280 µs (0.28 ms)**.
+
+**Total Frame Time:** `30.72 ms + 0.28 ms =` **31.00 ms per frame.**
+**Max FPS:** `1000 ms / 31.00 ms =` **32.25 FPS.**
+
+This is exactly why the ESP32-P4 and PARLIO hardware we discussed earlier are so powerful. By splitting those 1,024 LEDs across four independent pins (256 LEDs per pin) and transmitting them in parallel, your transmission time drops to 7.68 ms, pushing your maximum framerate up to an absolutely blistering **125 FPS**.
 
 ### esp32 drivers
 
