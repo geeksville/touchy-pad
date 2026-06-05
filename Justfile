@@ -247,8 +247,15 @@ app-build: build-proto-py
 
 # Run the touchy CLI inside the Poetry venv. Forward extra args:
 #   just app-run -- version
+# On segfault: PYTHONFAULTHANDLER prints the Python traceback; catchsegv
+# (when available) prints the C-level backtrace via libSegFault.so.
 app-run *ARGS: build-proto-py
-    env -u VIRTUAL_ENV poetry run --directory app touchy {{ARGS}}
+    #!/usr/bin/env bash
+    if command -v catchsegv &>/dev/null; then
+        PYTHONFAULTHANDLER=1 catchsegv env -u VIRTUAL_ENV poetry run --directory app touchy {{ARGS}}
+    else
+        PYTHONFAULTHANDLER=1 env -u VIRTUAL_ENV poetry run --directory app touchy {{ARGS}}
+    fi
 
 # Change touchpad image to a custom graphic
 app-touchpad-image:
