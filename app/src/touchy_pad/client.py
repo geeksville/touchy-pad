@@ -93,7 +93,33 @@ class TouchyClient:
         if url is not None:
             client = cls(TcpTransport(*url))
         else:
-            client = cls(UsbTransport())
+            # Stage 83: try native USB first, then UART-bridge auto-discovery
+            # (CH340-attached CYD boards). Re-raise the USB-specific
+            # not-found error if neither finds a device.
+            try:
+                client = cls(UsbTransport())
+            except Exception:
+                try:
+                    from .transport_serial import (
+                        SerialTransport,
+                        discover_serial_ports,
+                    )
+                except Exception:  # noqa: BLE001 - pyserial optional
+                    raise
+                serial_transport = None
+                for path in discover_serial_ports():
+                    try:
+                        serial_transport = SerialTransport(path)
+                        break
+                    except Exception:  # noqa: BLE001 - try next candidate
+                        logger.debug(
+                            "TouchyClient.open: serial port %s did not open; " "trying next",
+                            path,
+                        )
+                        continue
+                if serial_transport is None:
+                    raise
+                client = cls(serial_transport)
         # Stage 64.1: device may have buffered ESP_LOG records since
         # boot (or across a previous host disconnect). Drain them
         # eagerly so they surface on `device_logger` before the

@@ -3708,6 +3708,177 @@ tests, and a `just firmware-build` for one S3 + one CYD board. Manual smoke:
 `touchy screen-load ...` and sleep-timeout still work via the new path; set
 `boot_delay_s` and confirm boot pauses.
 
+## Stage 83: add probing for UART-based Touchys ✅
+
+**Goal.** Extend dynamic device discovery (today: native-USB Touchys + the
+simulator) to also pick up CYD-class boards that talk the protocol over a
+USB-to-UART bridge. The `touchy` CLI, the Python `touchy_open()` /
+`touchy_get_pad_ids()` API, and the Rust `discover()` helper should all
+auto-detect a CH340-attached Touchy and open it transparently — no
+`--port` needed for the common case. The existing `--port` flag stays
+as an explicit override for advanced users.
+
+**Why now.** Stage 65 introduced a serial-protocol path so the no-USB CYD
+boards (`esp32_2432s028rv3`, `esp32_2432s024`) work; Stage 65 made
+`SerialTransport` already production-quality. The only missing piece is
+discovery — today users have to know the `/dev/tty…` path and pass
+`--port` themselves. With auto-detect, plugging a CYD into Linux (or the
+devcontainer's `/host/dev/ttyUSB0`) Just Works, matching the native-USB
+experience.
+
+**Identification rule** (deliberately loose, per the user's spec): a
+serial port is treated as a Touchy candidate if its USB VID:PID matches
+the known-bridges table **and** the host has read+write access to the
+device node. We do **not** open the port and probe for our framing — the
+first protocol round-trip in `touchy_open()` will surface a real
+mismatch as a transport timeout, which is good enough.
+
+**Known UART-bridge VID:PID table.** Lives in one place (Python
+`usb_ids.py`, Rust `transport_serial.rs`) and is imported by the
+discovery code. Initial contents:
+
+| VID    | PID    | Bridge                                       |
+| ------ | ------ | -------------------------------------------- |
+| 0x1A86 | 0x7523 | QinHeng Electronics CH340 (the CYD's bridge) |
+
+Future additions (CP2102, FT232, etc.) are one-line table entries.
+
+### 1. Python — central VID/PID table + path helper
+
+* `app/src/touchy_pad/usb_ids.py`: add
+  ```python
+  UART_BRIDGE_VID_PIDS: tuple[tuple[int, int], ...] = (
+      (0x1A86, 0x7523),  # QinHeng CH340 (CYD2USB classic-ESP32 boards)
+  )
+  ```
+  Re-export from `touchy_pad.transport` for symmetry with the existing
+  `VID`/`PID` constants.
+
+* `app/src/touchy_pad/transport_serial.py`: add a module-level helper
+  `def discover_serial_ports() -> list[str]` that returns the absolute
+  device-node paths of all currently-attached UART-bridge Touchys. It:
+  1. Imports `serial.tools.list_ports.comports()` lazily; if pyserial
+     isn't installed (or import fails on Windows-no-CH340-driver), return
+     `[]`.
+  2. For each port whose `(vid, pid)` is in `UART_BRIDGE_VID_PIDS`,
+     yield `port.device` (e.g. `/dev/ttyUSB0`, `COM3`).
+  3. **Devcontainer fallback (Linux only):** if `comports()` returned
+     nothing *and* `/host/dev` is a directory (the devcontainer mount
+     point), additionally glob `/host/dev/ttyUSB*` and `/host/dev/ttyACM*`
+     and include any that pass `os.access(path, os.R_OK | os.W_OK)`. We
+     can't read sysfs from inside the container reliably, so the fallback
+     is a path-shape check, not a VID/PID check — acceptable per the
+     "trust if accessible" rule above.
+  4. Final filter on every Linux/macOS path: `os.access(p, os.R_OK |
+     os.W_OK)`. Inaccessible nodes (missing `dialout`/`uucp` group) are
+     dropped silently — they would just fail at open time anyway, and
+     they shouldn't pollute auto-pick.
+
+  Add unit tests with a fake `comports()` (monkey-patch
+  `serial.tools.list_ports.comports`) covering: matching VID/PID,
+  non-matching VID/PID skipped, devcontainer `/host/dev` fallback when
+  `comports()` is empty, and access-denied filtering.
+
+### 2. Python — wire UART discovery into `touchy_get_pad_ids` /
+       `touchy_open`
+
+* `app/src/touchy_pad/api/device.py`:
+  * `touchy_get_pad_ids()`: after the USB-VID/PID block and **before** the
+    sim append, walk `discover_serial_ports()` and append each path with
+    a `"uart:"` prefix (so callers can tell native-USB serials from UART
+    paths without parsing). Keys look like `uart:/dev/ttyUSB0`,
+    `uart:COM3`, `uart:/host/dev/ttyUSB0`. This mirrors Rust
+    `DiscoveredDevice::describe()` keying.
+  * `touchy_open(serial=None)`: if `serial` is `None` and the
+    USB-enumeration step found nothing, try `discover_serial_ports()`
+    and open the first hit via `SerialTransport`. If `serial` starts
+    with `"uart:"`, strip the prefix and open `SerialTransport(path)`
+    directly. Order of precedence (only when `serial` is `None`):
+    1. real USB Touchy
+    2. UART-bridge Touchy (new)
+    3. `TOUCHY_SIM_URL` simulator
+    4. in-process sim (already last)
+    Hardware always wins over the sim, matching today's behaviour.
+  * Document the new prefix and the precedence in the docstring.
+
+* `app/src/touchy_pad/cli.py`: no change to the `--port` flag itself —
+  it remains a hard override (when set, `_make_transport()` already
+  skips auto-discovery). Mention in the `--port` help text that
+  auto-discovery now finds CH340-based devices too, so most users
+  don't need it.
+
+### 3. Rust — mirror in `discover()`
+
+* `rust/touchy-pad/src/transport_serial.rs` (already gated on the
+  `serial` cargo feature):
+  * Add `pub const UART_BRIDGE_VID_PIDS: &[(u16, u16)] = &[(0x1A86, 0x7523)];`
+  * Add `pub fn discover_serial_ports() -> Vec<String>` using the
+    `serialport` crate (`serialport::available_ports()`), filtering by
+    `SerialPortType::UsbPort` whose `vid`/`pid` are in the table. Apply
+    the same `/host/dev/ttyUSB*` fallback when the result is empty and
+    `/host/dev` is a directory (Linux only, gated by `cfg(target_os =
+    "linux")`). Permissions check: `std::fs::OpenOptions::new()
+    .read(true).write(true).open(path)` and immediately close — drop
+    paths where this fails. (`serialport` is already a transitive
+    dependency of `tokio-serial` in `Cargo.toml`, so no new crate.)
+
+* `rust/touchy-pad/src/discover.rs`:
+  * Extend `DiscoveredDevice` with `Uart { path: String }`, gated
+    `#[cfg(feature = "serial")]`.
+  * `describe()` returns `format!("uart:{path}")`.
+  * `open()` returns `SerialTransport::open(&path).await` wrapped in
+    `Arc`.
+  * `discover()`: between the existing USB block and the sim block,
+    when the `serial` feature is on, call `discover_serial_ports()`
+    and push a `Uart` entry for each. USB still takes precedence.
+  * Add a unit test parallel to `sim_describe_is_stable` covering
+    `uart:/dev/ttyUSB0` describe formatting.
+
+* `rust/touchy-pad/Cargo.toml`: confirm the `serial` feature stays the
+  gate; the OpenDeck plugin's feature set should turn it on so the
+  plugin discovers UART devices too. (Verify
+  `rust/touchy-opendeck/Cargo.toml` enables `touchy-pad/serial`.)
+
+### 4. Permissions / install docs
+
+* `udev/99-touchy-pad.rules`: add a rule for `1a86:7523` granting the
+  same `MODE="0666"` (or a `dialout`-group entry) as the native-USB
+  rule, so plug-in works on Linux without `sudo` after
+  `bin/install-rules.sh`. Comment that the rule covers any CH340-based
+  Touchy variant.
+* `docs/installing.md`: short note that classic-ESP32 / CYD boards
+  appear as `/dev/ttyUSB0`-style serial ports and that the udev rule
+  install now covers them.
+
+### 5. Tests
+
+* `app/tests/test_transport_serial.py`: extend with the
+  `discover_serial_ports()` cases from §1.
+* `app/tests/test_api.py` (or a new `test_discover.py`): with all
+  USB/sim/UART discovery functions monkey-patched to return controlled
+  values, assert the precedence order in `touchy_open()` and the
+  `uart:`-prefixed entries in `touchy_get_pad_ids()`.
+* Rust: a feature-gated `#[cfg(test)]` smoke test for the new
+  `DiscoveredDevice::Uart` arm.
+
+### Validation
+
+`just build-proto` (no proto change), `just app-test`, `just app-lint`,
+Rust `cargo test --features serial`, `cargo build`. Manual smoke on a
+plugged-in CYD board: bare `touchy board-info` (no `--port`) should
+succeed, and `touchy_get_pad_ids()` should list the UART path. Inside
+the devcontainer, the same with the host's `/dev/ttyUSB0` exposed as
+`/host/dev/ttyUSB0`.
+
+### Out of scope
+
+* Probing the port for our framing magic before claiming it (could be a
+  follow-up if we hit users with multiple CH340 devices on one host).
+* New transports beyond CH340 — adding CP2102 etc. is a one-line table
+  edit and intentionally not part of this stage.
+* Hot-plug notifications: discovery stays poll-based (callers re-call
+  `touchy_get_pad_ids()` / `discover()` as they do today).
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

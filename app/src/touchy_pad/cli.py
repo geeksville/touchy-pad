@@ -86,8 +86,10 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
     metavar="PATH",
     help="Serial port path (e.g. `/dev/ttyACM0` or `COM3`). When set, "
     "protocol commands talk to the device over this serial port at "
-    "115200 baud instead of auto-discovering it by USB VID/PID. Also "
-    "used by esptool-based commands such as `update`.",
+    "115200 baud instead of auto-discovering it by USB VID/PID. "
+    "Auto-discovery already covers CH340-attached CYD boards, so most "
+    "users won't need this. Also used by esptool-based commands such "
+    "as `update`.",
 )
 @click.option(
     "--listen",

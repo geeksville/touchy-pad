@@ -71,6 +71,12 @@ def touchy_get_pad_ids() -> list[str]:
     :func:`touchy_open`. The list is empty if no device is plugged in.
     Requires a working ``libusb-1.0`` runtime on the host.
 
+    UART-bridge Touchys (Stage 83 — the no-USB CYD family appearing on the
+    host as a CH340 serial port) are returned with a ``"uart:"`` prefix
+    followed by the device-node path, e.g. ``"uart:/dev/ttyUSB0"`` or
+    ``"uart:COM3"``. Pass that string back to :func:`touchy_open` to open
+    the matching device.
+
     When :func:`touchy_pad.api.create_sim_device` has been called this
     process, the sim's pseudo-serial is appended to the list too — so
     discovery code (StreamController, the touchydeck enumeration hook,
@@ -95,6 +101,17 @@ def touchy_get_pad_ids() -> list[str]:
                 # Fall back to a stable per-device identifier when the serial
                 # string isn't readable (no permission, descriptor missing, …).
                 serials.append(f"bus{dev.bus}-addr{dev.address}")
+
+    # Stage 83 — UART-bridge Touchys (CH340-attached CYD boards). Appended
+    # after native USB so callers that want "the first device" still pick
+    # native hardware first.
+    try:
+        from ..transport_serial import discover_serial_ports
+    except Exception:  # noqa: BLE001 - pyserial optional
+        pass
+    else:
+        for path in discover_serial_ports():
+            serials.append(f"uart:{path}")
 
     from .sim_registry import get_sim_serial
 
@@ -472,10 +489,19 @@ class Touchy:
 def touchy_open(serial: str | None = None, *, transport: Transport | None = None) -> Touchy:
     """Open a connected Touchy-Pad and return a :class:`Touchy`.
 
-    With no arguments, opens the first device found. ``serial`` selects
-    a specific device by USB serial number (see
-    :func:`touchy_get_pad_ids`). ``transport`` is an internal escape
-    hatch used by tests — production code should leave it ``None``.
+    With no arguments, opens the first device found, in this precedence
+    order:
+
+    1. A native-USB Touchy.
+    2. A UART-bridge Touchy (Stage 83 — CH340-attached CYD boards).
+    3. The out-of-process simulator named by ``TOUCHY_SIM_URL``.
+    4. The in-process simulator (if :func:`create_sim_device` was called).
+
+    ``serial`` selects a specific device by USB serial number (see
+    :func:`touchy_get_pad_ids`). A value of ``"uart:<path>"`` opens the
+    serial port at *path* directly via :class:`SerialTransport`.
+    ``transport`` is an internal escape hatch used by tests — production
+    code should leave it ``None``.
 
     Raises :class:`touchy_pad.transport.DeviceNotFoundError` when no
     matching device is attached, and :class:`IncompatibleFirmwareError`
@@ -489,43 +515,52 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
     hardware uses.
     """
     if transport is None:
-        from .sim_registry import get_sim_serial, get_sim_transport
+        # Stage 83 — explicit "uart:<path>" selector opens that serial port.
+        if serial is not None and serial.startswith("uart:"):
+            from ..transport_serial import SerialTransport
 
-        sim_transport = get_sim_transport()
-        sim_serial = get_sim_serial()
-
-        use_sim = sim_transport is not None and (serial is None or serial == sim_serial)
-
-        if use_sim and serial is None:
-            # Prefer a real device over the sim when both are present
-            # and the caller didn't explicitly ask for either.
-            try:
-                from ..transport import UsbTransport
-
-                transport = UsbTransport()
-            except Exception:
-                transport = sim_transport
-        elif use_sim:
-            transport = sim_transport
+            transport = SerialTransport(serial[len("uart:") :])
         else:
-            # Stage 63: honour TOUCHY_SIM_URL before USB enumeration so
-            # any host-side consumer (Rust client, OpenDeck plugin,
-            # ad-hoc script) transparently picks up an out-of-process
-            # simulator just by exporting the env var.
-            from ..transport_net import TcpTransport, sim_url_from_env
+            from .sim_registry import get_sim_serial, get_sim_transport
 
-            sim_url = sim_url_from_env()
-            if sim_url is not None:
-                del serial
-                transport = TcpTransport(*sim_url)
+            sim_transport = get_sim_transport()
+            sim_serial = get_sim_serial()
+
+            use_sim = sim_transport is not None and (serial is None or serial == sim_serial)
+
+            if use_sim and serial is None:
+                # Prefer a real device (USB then UART) over the sim when both
+                # are present and the caller didn't explicitly ask for either.
+                transport = _open_first_real_device()
+                if transport is None:
+                    transport = sim_transport
+            elif use_sim:
+                transport = sim_transport
             else:
-                from ..transport import UsbTransport
+                # Stage 63: honour TOUCHY_SIM_URL before USB enumeration so
+                # any host-side consumer (Rust client, OpenDeck plugin,
+                # ad-hoc script) transparently picks up an out-of-process
+                # simulator just by exporting the env var.
+                from ..transport_net import TcpTransport, sim_url_from_env
 
-                # ``serial`` filtering is currently a no-op on UsbTransport
-                # (it always opens the first matching VID/PID). When
-                # multi-device support lands we'll plumb ``serial`` through.
-                del serial
-                transport = UsbTransport()
+                sim_url = sim_url_from_env()
+                if sim_url is not None:
+                    del serial
+                    transport = TcpTransport(*sim_url)
+                else:
+                    # ``serial`` filtering is currently a no-op on UsbTransport
+                    # (it always opens the first matching VID/PID). When
+                    # multi-device support lands we'll plumb ``serial`` through.
+                    del serial
+                    real = _open_first_real_device()
+                    if real is None:
+                        # Re-raise the USB-specific error (DeviceNotFoundError)
+                        # the way callers expect when nothing is attached.
+                        from ..transport import UsbTransport
+
+                        transport = UsbTransport()
+                    else:
+                        transport = real
 
     client = TouchyClient(transport)
     try:
@@ -540,6 +575,35 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
         raise IncompatibleFirmwareError(device_version, MINIMUM_FIRMWARE_VERSION)
 
     return Touchy(client, board_info=ver)
+
+
+def _open_first_real_device() -> Transport | None:
+    """Try native-USB, then UART-bridge auto-discovery (Stage 83).
+
+    Returns the first transport that opens cleanly, or ``None`` if neither
+    a native-USB Touchy nor a UART-bridge Touchy is present/accessible.
+    Caller decides what to do when nothing is found (open the simulator,
+    or re-raise a USB-specific not-found error).
+    """
+    try:
+        from ..transport import UsbTransport
+
+        return UsbTransport()
+    except Exception:
+        pass
+
+    try:
+        from ..transport_serial import SerialTransport, discover_serial_ports
+    except Exception:  # noqa: BLE001 - pyserial optional
+        return None
+
+    for path in discover_serial_ports():
+        try:
+            return SerialTransport(path)
+        except Exception:  # noqa: BLE001 - try the next candidate
+            logger.debug("touchy_open: serial port %s did not open; trying next", path)
+            continue
+    return None
 
 
 # Public alias for star-imports.

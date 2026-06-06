@@ -7,7 +7,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [x] allow arbitrary image backgrounds for standard trackpad layout.  for now use the touchy icon.
 * [x] investigate hang on setting large gifs
 * [x] board-info improvements, include free RAM, PSRAM and flash-file-system numbers
-* [ ] add auto discovery of uart based touchys
+* [x] add auto discovery of uart based touchys
 * [ ] properly warn user if selected gif/file is too large to use (based on ram size)
 * [ ] make sure opendeck plugin is solid
 * [ ] add a reddit link for support/discussion

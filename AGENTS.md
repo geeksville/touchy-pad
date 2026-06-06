@@ -26,7 +26,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, and 82 are **done**. Latest active wire-format:
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, and 83 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 9`,
 `PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:

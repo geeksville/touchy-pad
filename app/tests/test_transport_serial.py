@@ -88,3 +88,86 @@ def test_recv_response_resyncs_past_garbage() -> None:
             transport.close()
     finally:
         os.close(master_fd)
+
+
+# ---------------------------------------------------------------------------
+# Stage 83 — UART-bridge discovery
+# ---------------------------------------------------------------------------
+
+
+class _FakePort:
+    def __init__(self, device: str, vid: int | None, pid: int | None) -> None:
+        self.device = device
+        self.vid = vid
+        self.pid = pid
+
+
+def test_discover_keeps_known_vid_pid(monkeypatch, tmp_path) -> None:
+    from serial.tools import list_ports
+
+    from touchy_pad import transport_serial as ts
+
+    accessible = tmp_path / "ttyUSB0"
+    accessible.write_bytes(b"")
+    accessible.chmod(0o600)
+
+    monkeypatch.setattr(
+        list_ports,
+        "comports",
+        lambda: [_FakePort(str(accessible), 0x1A86, 0x7523)],
+    )
+    # Disable the /host/dev fallback so this test is platform-independent.
+    monkeypatch.setattr(ts, "_HOST_DEV_DIR", tmp_path / "no-such-dir")
+
+    assert ts.discover_serial_ports() == [str(accessible)]
+
+
+def test_discover_drops_unknown_vid_pid(monkeypatch, tmp_path) -> None:
+    from serial.tools import list_ports
+
+    from touchy_pad import transport_serial as ts
+
+    p = tmp_path / "ttyOther"
+    p.write_bytes(b"")
+    p.chmod(0o600)
+
+    monkeypatch.setattr(
+        list_ports,
+        "comports",
+        lambda: [_FakePort(str(p), 0x0403, 0x6001)],  # FTDI — not in table
+    )
+    monkeypatch.setattr(ts, "_HOST_DEV_DIR", tmp_path / "no-such-dir")
+
+    assert ts.discover_serial_ports() == []
+
+
+def test_discover_drops_inaccessible_node(monkeypatch, tmp_path) -> None:
+    from serial.tools import list_ports
+
+    from touchy_pad import transport_serial as ts
+
+    monkeypatch.setattr(
+        list_ports,
+        "comports",
+        lambda: [_FakePort("/dev/does-not-exist-touchy-test", 0x1A86, 0x7523)],
+    )
+    monkeypatch.setattr(ts, "_HOST_DEV_DIR", tmp_path / "no-such-dir")
+
+    assert ts.discover_serial_ports() == []
+
+
+def test_discover_host_dev_fallback(monkeypatch, tmp_path) -> None:
+    from serial.tools import list_ports
+
+    from touchy_pad import transport_serial as ts
+
+    fake_host_dev = tmp_path / "host-dev"
+    fake_host_dev.mkdir()
+    node = fake_host_dev / "ttyUSB0"
+    node.write_bytes(b"")
+    node.chmod(0o600)
+
+    monkeypatch.setattr(list_ports, "comports", lambda: [])
+    monkeypatch.setattr(ts, "_HOST_DEV_DIR", fake_host_dev)
+
+    assert ts.discover_serial_ports() == [str(node)]

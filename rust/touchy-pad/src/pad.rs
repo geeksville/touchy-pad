@@ -50,7 +50,39 @@ impl Touchy {
 		let transport: Arc<dyn Transport> = if let Some((host, port)) = sim_url_from_env() {
 			Arc::new(TcpTransport::connect(&host, port).await?)
 		} else {
-			Arc::new(UsbTransport::open().await?)
+			// Stage 83: try native USB first, then UART-bridge auto-discovery
+			// (CH340-attached CYD boards). Re-raise the USB error if neither
+			// transport finds a device.
+			match UsbTransport::open().await {
+				Ok(t) => Arc::new(t),
+				Err(usb_err) => {
+					#[cfg(feature = "serial")]
+					{
+						let mut serial: Option<Arc<dyn Transport>> = None;
+						for path in crate::transport_serial::discover_serial_ports() {
+							match crate::transport_serial::SerialTransport::open(&path) {
+								Ok(t) => {
+									serial = Some(Arc::new(t));
+									break;
+								}
+								Err(e) => {
+									log::debug!(
+										"Touchy::open: serial port {path} did not open ({e}); trying next"
+									);
+								}
+							}
+						}
+						match serial {
+							Some(t) => t,
+							None => return Err(usb_err),
+						}
+					}
+					#[cfg(not(feature = "serial"))]
+					{
+						return Err(usb_err);
+					}
+				}
+			}
 		};
 		let touchy = Self::from_transport(transport);
 		// Stage 64.1: drain any device-side log records / events

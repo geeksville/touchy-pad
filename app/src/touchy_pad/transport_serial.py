@@ -19,13 +19,21 @@ installed.
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 
 from .transport import TransportError, _StreamFramedTransport
+from .usb_ids import UART_BRIDGE_VID_PIDS
 
 _log = logging.getLogger(__name__)
 
 #: The protocol always runs at this fixed baud rate.
 BAUD_RATE = 460800
+
+#: Devcontainer mount point: when the host's ``/dev`` is bind-mounted at
+#: ``/host/dev``, ``serial.tools.list_ports`` (which reads sysfs) sees nothing
+#: because sysfs isn't bind-mounted. We fall back to a path-shape glob there.
+_HOST_DEV_DIR = Path("/host/dev")
 
 
 class SerialTransport(_StreamFramedTransport):
@@ -108,4 +116,76 @@ class SerialTransport(_StreamFramedTransport):
             pass
 
 
-__all__ = ["SerialTransport", "BAUD_RATE"]
+def _is_rw_accessible(path: str) -> bool:
+    """Return True iff *path* exists and is read+write accessible.
+
+    Used to drop device nodes the user has no permission to open (no
+    ``dialout``/``uucp`` group membership). Trying to open them would
+    just fail at :class:`SerialTransport` construction time anyway, so
+    silently skip them during discovery.
+    """
+    try:
+        return os.access(path, os.R_OK | os.W_OK)
+    except OSError:
+        return False
+
+
+def discover_serial_ports() -> list[str]:
+    """Stage 83 — return device paths of UART-bridge Touchys on the host.
+
+    Walks :func:`serial.tools.list_ports.comports` and keeps every port
+    whose ``(vid, pid)`` is in :data:`touchy_pad.usb_ids.UART_BRIDGE_VID_PIDS`.
+    Inaccessible nodes (no ``dialout`` / ``uucp`` group membership) are
+    dropped silently — they would just fail at open time.
+
+    **Devcontainer fallback** (Linux only): if ``comports()`` returns
+    nothing *and* ``/host/dev`` exists, additionally glob
+    ``/host/dev/ttyUSB*`` and ``/host/dev/ttyACM*``. Sysfs isn't
+    bind-mounted into the container so the VID/PID filter can't run
+    there; we fall back to the path-shape check, which is consistent
+    with the spec's "trust the device if accessible" rule.
+
+    Returns
+    -------
+    list[str]
+        Absolute device-node paths (e.g. ``/dev/ttyUSB0``, ``COM3``,
+        ``/host/dev/ttyUSB0``). Empty when pyserial is unavailable or no
+        candidates pass the filters.
+    """
+    paths: list[str] = []
+    try:
+        from serial.tools import list_ports  # type: ignore[import-untyped]
+    except Exception:  # noqa: BLE001 - pyserial may be absent or broken
+        ports = []
+    else:
+        try:
+            ports = list(list_ports.comports())
+        except Exception:  # noqa: BLE001 - some platforms fail here
+            ports = []
+
+    for p in ports:
+        vid = getattr(p, "vid", None)
+        pid = getattr(p, "pid", None)
+        if vid is None or pid is None:
+            continue
+        if (int(vid), int(pid)) not in UART_BRIDGE_VID_PIDS:
+            continue
+        device = getattr(p, "device", None)
+        if not device:
+            continue
+        if not _is_rw_accessible(device):
+            continue
+        paths.append(device)
+
+    # Devcontainer fallback: bind-mounted /host/dev with no sysfs.
+    if not paths and _HOST_DEV_DIR.is_dir():
+        for pattern in ("ttyUSB*", "ttyACM*"):
+            for entry in sorted(_HOST_DEV_DIR.glob(pattern)):
+                s = str(entry)
+                if _is_rw_accessible(s):
+                    paths.append(s)
+
+    return paths
+
+
+__all__ = ["BAUD_RATE", "SerialTransport", "discover_serial_ports"]
