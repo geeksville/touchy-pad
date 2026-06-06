@@ -3,8 +3,14 @@
 ## Alpha 3
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
-* [ ] move background drawing out of trackpad widget
-* [ ] allow arbitrary image backgrounds for standard trackpad layout.  for now use the touchy icon.
+* [x] move background drawing out of trackpad widget.  that was a mistake. 
+* [x] allow arbitrary image backgrounds for standard trackpad layout.  for now use the touchy icon.
+* [x] investigate hang on setting large gifs
+* [x] board-info improvements, include free RAM, PSRAM and flash-file-system numbers
+* [ ] add auto discovery of uart based touchys
+* [ ] properly warn user if selected gif/file is too large to use (based on ram size)
+* [ ] make sure opendeck plugin is solid
+* [ ] add a reddit link for support/discussion
 * [ ] support no-touch devices
 * [ ] add photo of the small board
 * [ ] add some of the example JSON to the API docs
@@ -12,23 +18,28 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] implement the StreamDeck background graphic API
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
 * [ ] Support a few more board types
-* [ ] Allow setting a persistent device pref for 'min-log-level' logs with lower pri than this will not be queued for the host, just drop em.  default threshold is ERROR. Update python cli to add a "set-log-level FOO" cmd.  Also add a "boot-delay" param, to cause a sleep early on - to allow time for debug logging connection establishment.
+* [ ] Give user friendly error msg if firmware or py code is too old
+* [x] Allow setting a persistent device pref for 'min-log-level' logs with lower pri than this will not be queued for the host, just drop em.  default threshold is ERROR. Update python cli to add a "set-log-level FOO" cmd.  Also add a "boot-delay" param, to cause a sleep early on - to allow time for debug logging connection establishment. (Stage 82: `touchy pref log-level` / `pref boot-delay`.)
 * [ ] support eink displays in my test devices drawer
 * [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/
-* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] try turning off GPIO matrix for SPI display writes - per https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/spi_master.html#_CPPv416spi_bus_config_t might allow increase to 80Mhz.  "You can use this structure to specify the GPIO pins of the bus. Normally, the driver will use the GPIO matrix to route the signals. An exception is made when all signals either can be routed through the IO_MUX or are -1. In that case, the IO_MUX is used. On ESP32, using GPIO matrix will bring about 25ns of input delay, which may cause incorrect read for >40MHz speeds."
-* [ ] when using ch341 uart try to use 460800 for better speeds
+* [x] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
+* [ ] use gestures for left/right screen switching instead of buttons at top.
+* [ ] support turn, back, forward, up gestures natively.  be careful to not confuse with drags.  add various slope/min-dist/max-time thresholds.
 * [ ] allow setting brightness by putting that GPIO on a hw PWM output
 * [x] add an animation to demo/test.pb https://lvgl.io/docs/open/9.5/main-modules/animation.html 
 * [ ] Implement multitouch HID to support multitouch native apps
-* [ ] Stylus support for 'paintbrush mode'
-* [ ] support turn, back, forward, up gestures natively
 * [ ] explain plans w.r.t. 3d printing and knobs on the screen
 * [x] Increase CPU, FLASH and RAM speeds to the max.  Currently the firmware picks slow/safe defaults
 
 # Alpha 4
 
+* [ ] make a registry of uploaded uscr files.  
+* [ ] Extend those uscrs with triggers of "show when app X is in foreground".  Adopt that as the standard 'better than streamdeck' replacement.  so people can make screens with guis that do interesting things for any foreground app.
+* [ ] make a 'builder' to help users with making new uscrs - walk them through running apps, icon selection etc...
+* [ ] Stylus support for 'paintbrush mode'
+* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] expose device API via wifi/tcp (for arbitary smart signage applications).   Find a good esp32 lib for wifi settings/management/firmware update?
 * [ ] Haptics (figure out best way to mount haptics for best effect)
 * [ ] tactile precut sticker/3d printable case for screen overlay?
@@ -95,3 +106,7 @@ Main new features: Works with StreamController app to provide arbitrary user but
 * [x] update python code to be 'finished' for StreamController (make sure press and release events work)
 * [x] reddit post
 * [x] include prebuilt win/os-x exes in the opendeck release zip. "Cross-compiling for every target is the usual sticking point. CI matrices and cargo zigbuild / cross are the standard answers." per https://github.com/geeksville/touchy-pad/blob/main/docs/opendeck-device-plugin.md#3-manifest-essentials
+
+# Rejected ideas
+
+* [ ] NOT POSSIBLE - reddit api busted - publish release notes to reddit https://github.com/meysam81/reddit-scheduled-submit 

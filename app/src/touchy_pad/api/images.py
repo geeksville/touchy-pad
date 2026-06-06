@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from importlib import resources
 
-__all__ = ["make_smiley_png"]
+__all__ = ["make_smiley_png", "make_touchy_png"]
 
 
 def make_smiley_png() -> bytes:
@@ -23,3 +23,13 @@ def make_smiley_png() -> bytes:
     converts the PNG to LVGL's native ``.bin`` format on upload.
     """
     return resources.files("touchy_pad.assets").joinpath("smiley.png").read_bytes()
+
+
+def make_touchy_png() -> bytes:
+    """Return the packaged 256×256 Touchy-Pad logo as a PNG.
+
+    The bytes are read from ``touchy_pad/assets/touchy-256.png``. Used by
+    ``touchy init`` as the source for ``F:host/images/touchy.png``; the host
+    converts it to LVGL's native ``.bin`` format on upload.
+    """
+    return resources.files("touchy_pad.assets").joinpath("touchy-256.png").read_bytes()

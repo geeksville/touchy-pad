@@ -1453,39 +1453,13 @@ def build_setup_screen() -> Screen:
     grow(hint, x=1)  # full width so the centred text spans the screen
     screen += hint
 
-    pad = _trackpad_page_widget()
+    from touchy_pad.pages import trackpad as _trackpad_page
+
+    _, pad = _trackpad_page.build()
     grow(pad, x=1, y=1)  # fill the remaining height + full width
     screen += pad
 
     return screen
-
-
-def _trackpad_page_widget() -> _proto.Widget:
-    """The baseline full-bleed multitouch trackpad page body.
-
-    Shared by :func:`build_user_pages` (uploaded to ``F:host/uscr/``) and
-    :func:`build_setup_screen` (inlined into the compiled-in fallback).
-    """
-    return trackpad(
-        "pad",
-        left_touch_color=0x00BFFF,
-        right_touch_color=0xFFA500,
-        middle_touch_color=0xFF44FF,
-        scrollbar_color=0xADD8E6,
-        touch_ripple=ripple_animation(
-            start_opa=180,
-            max_radius=45,
-            duration_ms=400,
-            path=ANIM_PATH_EASE_OUT,
-        ),
-        tap_ripple=ripple_animation(
-            start_opa=255,
-            max_radius=70,
-            duration_ms=300,
-            path=ANIM_PATH_EASE_OUT,
-            border_width=4,
-        ),
-    )
 
 
 def build_user_pages() -> list[tuple[str, _proto.Widget]]:
@@ -1498,149 +1472,17 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
 
     * ``"trackpad"`` — full-bleed multitouch trackpad (USB HID mouse).
       Written by ``screen init`` so the device has a usable page out of
-      the box.
+      the box.  See :mod:`touchy_pad.api.pages.trackpad`.
     * ``"test"`` — Stage 16 / 18 / 20 widget showcase (hello / ping /
       force / fps / slider / checkbox / smiley image-button / log line),
       with Stage-67 inline ``host_action(on_event=...)`` callbacks. Added
-      by ``screen demo`` on top of the baseline.
+      by ``screen demo`` on top of the baseline.  See
+      :mod:`touchy_pad.api.pages.test`.
     """
-    from . import hid_keys as k
-    from . import macros as m
+    from touchy_pad.pages import test as _test_page
+    from touchy_pad.pages import trackpad as _trackpad_page
 
-    # ── trackpad page widget ──────────────────────────────────────────
-    pad = _trackpad_page_widget()
-
-    # ── test page widget (grid container) ─────────────────────────────
-    showcase = Layer(layout=grid(cols=4, rows=7, gap=8))
-    showcase += cell(
-        button(
-            "hello",
-            text="Type 'hi'",
-            on_click=macro_action([m.key_tap(k.KEY_H, k.MOD_LSHIFT), m.key_tap(k.KEY_I)]),
-            style=[
-                style(
-                    transition=transition(
-                        props=[PROP_TRANSFORM_WIDTH, PROP_BG_COLOR],
-                        path=ANIM_PATH_LINEAR,
-                        duration_ms=200,
-                    )
-                ),
-                style(transform_width=20, bg_color=0xCC2222, for_state=STATE_PRESSED),
-            ],
-        ),
-        col=0,
-        row=0,
-        grow_x=1,
-        grow_y=1,
-    )
-    showcase += cell(
-        button(
-            "ping",
-            text="Ping host",
-            on_click=host_action(on_event=lambda e: logger.info("[ping]   widget=%r", e.user_data)),
-        ),
-        col=1,
-        row=0,
-        col_span=3,
-        grow_x=1,
-        grow_y=1,
-    )
-    showcase += cell(
-        slider(
-            "level",
-            min=0,
-            max=100,
-            value=42,
-            on_change=host_action(
-                on_event=lambda e: logger.info("[slider] widget=%r value=%s", e.user_data, e.value)
-            ),
-        ),
-        col=0,
-        row=1,
-        col_span=3,
-        grow_x=1,
-        grow_y=1,
-    )
-    showcase += cell(
-        checkbox(
-            "enable",
-            text="Enabled",
-            checked=True,
-            on_change=host_action(
-                on_event=lambda e: logger.info("[check]  widget=%r on=%s", e.user_data, e.checked)
-            ),
-        ),
-        col=0,
-        row=2,
-        grow_x=1,
-        grow_y=1,
-    )
-    showcase += cell(
-        image_button(
-            "smile",
-            asset="F:host/images/smiley.png",
-            on_click=host_action(on_event=lambda e: logger.info("[smile]  widget=%r", e.user_data)),
-            scale=2.0,
-            pressed_scale=2.5,
-            style=[
-                style(
-                    transition=transition(
-                        props=[PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA, PROP_BG_COLOR],
-                        path=ANIM_PATH_LINEAR,
-                        duration_ms=300,
-                    )
-                ),
-                style(
-                    transform_width=80,
-                    recolor=0xFF0000,
-                    recolor_opa=255,
-                    bg_color=0x00FF00,
-                    for_state=STATE_PRESSED,
-                ),
-            ],
-        ),
-        col=1,
-        row=2,
-        col_span=2,
-        grow_x=1,
-        grow_y=1,
-    )
-    showcase += cell(force_render("force"), col=3, row=1, grow_x=1, grow_y=1)
-    showcase += cell(fps("fps"), col=3, row=2, grow_x=1, grow_y=1)
-    showcase += cell(log_line("log"), col=0, row=3, col_span=4, row_span=4, grow_x=1, grow_y=1)
-
-    grid_widget = _proto.Widget()
-    showcase.copy_into(grid_widget)
-
-    # Stage 59 — wrap the showcase grid in an absolute layer so we can
-    # overlay a freely-positioned animated "red dot" that exercises the
-    # declarative-animation pipeline end-to-end.
-    # Screen is 480 px wide; dot grows to 100 px, so x_end=380 puts the
-    # right edge flush with the screen edge.
-    red_dot = spacer(
-        id="reddot",
-        rect=rect(x=10, y=10, w=10, h=10),
-        style=[style(bg_color=0xE53935, radius=32767)],
-        animations=[
-            animation(
-                anim_track(PROP_WIDTH, 10, 100),
-                anim_track(PROP_HEIGHT, 10, 100),
-                anim_track(PROP_X, 10, 380),
-                duration_ms=1000,
-                path=ANIM_PATH_EASE_IN_OUT,
-                repeat_count=0,
-                repeat_delay_ms=500,
-                reverse=True,
-                reverse_delay_ms=100,
-                reverse_duration_ms=300,
-            ),
-        ],
-    )
-    outer = Layer(layout=absolute(), widgets=[red_dot, grid_widget])
-    test_widget = _proto.Widget()
-    outer.copy_into(test_widget)
-
-    return [("test", test_widget), ("trackpad", pad)]
+    return [_test_page.build(), _trackpad_page.build()]
 
 
 def build_demo() -> tuple[Screen, list[tuple[str, _proto.Widget]]]:

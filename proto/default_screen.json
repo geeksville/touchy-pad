@@ -20,28 +20,68 @@
             }
           },
           {
-            "id": "pad",
+            "id": "pad_container",
             "growX": 1,
             "growY": 1,
-            "trackpad": {
-              "leftTouchColor": 49151,
-              "rightTouchColor": 16753920,
-              "middleTouchColor": 16729343,
-              "touchRipple": {
-                "startOpa": 180,
-                "maxRadius": 45,
-                "durationMs": 400,
-                "path": "ANIM_PATH_EASE_OUT",
-                "borderWidth": 0
-              },
-              "tapRipple": {
-                "startOpa": 255,
-                "maxRadius": 70,
-                "durationMs": 300,
-                "path": "ANIM_PATH_EASE_OUT",
-                "borderWidth": 4
-              },
-              "scrollbarColor": 11393254
+            "layoutGrid": {
+              "cols": 1,
+              "rows": 1,
+              "layout": {
+                "children": [
+                  {
+                    "id": "pad_bg",
+                    "styles": [
+                      {
+                        "bgColor": 1710638,
+                        "radius": 16
+                      }
+                    ],
+                    "cell": {},
+                    "growX": 1,
+                    "growY": 1,
+                    "spacer": {}
+                  },
+                  {
+                    "id": "pad_hint",
+                    "styles": [
+                      {
+                        "textColor": 3359846
+                      }
+                    ],
+                    "cell": {},
+                    "label": {
+                      "text": "Touch here",
+                      "fontSize": 30
+                    }
+                  },
+                  {
+                    "id": "pad",
+                    "cell": {},
+                    "growX": 1,
+                    "growY": 1,
+                    "trackpad": {
+                      "leftTouchColor": 49151,
+                      "rightTouchColor": 16753920,
+                      "middleTouchColor": 16729343,
+                      "touchRipple": {
+                        "startOpa": 180,
+                        "maxRadius": 45,
+                        "durationMs": 400,
+                        "path": "ANIM_PATH_EASE_OUT",
+                        "borderWidth": 0
+                      },
+                      "tapRipple": {
+                        "startOpa": 255,
+                        "maxRadius": 70,
+                        "durationMs": 300,
+                        "path": "ANIM_PATH_EASE_OUT",
+                        "borderWidth": 4
+                      },
+                      "scrollbarColor": 11393254
+                    }
+                  }
+                ]
+              }
             }
           }
         ]

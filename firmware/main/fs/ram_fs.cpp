@@ -3,6 +3,7 @@
 // RamFs implementation — PSRAM-backed hash map + LVGL 'R:' driver.
 
 #include "ram_fs.h"
+#include "tc_tag.h"
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -18,7 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
-static const char *TAG = "fs.ram";
+static const char *TAG = TOUCHY_TAG("fs.ram");
 
 // ---------------------------------------------------------------------------
 // Internal helpers

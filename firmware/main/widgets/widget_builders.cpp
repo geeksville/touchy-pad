@@ -9,6 +9,7 @@
 // screens module can focus on registry / decode / dispatch concerns.
 
 #include "widget_builders.h"
+#include "tc_tag.h"
 
 #include "fps_widget.h"
 #include "force_render_widget.h"
@@ -24,7 +25,9 @@
 #include "widget_styles.h"
 
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "lvgl.h"
+#include <strings.h>  // strcasecmp (POSIX) for the Stage 80 `.gif` suffix test
 // Not exposed via lvgl.h umbrella; reach into the LVGL tree to grab
 // `lv_image_cache_drop()` so we can evict stale decoder entries when a
 // path-backed image is overwritten in place (Stage 60).
@@ -39,7 +42,7 @@
 #include <unordered_set>
 #include <vector>
 
-static const char *TAG = "screens.builders";
+static const char *TAG = TOUCHY_TAG("screens.builders");
 
 namespace {
 
@@ -281,6 +284,39 @@ std::string to_lvgl_path(const char *wire)
     return std::string(wire);
 }
 
+// Stage 80: a wire path ending in `.gif` (case-insensitive) selects the
+// native `lv_gif` animated decoder instead of the static image path.
+#if LV_USE_GIF
+static bool path_is_gif(const char *wire)
+{
+    if (!wire) return false;
+    size_t n = strlen(wire);
+    return n >= 4 && strcasecmp(wire + n - 4, ".gif") == 0;
+}
+
+// Stage 80 debug — dump heap headroom and run a full heap-integrity
+// check at the key points of the GIF reload dance. The reload of an
+// animated GIF tears down its decoder (frees the frame draw-buffer)
+// and re-opens it across a flash rename; a stale animation timer
+// firing into the freed buffer was corrupting the heap. These probes
+// pinpoint exactly which step trips the corruption. `heap_caps_check_
+// integrity_all(true)` prints the offending block to the console and
+// returns false when the heap is already damaged.
+static void gif_debug_heap(const char *where, const char *path)
+{
+    multi_heap_info_t info;
+    heap_caps_get_info(&info, MALLOC_CAP_DEFAULT);
+    bool ok = heap_caps_check_integrity_all(true);
+    ESP_LOGD(TAG,
+             "gif[%s] '%s': heap free=%u largest=%u min_ever=%u integrity=%s",
+             where, path ? path : "(null)",
+             (unsigned)info.total_free_bytes,
+             (unsigned)info.largest_free_block,
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT),
+             ok ? "OK" : "CORRUPT");
+}
+#endif
+
 // Apply the bytes at `wire_path` as `img`'s source. If `*dsc_inout` is
 // non-null on entry, that dsc was the previously-applied alias into
 // FS storage and is freed after LVGL has been pointed somewhere else
@@ -298,6 +334,36 @@ void apply_image_src_from_path(lv_obj_t *img,
 {
     lv_image_dsc_t *old_dsc = *dsc_inout;
     lv_image_dsc_t *new_dsc = nullptr;
+#if LV_USE_GIF
+    if (path_is_gif(wire_path)) {
+        // Stage 80: animated GIF — drive the native lv_gif decoder
+        // instead of the static image path. lv_gif is an lv_image
+        // subclass, so the scale/rotation/align in apply_image_attrs and
+        // the Stage 60 in-place reload registry both keep working; we
+        // just swap the source setter here. Force RGB565 frame buffers
+        // (matches the panel, halves RAM vs ARGB8888) and auto-pause
+        // while off-screen so paged-away bodies stop burning CPU. There
+        // is no mmap dsc — the decoder owns its own frame buffer.
+        ESP_LOGD(TAG, "gif: apply_src begin img=%p path='%s'", img, wire_path);
+        gif_debug_heap("apply_src.enter", wire_path);
+        lv_gif_set_color_format(img, LV_COLOR_FORMAT_RGB565);
+        //lv_gif_set_auto_pause_invisible(img, true);
+        // NOTE: lv_gif stashes this pointer in `gifobj->src` but never
+        // dups it; GIF_openFile opens its own lv_fs handle and does not
+        // retain the name, so the std::string can safely die after this
+        // call (the only later readers, set_color_format / set_src, are
+        // guarded or pass NULL first).
+        std::string lv_path = to_lvgl_path(wire_path);
+        ESP_LOGD(TAG, "gif: lv_gif_set_src img=%p lv_path='%s'", img, lv_path.c_str());
+        lv_gif_set_src(img, lv_path.c_str());
+        gif_debug_heap("apply_src.after_set_src", wire_path);
+        const bool loaded = lv_gif_is_loaded(img);
+        ESP_LOGD(TAG, "gif: apply_src done img=%p loaded=%d", img, (int)loaded);
+        if (!loaded) {
+            ESP_LOGW(TAG, "gif: decoder failed to load '%s'", wire_path);
+        }
+    } else
+#endif
     if (wire_path && wire_path[0]) {
         // Stage 52 fast path: if the asset lives on a mmappable FS
         // (R:) and its on-disk pixel format matches the display
@@ -311,7 +377,7 @@ void apply_image_src_from_path(lv_obj_t *img,
         } else {
             if (dsc) delete dsc;
             if (why && *why) {
-                ESP_LOGW(TAG, "image %s: mmap declined (%s); using file read",
+                ESP_LOGD(TAG, "image %s: mmap declined (%s); using file read",
                          wire_path, why);
             }
             // File-read fallback: drop any LVGL cache entry for this
@@ -418,7 +484,21 @@ void apply_image_attrs(lv_obj_t *img, const touchy_Image &im)
 
 lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
 {
-    lv_obj_t *img = lv_image_create(parent);
+    const touchy_Image &im = w.kind.image;
+    lv_obj_t *img;
+#if LV_USE_GIF
+    // Stage 80: `.gif` assets are rendered by the animated lv_gif
+    // decoder. Only the LVGL object class differs here — every other
+    // image behavior (scale/rotation/align plus the Stage 60 in-place
+    // reload-on-overwrite registry) flows through the shared
+    // apply_image_attrs / apply_image_src_from_path path, which keys off
+    // the `.gif` suffix to pick lv_gif_set_src.
+    const bool is_gif = path_is_gif(im.path);
+    img = is_gif ? lv_gif_create(parent) : lv_image_create(parent);
+#else
+    const bool is_gif = false;
+    img = lv_image_create(parent);
+#endif
     // The wire `asset` is already drive-prefixed (e.g.
     // `F:host/images/avatar.bin` for persistent flash, or
     // `R:host/images/avatar.bin` for the transient RAM filesystem).
@@ -427,8 +507,15 @@ lv_obj_t *build_image(lv_obj_t *parent, const touchy_Widget &w)
     // from the in-memory RamFs. The LVGL native `.bin` decoder is
     // always built in; BMP/PNG/JPG require their respective
     // `LV_USE_*` flag in sdkconfig.
-    ESP_LOGI(TAG, "build_image id='%s' src='%s'", w.id, w.kind.image.path);
-    apply_image_attrs(img, w.kind.image);
+    ESP_LOGI(TAG, "build_image%s id='%s' src='%s'",
+             is_gif ? "(gif)" : "", w.id, im.path);
+#if LV_USE_GIF
+    if (is_gif) gif_debug_heap("build_image.before_attrs", im.path);
+#endif
+    apply_image_attrs(img, im);
+#if LV_USE_GIF
+    if (is_gif) gif_debug_heap("build_image.after_attrs", im.path);
+#endif
     return img;
 }
 
@@ -790,6 +877,47 @@ lv_obj_t *build_layout(lv_obj_t *parent, const touchy_Widget &w)
 // Stage 60 — public image-binding registry entry point.
 // ---------------------------------------------------------------------------
 
+void widget_image_registry_release_gif(const char *wire_path)
+{
+#if LV_USE_GIF
+    if (!wire_path || !*wire_path) return;
+    if (!path_is_gif(wire_path)) return;
+    // Stage 80: lv_gif keeps its source file open for the whole
+    // animation (the gifdec FILE handle lives as long as the widget
+    // points at it). A flash overwrite commits via rename-over-dest,
+    // which fails with EBUSY while that handle is open. Setting the
+    // source to NULL tears the decoder down and closes the lv_fs
+    // handle; the subsequent widget_image_registry_notify() re-applies
+    // the source (reopening the freshly-renamed file).
+    //
+    // CRITICAL (heap-corruption fix): lv_gif's teardown
+    // (gif_previous_close) frees the frame draw-buffer AND *resumes*
+    // the per-widget animation timer. Our caller
+    // (screens_prepare_file_overwrite) then unlocks LVGL and performs
+    // the flash rename in fs_close_write — a multi-millisecond window
+    // during which the LVGL timer task can fire gif_next_frame_task_cb
+    // against the now-freed/NULL draw_buf (the vendored callback has no
+    // is_open / draw_buf guard) → use-after-free → heap corruption →
+    // device reboot ~30% of the time. Re-pause the timer here, while we
+    // still hold the LVGL lock, so it cannot fire until the re-init in
+    // notify() (gif_initialize) resumes it cleanly.
+    for (auto &b : g_plain_bindings) {
+        if (b.path != wire_path) continue;
+        ESP_LOGI(TAG, "image_registry: releasing gif '%s' before overwrite",
+                 wire_path);
+        gif_debug_heap("release.before_set_null", wire_path);
+        lv_gif_set_src(b.img_obj, NULL);
+        // Pause the timer that gif_previous_close just resumed; the
+        // decoder is torn down (draw_buf == NULL) until notify() runs.
+        lv_gif_pause(b.img_obj);
+        ESP_LOGD(TAG, "gif: released+paused img=%p '%s'", b.img_obj, wire_path);
+        gif_debug_heap("release.after_pause", wire_path);
+    }
+#else
+    (void)wire_path;
+#endif
+}
+
 bool widget_image_registry_notify(const char *wire_path)
 {
     if (!wire_path || !*wire_path) return false;
@@ -803,7 +931,14 @@ bool widget_image_registry_notify(const char *wire_path)
     for (auto &b : g_plain_bindings) {
         if (b.path != wire_path) continue;
         ESP_LOGI(TAG, "image_registry: reloading plain image '%s'", wire_path);
+#if LV_USE_GIF
+        const bool reload_is_gif = path_is_gif(wire_path);
+        if (reload_is_gif) gif_debug_heap("notify.before_reapply", wire_path);
+#endif
         apply_image_src_from_path(b.img_obj, wire_path, &b.dsc);
+#if LV_USE_GIF
+        if (reload_is_gif) gif_debug_heap("notify.after_reapply", wire_path);
+#endif
         any = true;
     }
 

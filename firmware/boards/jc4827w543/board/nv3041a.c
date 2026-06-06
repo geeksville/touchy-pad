@@ -3,6 +3,7 @@
 // NV3041A 480x272 QSPI driver — see nv3041a.h for protocol notes.
 
 #include "nv3041a.h"
+#include "tc_tag.h"
 
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -11,7 +12,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 
-static const char *TAG = "nv3041a";
+static const char *TAG = TOUCHY_TAG("nv3041a");
 
 // Size of the in-driver transaction ring buffer. Must be >= the SPI device's
 // `queue_size` AND large enough to cover the worst-case number of

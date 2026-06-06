@@ -3,10 +3,11 @@
 // Stage 24 — ForceRender checkbox. See force_render_widget.h.
 
 #include "force_render_widget.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 
-static const char *TAG = "force_render";
+static const char *TAG = TOUCHY_TAG("force_render");
 
 namespace {
 

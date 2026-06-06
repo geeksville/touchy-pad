@@ -3,13 +3,16 @@
 // Touchy-Pad host_api dispatcher — see host_api.h.
 
 #include "host_api.h"
+#include "tc_tag.h"
 
 #include "backlight.h"
 #include "display.h"
 #include "fs.h"
+#include "flash_fs.h"
 #include "log_proto.h"
 #include "protobuf.h"
 #include "platform.h"
+#include "prefs.h"
 #include "screens.h"
 #include "touchy.pb.h"
 #include "usb_hid.h"
@@ -20,6 +23,7 @@
 
 #include "version.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -35,7 +39,7 @@
 #include <string.h>
 #include <string>
 
-static const char *TAG = "host_api";
+static const char *TAG = TOUCHY_TAG("host_api");
 
 // Wire protocol version. Bump when the on-the-wire framing or any oneof
 // numbering changes in a way that breaks existing host clients.
@@ -216,7 +220,7 @@ static SerialLink s_serial_link;
 #define HOST_API_UART_NUM UART_NUM_0
 #endif
 #ifndef HOST_API_UART_BAUD
-#define HOST_API_UART_BAUD 115200
+#define HOST_API_UART_BAUD 460800
 #endif
 
 struct UartLink : HostApiLink {
@@ -400,6 +404,15 @@ static void fill_board_info(touchy_Response *resp)
     // Stage 71: stable MAC-derived serial (matches USB iSerialNumber).
     strncpy(v->serial, platform_serial(), sizeof(v->serial) - 1);
     v->serial[sizeof(v->serial) - 1] = '\0';
+
+    // Stage 81: runtime memory / storage headroom (snapshot at query time).
+    v->free_heap_bytes  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    v->free_psram_bytes = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t fs_total = 0, fs_used = 0;
+    if (FlashFs::instance().usage(&fs_total, &fs_used)) {
+        v->fs_total_bytes = fs_total;
+        v->fs_used_bytes  = fs_used;
+    }
 }
 
 static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
@@ -462,7 +475,20 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
 
     case touchy_Command_file_close_tag: {
         const auto &fc = cmd->cmd.file_close;
+        // Stage 80: a flash commit renames the temp file over the
+        // destination. If an animated GIF on the active screen is still
+        // rendering that destination, its decoder holds the file open
+        // and the rename fails with EBUSY. Release that handle first;
+        // the screens_notify_file_changed() below re-applies the source.
+        ESP_LOGD(TAG, "file_close: handle=%u commit=%d path='%s'",
+                 (unsigned)fc.handle, (int)fc.commit,
+                 s_active_write_path.c_str());
+        if (fc.commit && !s_active_write_path.empty()) {
+            screens_prepare_file_overwrite(s_active_write_path.c_str());
+        }
         bool ok = fs_close_write(fc.handle, fc.commit);
+        ESP_LOGD(TAG, "file_close: fs_close_write -> %d (path='%s')",
+                 (int)ok, s_active_write_path.c_str());
         if (ok && fc.commit && !s_active_write_path.empty()) {
             // Hand the freshly-committed file to the screen registry;
             // it's a no-op for anything outside `*:host/s/*.pb`.
@@ -471,20 +497,20 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
             // references this path picks up the new bytes. Cheap when
             // nothing references it (a path-comparison walk over the
             // currently-displayed widget tree), expensive — one full
-            // screen reload — when something does.
+            // screen reload — when something does. The reload is
+            // deferred onto the LVGL task (lv_async_call), so this
+            // returns immediately and the host_api task stays free to
+            // service event_consume polls (draining the log tunnel)
+            // while the rebuild runs.
             screens_notify_file_changed(s_active_write_path.c_str());
+            ESP_LOGD(TAG, "file_close: notify scheduled for '%s'",
+                     s_active_write_path.c_str());
         }
         s_active_write_path.clear();
         resp->code = ok ? touchy_ResultCode_RESULT_OK
                         : touchy_ResultCode_RESULT_IO_ERROR;
         break;
     }
-
-    case touchy_Command_screen_load_tag:
-        resp->code = screens_load(cmd->cmd.screen_load.path)
-                         ? touchy_ResultCode_RESULT_OK
-                         : touchy_ResultCode_RESULT_NOT_FOUND;
-        break;
 
     case touchy_Command_event_consume_tag: {
         touchy_LvEvent evt;
@@ -516,9 +542,14 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         resp->code = touchy_ResultCode_RESULT_OK;
         break;
 
-    case touchy_Command_screen_sleep_timeout_tag:
-        backlight_set_timeout(cmd->cmd.screen_sleep_timeout.timeout_ms);
-        resp->code = touchy_ResultCode_RESULT_OK;
+    case touchy_Command_set_preferences_tag:
+        // Stage 82 — apply a partial preferences update. The device merges
+        // only the present fields and fires each one's side effect
+        // (backlight timeout, screen switch, log threshold). Returns
+        // RESULT_NOT_FOUND if a requested current_screen can't be loaded.
+        resp->code = Prefs::instance().apply_partial(cmd->cmd.set_preferences.prefs)
+                         ? touchy_ResultCode_RESULT_OK
+                         : touchy_ResultCode_RESULT_NOT_FOUND;
         break;
 
     case touchy_Command_run_actions_tag: {

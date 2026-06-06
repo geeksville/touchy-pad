@@ -48,6 +48,31 @@ Or click on this image to see a video showing sample usage of Touchy-pad for Ope
 
 [![Watch the video](https://img.youtube.com/vi/XhpxpQ5JX18/maxresdefault.jpg)](https://youtu.be/XhpxpQ5JX18)
 
+## Touchpad (graphical)
+The touchpad has an ever growing list of features:
+
+* Works as a USB HID Mouse (with full x/y scroll wheel emulation for double touch)
+* Fully customizable layout (you can mix and match/overlay/blend with other device widgets)
+* Fully customizable acceleration/speed options
+* Gesture support 
+  * one finger tap == left click
+  * two finger tap == right click
+  * three finger tap == middle click
+  * two finger drag is x/y scrollwheel movement
+  * Others coming 'soonish' (next couple o months)
+
+The default layout supports custom graphics for the touchpad.  For instance:
+
+```bash
+touchy touchpad image https://www.geeksville.com/robots.png
+touchy touchpad image SOME_GIF_URL
+touchy touchpad gif # Nyan-cat mode
+```
+Or click on this image to see a brief video:
+
+[![Watch the video](https://img.youtube.com/vi/8Iv6DbesAXM/maxresdefault.jpg)](https://youtu.be/8Iv6DbesAXM)
+
+
 ## For developers
 
 This project is intended to be 'open' to make it easy for host side code to manage little widgets/behaviors on these great little devices.  No embedded development experience needed.
@@ -58,7 +83,7 @@ This project is intended to be 'open' to make it easy for host side code to mana
 
 If you'd like to see a demo of what you can do run:
 ```
-touchy screen demo --listen
+touchy --listen screen demo
 ```
 
 ![demo](docs/images/demo.jpg)

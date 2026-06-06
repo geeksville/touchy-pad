@@ -15,10 +15,11 @@
 // clear diagnostic instead of a hard failure.
 
 #include "usb_hid.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 
-static const char *TAG = "usb_hid";
+static const char *TAG = TOUCHY_TAG("usb_hid");
 
 // Emit a single warning the first time any HID emitter is invoked on a
 // board that has no USB. Further calls are silent so a busy trackpad can't

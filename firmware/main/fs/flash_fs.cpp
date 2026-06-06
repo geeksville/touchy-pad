@@ -3,6 +3,7 @@
 // FlashFs implementation — LittleFS / VFS on the NOR flash partition.
 
 #include "flash_fs.h"
+#include "tc_tag.h"
 
 #include "esp_littlefs.h"
 #include "esp_log.h"
@@ -18,7 +19,7 @@
 #include <new>
 #include <string>
 
-static const char *TAG = "fs.flash";
+static const char *TAG = TOUCHY_TAG("fs.flash");
 
 // LittleFS mount + partition labels (match firmware/partitions/<SIZE>.csv).
 static constexpr const char *FLASH_MOUNT     = "/littlefs";
@@ -140,6 +141,16 @@ bool FlashFs::begin()
 
     sweep_tmp("");
     _mounted = true;
+    return true;
+}
+
+bool FlashFs::usage(size_t *total, size_t *used) const
+{
+    if (!_mounted) return false;
+    size_t t = 0, u = 0;
+    if (esp_littlefs_info(FLASH_PARTITION, &t, &u) != ESP_OK) return false;
+    if (total) *total = t;
+    if (used) *used = u;
     return true;
 }
 

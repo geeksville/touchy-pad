@@ -13,13 +13,14 @@
 // CYD variant.
 
 #include "board.h"           // public API (main/board.h)
+#include "tc_tag.h"
 #include "board_pins.h"      // private pin map (per-board)
 #include "platform.h"        // capability descriptor
 
 #include "esp_log.h"
 #include "driver/gpio.h"
 
-static const char *TAG = "board";
+static const char *TAG = TOUCHY_TAG("board");
 
 // No I2C touch on these boards; the GT911-style shared bus does not exist here.
 i2c_master_bus_handle_t board_get_i2c_bus(void)

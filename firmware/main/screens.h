@@ -90,9 +90,26 @@ const char *screens_current_path(void);
 // `Image` / `ImageButton` asset, or via a `WidgetRef` — the active
 // screen is reloaded so the new bytes take effect. Files that no
 // active widget references are silently ignored: this keeps host
-// uploads of unrelated assets from causing visible redraws. Safe to
-// call from any task; takes the LVGL port lock internally.
+// uploads of unrelated assets from causing visible redraws.
+//
+// The actual reload is deferred onto the LVGL task via lv_async_call
+// (FIFO order preserved across back-to-back calls): the caller (the
+// host_api dispatch task) returns immediately and the visual update
+// lands a frame later. This keeps host_api free to service
+// event_consume polls (so the Stage 64.1 log tunnel keeps draining
+// during a rebuild) and confines LVGL widget-tree mutation to the LVGL
+// task. Safe to call from any task.
 void screens_notify_file_changed(const char *path);
+
+// Stage 80: called just before a host upload commits (renames the temp
+// file over `path`). If an animated GIF on the active screen is
+// rendering `path`, its decoder holds the source file open, which would
+// make the atomic rename-over-destination fail with EBUSY. This releases
+// that decoder's file handle so the commit can proceed; the follow-up
+// screens_notify_file_changed() re-applies the source. No-op for
+// non-GIF paths. Safe to call from any task; takes the LVGL port lock
+// internally.
+void screens_prepare_file_overwrite(const char *path);
 
 #ifdef __cplusplus
 }

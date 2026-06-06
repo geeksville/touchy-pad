@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 fn main() {
 	let proto_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("proto");
-	let protos = ["touchy.proto", "widgets.proto"];
+	let protos = ["touchy.proto", "widgets.proto", "preferences.proto"];
 
 	for p in &protos {
 		println!("cargo:rerun-if-changed={}/{}", proto_dir.display(), p);

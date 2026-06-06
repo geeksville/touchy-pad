@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "trackpad_widget.h"
+#include "tc_tag.h"
 
 #include "log_line.h"
 #include "usb_hid.h"
@@ -13,7 +14,7 @@
 #include <algorithm>
 #include <new>
 
-static const char *TAG = "trackpad";
+static const char *TAG = TOUCHY_TAG("trackpad");
 
 static uint32_t millis()
 {
@@ -155,10 +156,11 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
     if (cfg.has_tap_max_ms) _tap_max_ms = cfg.tap_max_ms;
 
     // The widget *is* the LVGL container; caller sizes/styles it via the
-    // host DSL's Rect / Style. Defaults are kept lean (no padding,
-    // dark background) so the trackpad surface is visually unambiguous.
+    // host DSL's Rect / Style. The container is transparent so sibling
+    // widgets drawn earlier in the same grid cell (background fill, hint
+    // label) remain visible through it.
     _container = lv_obj_create(parent);
-    lv_obj_set_style_bg_color(_container, lv_color_hex(0x1a1a2e), 0);
+    lv_obj_set_style_bg_opa(_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(_container, 0, 0);
     lv_obj_set_style_pad_all(_container, 0, 0);
     lv_obj_set_scrollbar_mode(_container, LV_SCROLLBAR_MODE_OFF);
@@ -166,12 +168,6 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
     // movements would otherwise trigger PRESS_LOST before we can capture a
     // multi-finger tap count.
     lv_obj_clear_flag(_container, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *hint = lv_label_create(_container);
-    lv_label_set_text(hint, "Touch here");
-    lv_obj_set_style_text_color(hint, lv_color_hex(0x334466), 0);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_30, 0);
-    lv_obj_center(hint);
 
     // We hook into the input events LVGL already generates for this object
     // instead of running a busy poll loop. LVGL's indev driver (installed

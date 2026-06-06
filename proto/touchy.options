@@ -12,7 +12,6 @@
 # Drive-letter prefix included ("F:host/...").
 touchy.FileDeleteCmd.path              max_size:96
 touchy.FileOpenWriteCmd.path           max_size:96
-touchy.ScreenLoadCmd.path              max_size:96
 
 # Streamed file payload chunk (FileWriteCmd.data). Allocated dynamically
 # (FT_POINTER) so we don't burn ~4 KiB of .bss on every device; the
@@ -37,11 +36,14 @@ touchy.RunActionsCmd.actions                      type:FT_POINTER
 touchy.LvEvent.user_data               max_size:32
 
 # Stage 64.1 — tunneled device log records. `message` is the formatted
-# ESP_LOG line minus the trailing newline. FT_POINTER means nanopb
-# heap-allocates exactly what is needed, so there is no fixed truncation
-# cap; `s_vprintf` in log_proto.cpp uses a LOG_PROTO_LINE_BUF-sized
-# stack buffer for the raw vsnprintf call and then malloc-copies the
-# parsed body into the record. `tag` mirrors the ESP_LOG TAG (a short
-# module name).
-touchy.LogRecord.message               type:FT_POINTER
+# ESP_LOG line minus the trailing newline. It is FT_STATIC (a fixed-size
+# inline char[] in the generated struct) rather than FT_POINTER on
+# purpose: the `s_vprintf` hook runs in arbitrary task contexts during
+# early boot — including sections with interrupts disabled — where
+# calling malloc() is illegal and intermittently crashes the device
+# (observed when the log threshold lets DEBUG lines through during
+# bring-up). A fixed buffer means zero heap activity in the hook; lines
+# longer than the cap are simply truncated. `tag` mirrors the ESP_LOG TAG
+# (a short module name).
+touchy.LogRecord.message               max_size:200
 touchy.LogRecord.tag                   max_size:16

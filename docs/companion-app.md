@@ -30,10 +30,30 @@ touchy screen <subcommand> [args…]
 | Subcommand | Description |
 |-----------|-------------|
 | `touchy screen wake` | Force the backlight on (cancels any pending auto-sleep). |
-| `touchy screen set-timeout SECONDS` | Auto-sleep backlight after SECONDS of no input; `0` disables. Accepts fractional seconds (e.g. `30`, `0.5`). |
 | `touchy screen load NAME` | Switch the currently displayed screen to NAME. |
 | `touchy screen push SCRIPT [--load NAME] [--dry-run]` | Compile a Python screen-definition script and upload every `Screen` it defines. Optionally activate one of them immediately with `--load`. |
 | `touchy screen demo [--listen] [--json]` | Upload and optionally run the built-in demo screen. |
+
+### `touchy pref` — persistent device preferences
+
+```
+touchy pref <subcommand> [args…]
+```
+
+| Subcommand | Description |
+|-----------|-------------|
+| `touchy pref backlight-timeout SECONDS` | Auto-sleep backlight after SECONDS of no input; `0` disables. Accepts fractional seconds (e.g. `30`, `0.5`). |
+| `touchy pref log-level LEVEL` | Minimum device log priority queued back to the host (`TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`). Records below it are dropped device-side. |
+| `touchy pref boot-delay SECONDS` | Sleep SECONDS early in boot so a debug-log connection can attach; `0` disables. |
+
+All three send a partial `SetPreferencesCmd`; the device merges and
+persists only the field you set.
+
+### `touchy touchpad` subcommands
+
+| Subcommand | Description |
+|-----------|-------------|
+| `touchy touchpad image URL` | Fetch an image from URL, scale it to ≤ 180×180 px, and set it as the trackpad page background. |
 
 ## Python library
 
@@ -58,5 +78,6 @@ with TouchyClient.open() as c:
 
 * Because events are sent from device to host, host API can be built by binding
   arbitrary Python code to button actions via `TouchyClient.on_host_event(code, fn)`.
-* The CLI uses `screen set-timeout SECONDS` (human-friendly seconds) which the library
-  converts to milliseconds before sending `ScreenSleepTimeoutCmd`.
+* The CLI uses `pref backlight-timeout SECONDS` (human-friendly seconds) which the library
+  converts to milliseconds before sending a `SetPreferencesCmd` with only
+  `screen_timeout_ms` set.

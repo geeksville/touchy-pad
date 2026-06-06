@@ -4,6 +4,6 @@
 # explicit max_size buffers so nanopb can stack-allocate them in the
 # generated struct.
 
-# Last-loaded screen path. Sized to match touchy.ScreenLoadCmd.path so
+# Last-loaded screen path. Sized to match touchy.FileOpenWriteCmd.path so
 # any path the device can possibly load is representable here.
 touchy.PreferencesFile.current_screen   max_size:96

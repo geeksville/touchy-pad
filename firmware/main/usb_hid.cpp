@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "usb_hid.h"
+#include "tc_tag.h"
 #include "host_api.h"
 #include "platform.h"        // platform_serial()
 #include "proto/touchy.pb.h"  // touchy_Constants_USB_VID / USB_PID
@@ -19,7 +20,7 @@
 
 #include <string.h>
 
-static const char *TAG = "usb_hid";
+static const char *TAG = TOUCHY_TAG("usb_hid");
 
 // Report IDs used on the composite HID interface.
 enum {

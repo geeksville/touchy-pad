@@ -1136,7 +1136,7 @@ Add `ghcr.io/devcontainers/features/rust:1` to install rustup + cargo
 * `cargo publish` to crates.io — the metadata will be ready but we
   hold off shipping until the API has stabilised.
 
-## Stage 80: development environment improvements
+## Someday
 * Support running a sim on the linux host?
 * Use https://lvgl.io/docs/open/debugging/gdb_plugin to faciltiate debugging
 
@@ -3331,6 +3331,382 @@ back-compat shim). `Widget.Version.CURRENT` bumped 19→20; the transport
 
 Validated: `just build-proto`, `just app-test` (160 passed), `just app-lint`
 (clean).
+
+## Stage 80: GIF support — DONE
+
+**Goal.** Let an animated GIF be used anywhere an `Image` widget can — most
+visibly as a `touchpad image URL` background — without inventing a new
+protobuf widget or a new host file format. A `.gif` source is uploaded to
+the device filesystem *as-is* (no LVGL-bin conversion) and the firmware
+renders it with LVGL's `lv_gif` widget when the image path ends in `.gif`.
+
+**Why no new protobuf variant.** GIFs reuse the existing `Image` message
+(`proto/widgets.proto`, `path`/`scale`/`rotation`/`align`). The path
+extension (`.gif`) is the discriminator on both sides. `lv_gif` is a thin
+wrapper around `lv_image`, so scale/rotation/align still apply. This keeps
+`Widget.Version` unchanged and avoids touching the DSL `image()` factory's
+signature.
+
+### Reference
+* Widget guide: https://lvgl.io/docs/open/9.5/widgets/gif
+* API: https://lvgl.io/docs/open/9.5/API/widgets/gif/lv_gif_h.html
+
+The vendored `lvgl__lvgl` managed component already ships
+`lv_gif_set_src` / `lv_gif_set_color_format` /
+`lv_gif_set_auto_pause_invisible`
+(`firmware/managed_components/lvgl__lvgl/src/widgets/gif/lv_gif.c`), so no
+component bump is needed — only the Kconfig switch.
+
+### 1. Firmware — enable the decoder
+* `LV_USE_GIF` is currently `0` everywhere (LVGL template default + every
+  `firmware/sdkconfig.<board>`). Add `CONFIG_LV_USE_GIF=y` to
+  `firmware/sdkconfig.defaults` so all boards pick it up, and refresh the
+  per-board `sdkconfig.<board>` copies (the `# CONFIG_LV_USE_GIF is not set`
+  line flips to `CONFIG_LV_USE_GIF=y`). `lv_gif` depends on the in-tree GIF
+  decoder; no `LV_USE_LODEPNG`-style extra needed. RamFs already keeps the
+  raw GIF bytes alive, so the decoder reads straight from `R:`/`F:`.
+  **Gotcha (repo memory):** in `sdkconfig.defaults`,
+  `# CONFIG_X is not set` is the `X=n` directive — set the positive form
+  explicitly. Verify the on-device heap impact (RGB565 frame buffer ≈
+  `w*h*2` bytes; 180×180 ≈ 65 KB — fits CYD internal RAM).
+
+### 2. Firmware — render `.gif` as `lv_gif`
+* `firmware/main/widgets/widget_builders.cpp`: in `build_image()` (and the
+  pressed/released slots of `build_image_button()` if reused), branch on
+  `path_ends_with(w.kind.image.path, ".gif")`:
+  * create `lv_gif_create(parent)` instead of `lv_image_create`;
+  * **before** setting the source, call
+    `lv_gif_set_color_format(obj, LV_COLOR_FORMAT_RGB565)` (smaller RAM
+    buffers, matches the panel) and
+    `lv_gif_set_auto_pause_invisible(obj, true)` (stop animating when the
+    page is hidden — important for the `widget_ref` page flipper);
+  * set src via `lv_gif_set_src(obj, to_lvgl_path(path).c_str())` using the
+    existing `to_lvgl_path()` helper (drive-prefix → LVGL `F:/…`). The
+    Stage-52 mmap fast path in `apply_image_src_from_path()` is **skipped**
+    for GIFs (it only handles `lv_image_dsc_t` LVGL-bin blobs).
+  * scale/rotation/align: `lv_gif` exposes the underlying image via the same
+    `lv_image_set_scale/rotation/align` setters (a gif *is* an image), so
+    reuse `apply_image_attrs` minus the src step. Confirm at build time that
+    these compile against `lv_gif_t`.
+* Factor the "is this a gif" check into one helper so the plain-image and
+  widget-ref rebuild paths (`ActiveRef`) agree.
+
+### 3. Host — upload GIFs unconverted
+* `app/src/touchy_pad/api/lvgl_image.py`:
+  * GIF is already in `_IMAGE_MAGICS` (`GIF87a`/`GIF89a`) and
+    `_CONVERTIBLE_EXTS`. Add an `is_gif(data)` / `looks_like_gif(path)`
+    helper.
+  * `rewrite_to_bin_path()` must **not** rewrite `.gif` → `.bin` (the device
+    keeps the `.gif` extension as its discriminator). Special-case `.gif` to
+    pass through unchanged, and drop it from the set of extensions that get
+    rewritten.
+* `app/src/touchy_pad/client.py` `file_save()`: when the payload is a GIF,
+  skip `to_lvgl_bin()` and the path rewrite — write the raw bytes. If
+  `max_width`/`max_height` are set and the GIF exceeds them, rescale **every
+  frame** (preserving the animation, duration, loop, and disposal) via
+  `PIL.ImageSequence` and re-encode as GIF, then upload that. If no
+  size limit is given, upload byte-for-byte. Keep the existing
+  `needs_image_conversion` transport guard.
+* `app/src/touchy_pad/api/screens.py` `_fill_image()`: today it always calls
+  `rewrite_to_bin_path(asset)`. With the `.gif` pass-through above this
+  becomes correct automatically (`F:host/…/x.gif` stays `…/x.gif`), so the
+  DSL `image(asset="…/foo.gif")` and the trackpad background just work.
+
+### 4. CLI — `touchpad image URL` with GIFs
+* `app/src/touchy_pad/cli.py` `touchpad_image()` already fetches arbitrary
+  bytes and calls `pad.file_save(_USER_BG_IMG_PATH, data, max_width=180,
+  max_height=180)`. Two changes:
+  * `_USER_BG_IMG_PATH` is hard-coded to `…/user-background.bin`. Pick the
+    on-device extension from the fetched bytes: `.gif` for GIF sources,
+    `.bin` otherwise (so the firmware's extension check fires). Pass the
+    chosen path to both `file_save()` and `_do_write_trackpad()`.
+  * The 180×180 cap then flows through the GIF frame-rescale path in (3).
+* Verify the fetched-bytes UA workaround (Cloudflare 403 fix) still applies.
+
+### 5. Simulator
+* `app/src/touchy_pad/sim/widgets.py` `_load_pixmap()` already falls through
+  to `QPixmap.loadFromData()`, which renders the *first* GIF frame — good
+  enough for a static preview. Optional polish: use `QMovie` for animation
+  in `_build_image` when the asset ends in `.gif`. Minimum bar: the sim
+  must not crash and should show frame 0. Ensure the `.bin`→source-ext
+  candidate list in `_load_pixmap` keeps `.gif`.
+
+### 6. Tests
+* `app/tests/test_lvgl_image.py`: add cases that `looks_like_supported_image`
+  accepts a tiny GIF, that `rewrite_to_bin_path("F:…/a.gif")` returns the
+  `.gif` path unchanged, and that a GIF is **not** run through `to_lvgl_bin`.
+* `app/tests/test_client.py` (or `test_images.py`): a fake-transport
+  `file_save` of a small multi-frame GIF writes the raw GIF bytes to a
+  `.gif` path (no conversion); with `max_width`/`max_height` smaller than the
+  GIF it still decodes as an animated GIF with the same frame count, scaled.
+* Build a small animated test GIF helper (mirror `make_smiley_png`) if a
+  fixture is needed.
+
+### Validation
+`just build-proto` (no proto change expected), `just app-test`,
+`just app-lint`, and a `just firmware-build` for one S3 board + one CYD board
+to confirm `LV_USE_GIF` links and the heap budget holds. Manual smoke test:
+`touchy touchpad image <gif-url>` then reload the default screen.
+
+### What was implemented
+
+Done as planned, with these concrete landing points:
+
+* **Firmware Kconfig.** `CONFIG_LV_USE_GIF=y` added to
+  `firmware/sdkconfig.defaults` and flipped on in every per-board
+  `sdkconfig.<board>`. LVGL allocates the GIF frame buffer via its CLIB
+  malloc, which prefers PSRAM on boards that have it (~65 KB for a
+  180×180 RGB565 frame).
+* **Firmware render — no copy-paste.** `widget_builders.cpp` gained
+  `path_is_gif()` (case-insensitive `.gif` suffix, gated `#if LV_USE_GIF`).
+  `build_image()` only differs in the object class
+  (`lv_gif_create` vs `lv_image_create`); the GIF-specific setup —
+  `lv_gif_set_color_format(RGB565)` (before src, to avoid a framebuffer
+  realloc) + `lv_gif_set_auto_pause_invisible(true)` + `lv_gif_set_src` —
+  lives in the **shared** `apply_image_src_from_path()`. So scale/rotation/
+  align (`apply_image_attrs`) and the Stage 60 reload-on-overwrite registry
+  (`widget_image_registry_notify`) both work for GIFs unchanged.
+* **Re-upload over a playing GIF.** `lv_gif`'s decoder holds the source
+  file open for the whole animation, so a flash commit (which renames the
+  temp file over the destination) failed with EBUSY when re-uploading a GIF
+  that was already on screen. `file_close` now calls
+  `screens_prepare_file_overwrite()` →
+  `widget_image_registry_release_gif()` (`lv_gif_set_src(img, NULL)`) just
+  before `fs_close_write()`, closing the handle so the rename succeeds; the
+  existing `screens_notify_file_changed()` re-applies the source afterward,
+  reopening the freshly-written file.
+* **Host.** `api/lvgl_image.py`: new `is_gif()` / `rescale_gif()`; `.gif`
+  removed from `_CONVERTIBLE_EXTS` so `rewrite_to_bin_path()` preserves it.
+  `client.file_save()` detects GIFs and uploads them verbatim (no
+  `to_lvgl_bin`), rescaling every frame via `PIL.ImageSequence` only when
+  `max_width`/`max_height` is given. `screens.py::_fill_image()` keeps `.gif`
+  paths automatically via the pass-through.
+* **CLI.** `touchpad image URL` picks `…/user-background.gif` for GIF
+  sources (else `…/user-background.bin`), passing the chosen path to both
+  `file_save()` and `_do_write_trackpad()`. The 180×180 cap flows through
+  `rescale_gif`.
+* **Simulator.** Unchanged — `_load_pixmap` already falls through to
+  `QPixmap.loadFromData()`, which renders the GIF's first frame as a static
+  preview; the `.bin`→source-ext candidate list still includes `.gif`.
+* **Tests.** `test_lvgl_image.py` (GIF detection, `.gif` path passthrough,
+  frame-preserving rescale) and `test_client.py` (GIF uploaded verbatim to a
+  `.gif` path). `just app-test` 165 passing, `just app-lint` clean.
+
+Firmware was **not** compiled in the implementing environment (no ESP-IDF in
+PATH); the `lv_gif_*` APIs were verified present in the vendored
+`lvgl__lvgl` component and exported via the `lvgl.h` umbrella.
+
+## Stage 81: boardinfo improvements
+
+**Status: DONE.** Shipped as described below, except the four new fields
+are `uint64` (not `uint32`) — see `SysBoardInfoResponse` tags 10–13. The
+CLI prints them via a `_fmt_bytes` helper (`touchy board-info`); firmware
+fills them in `host_api.cpp::fill_board_info`.
+
+**Goal.** Surface runtime memory and storage headroom in the board-info
+response so the host CLI (and OpenDeck/StreamController adapters) can show how
+much free RAM, PSRAM, and flash-filesystem space a connected board has. This
+is a purely *additive* proto change — three new scalar fields plus a
+`ProtocolVersion` bump — so old hosts keep working.
+
+### 1. Proto — additive fields on `SysBoardInfoResponse`
+* `proto/touchy.proto`, `message SysBoardInfoResponse`: append (after
+  `serial = 9`)
+
+  ```proto
+  uint32 free_heap_bytes   = 10;  // free internal RAM (MALLOC_CAP_INTERNAL)
+  uint32 free_psram_bytes  = 11;  // free PSRAM (MALLOC_CAP_SPIRAM); 0 if none
+  uint32 fs_total_bytes    = 12;  // LittleFS (F:) capacity
+  uint32 fs_used_bytes     = 13;  // LittleFS (F:) bytes in use
+  ```
+
+  Keep them `uint32` (boards top out well under 4 GiB; PSRAM is ≤ 8 MiB,
+  flash partitions a few MiB). Add an enum entry to
+  `SysBoardInfoResponse.ProtocolVersion`: `V8 = 8; // stage 81:
+  SysBoardInfoResponse gains free_heap/free_psram/fs_total/fs_used` and move
+  `CURRENT = 8`. No `.options` entries needed (scalars are fixed-size).
+* Bump the AGENTS.md / CLAUDE.md "latest active wire-format" note to
+  `SysBoardInfoResponse.ProtocolVersion.CURRENT == 8` once landed.
+
+### 2. Firmware — populate the numbers
+* `firmware/main/host_api.cpp` `fill_board_info()`: fill the four new fields.
+  * Free RAM: `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` (use
+    `MALLOC_CAP_INTERNAL` rather than `esp_get_free_heap_size()` so PSRAM is
+    not double-counted; include `esp_heap_caps.h`).
+  * Free PSRAM: `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)`. Returns 0 on
+    no-PSRAM boards (CYD), which is exactly what we want to report.
+  * Flash FS: query LittleFS via `esp_littlefs_info(<label>, &total, &used)`
+    (`esp_littlefs.h`). The partition label already lives in `fs.cpp`;
+    expose a small `fs_usage(size_t *total, size_t *used)` accessor on
+    `FlashFs` rather than duplicating the label here. On error report 0/0.
+  * Cast each `size_t` down to `uint32_t` when assigning.
+
+### 3. Simulator — plausible values
+* `app/src/touchy_pad/sim/device.py` `_cmd_sys_board_info_get()`: set the new
+  fields to fixed, plausible constants (e.g. `free_heap_bytes=200_000`,
+  `free_psram_bytes=0` unless the sim is emulating a PSRAM board,
+  `fs_total_bytes` / `fs_used_bytes` from the in-memory fake FS if one exists,
+  else fixed constants). Goal is non-zero, self-consistent numbers so host
+  formatting code is exercised; no need to track real allocations.
+
+### 4. Host — print the numbers
+* `app/src/touchy_pad/cli.py` `board_info()`: add rows for free RAM, free
+  PSRAM (omit or show "n/a" when 0), and `fs_used/fs_total` (render as a
+  human-readable `123.4 KiB / 2.0 MiB` via a small `_fmt_bytes()` helper).
+  Old firmware that doesn't set the fields reports 0 — show "n/a" rather than
+  a misleading "0 B".
+* `rust/touchy-demo/src/main.rs` `info` subcommand: print the same fields (the
+  prost-generated struct gains them automatically once `build-proto` /
+  Rust proto regen runs).
+
+### 5. Docs & tests
+* `docs/host-api.md` (the `SysBoardInfoResponse` section): document the four
+  fields and that they are a snapshot at query time.
+* `app/tests/test_client.py`: extend the board-info round-trip to set and
+  assert the new fields. Add a `_fmt_bytes` unit test for the formatter.
+
+### Validation
+`just build-proto`, `just app-test`, `just app-lint`, and a `just
+firmware-build` for one S3 (PSRAM) board + one CYD (no-PSRAM) board to confirm
+`esp_littlefs_info` / `heap_caps_*` link and PSRAM reports 0 on CYD. Manual:
+`touchy board-info` shows the new rows.
+
+## Stage 82: preferences improvements
+
+**Status: DONE.** Implemented across proto, firmware, host (Python +
+Rust), and the simulator. `ScreenLoadCmd` / `ScreenSleepTimeoutCmd` were
+removed (oneof tags 3/5 `reserved`) in favour of `SetPreferencesCmd`. The
+firmware merge is `Prefs::apply_partial`; the CLI moved the per-setting
+commands under a `touchy pref` group (`backlight-timeout`, `log-level`,
+`boot-delay`). `min_log_level` is carried as a plain `uint32` holding a
+`LogPriority` value (to avoid a circular proto import).
+
+**Goal.** Stop minting a new `Command` message every time a setting needs to
+change. Replace the one-off `ScreenSleepTimeoutCmd` / `ScreenLoadCmd` pattern
+with a single, extensible `SetPreferencesCmd(PreferencesFile prefs)` that
+carries *only the fields the host wants changed*. Make every `PreferencesFile`
+field `optional` so "present vs. absent" is meaningful on the wire, and add
+two new persistent prefs (`min_log_level`, `boot_delay_s`).
+
+**Why.** proto3 scalar fields have no presence by default — a `0`/empty value
+is indistinguishable from "unset". Marking fields `optional` (proto3 explicit
+presence) gives nanopb `has_*` flags so the device can apply a partial update
+without clobbering unspecified settings.
+
+### 1. Proto — partial-update `PreferencesFile` + new command
+* `proto/preferences.proto`: mark **every** value field `optional`
+  (`optional uint32 screen_timeout_ms`, `optional string current_screen`,
+  plus the two new ones below). Leave `file_version` non-optional but document
+  that **the host must never set it** — it's written only by the device on
+  save. Bump `Version`: `V4 = 4; // stage 82: + min_log_level, boot_delay_s`,
+  move `CURRENT = 4`.
+  * Add `optional LogPriority min_log_level = 4;` — logs below this priority
+    are dropped device-side and never queued for the host. Default ERROR.
+  * Add `optional uint32 boot_delay_s = 5;` — seconds to sleep early in boot
+    before bringing up subsystems, to give a debug log connection time to
+    attach. Default 0.
+  * `min_log_level` is a `LogPriority` (already defined in `touchy.proto`);
+    add `import "touchy.proto";`? — note `touchy.proto` already imports
+    `widgets.proto`; to avoid a circular import, move `LogPriority` into a
+    shared file **or** redeclare the level as a plain `uint32` here. Prefer
+    the plain `uint32` (store the `LogPriority` numeric value) to keep the
+    import graph acyclic; document the mapping in a comment.
+* `proto/touchy.proto`:
+  * Add `message SetPreferencesCmd { PreferencesFile prefs = 1; }`.
+  * Add it to the `Command` oneof: `SetPreferencesCmd set_preferences = 12;`.
+  * **Remove** `ScreenSleepTimeoutCmd` and `ScreenLoadCmd` message
+    definitions and their `Command` oneof entries (`screen_sleep_timeout = 5`,
+    `screen_load = 3`). Leave the field *numbers* retired (don't reuse 3/5) —
+    add a `reserved 3, 5;` to `Command` and a comment so the tags are never
+    recycled.
+  * Bump `SysBoardInfoResponse.ProtocolVersion`: `V9 = 9; // stage 82:
+    SetPreferencesCmd replaces ScreenSleepTimeout/ScreenLoad; Preferences
+    fields optional`, move `CURRENT = 9`.
+* `proto/preferences.options` / `touchy.options`: no size changes (existing
+  string bounds carry over); confirm `SetPreferencesCmd.prefs` is a nested
+  submessage (static) — it is, no `.options` needed.
+
+### 2. Firmware — apply a partial update + trigger side effects
+* `firmware/main/prefs.{h,cpp}`:
+  * Add storage + accessors for `m_min_log_level` (default
+    `LOG_PRIORITY_ERROR`) and `m_boot_delay_s` (default 0). Persist both in
+    `save()` / read both in `begin()`.
+  * Add `void apply_partial(const touchy_PreferencesFile &p);` that checks
+    each `has_*` flag and updates only the present fields, calling `save()`
+    once at the end. **Ignore** any `file_version` the host sends.
+  * Each applied field must fire its side effect (don't just store):
+    `screen_timeout_ms` → `backlight_set_timeout(...)`; `current_screen` →
+    `screens_load(...)`; `min_log_level` → `log_proto_set_min_level(...)`;
+    `boot_delay_s` is read at next boot only (no live effect).
+* `firmware/main/host_api.cpp` `dispatch()`:
+  * Add `case touchy_Command_set_preferences_tag:` →
+    `Prefs::instance().apply_partial(cmd->cmd.set_preferences.prefs);` →
+    `RESULT_OK`.
+  * Delete the `screen_sleep_timeout` and `screen_load` cases.
+* `firmware/main/log_proto.{h,cpp}`: add `void log_proto_set_min_level(
+  touchy_LogPriority)` storing an `std::atomic<int>` threshold (default
+  `LOG_PRIORITY_ERROR`). In `enqueue()` / the vprintf hook, after parsing the
+  line's priority, drop the record (no queue, no `s_pending_dropped` bump —
+  intentional filtering, not loss) when `prio < threshold`. Apply the
+  persisted value during boot once `Prefs` is loaded.
+* `firmware/main/main.cpp`: very early in boot (after logging is up but before
+  heavy init), if `Prefs::instance().boot_delay_s() > 0`, `vTaskDelay` that
+  many seconds so a host can attach to the log tunnel. Gate behind a clear
+  `ESP_LOGW` so it's obvious why boot paused.
+  * Ordering caveat: `boot_delay` needs prefs loaded first; ensure
+    `Prefs::begin()` runs before the delay. The delay itself must not block
+    the USB stack coming up if that's what the host attaches to — verify the
+    sleep sits after USB/serial transport init but before screen/UI bring-up.
+
+### 3. Host — new client wrappers + API glue, retire old ones
+* `app/src/touchy_pad/client.py`:
+  * Add `set_preferences(self, **fields)` (or a typed
+    `set_preferences(prefs: PreferencesFile)`) that builds a `PreferencesFile`
+    with only the requested fields set and sends `SetPreferencesCmd`. Never
+    set `file_version`.
+  * Reimplement `screen_sleep_timeout(timeout_ms)` and `screen_load(path)` as
+    thin wrappers over `set_preferences(screen_timeout_ms=...)` /
+    `set_preferences(current_screen=...)` so existing callers
+    (`cli.py`, Rust parity, `touchydeck`, OpenDeck) keep working without
+    churn, but the underlying wire message is the new one. Drop the old
+    `ScreenSleepTimeoutCmd` / `ScreenLoadCmd` constructions.
+  * Add `set_min_log_level(level)`.
+* `app/src/touchy_pad/cli.py`: add a `set-log-level FOO` command (choices
+  TRACE/DEBUG/INFO/WARN/ERROR, case-insensitive → `LogPriority`) that calls
+  `set_min_log_level`. Update `screen-load` / sleep-timeout commands to use
+  the new wrappers (no user-visible change).
+* `rust/touchy-pad/src/`: mirror — add `set_preferences`, re-express
+  `screen_load` / `screen_sleep_timeout` over it, update `plugin.rs` callers.
+  Remove references to the deleted message types so the prost-generated code
+  still compiles.
+
+### 4. Simulator
+* `app/src/touchy_pad/sim/device.py`: replace `_cmd_screen_sleep_timeout` and
+  the `screen_load` handler with a `_cmd_set_preferences` that reads the
+  `has_*`/presence of each field and mirrors the device behaviour (update sim
+  backlight-timeout state, switch the displayed screen on `current_screen`,
+  store `min_log_level` and filter the sim's `LogRecord` emission, accept
+  `boot_delay_s` as a no-op stored value). Keep an in-memory `PreferencesFile`
+  so a subsequent query (if any) is consistent.
+
+### 5. Docs & tests
+* `docs/host-api.md`: document `SetPreferencesCmd`, the partial-update
+  semantics (only set fields are applied, no `file_version` from host), and
+  the removal of `ScreenSleepTimeoutCmd` / `ScreenLoadCmd`. Note the
+  `min_log_level` (default ERROR) and `boot_delay_s` prefs.
+* `app/tests/`: tests that (a) `set_preferences(screen_timeout_ms=...)` emits a
+  `SetPreferencesCmd` with only that field present; (b) `set-log-level` maps
+  names → `LogPriority`; (c) the sim applies a partial update without
+  clobbering other fields; (d) below-threshold sim log records are dropped.
+* Update `AGENTS.md` / `CLAUDE.md`: drop `ScreenSleepTimeoutCmd` from the prose
+  and note the new `SetPreferencesCmd` + protocol version.
+
+### Validation
+`just build-proto`, `just app-test`, `just app-lint`, Rust `cargo build` /
+tests, and a `just firmware-build` for one S3 + one CYD board. Manual smoke:
+`touchy set-log-level DEBUG` then watch the log tunnel verbosity change;
+`touchy screen-load ...` and sleep-timeout still work via the new path; set
+`boot_delay_s` and confirm boot pauses.
 
 # Old/Existing projects
 

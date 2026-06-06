@@ -4,6 +4,7 @@
 
 #include "backlight.h"
 #include "board.h"
+#include "coredump_report.h"
 #include "display.h"
 #include "fs.h"
 #include "host_api.h"
@@ -22,6 +23,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <cinttypes>
 #include <string>
 
 static const char *TAG = "main";
@@ -78,7 +80,13 @@ extern "C" void app_main(void)
     // event-poll loop. No-op when CONFIG_TOUCHY_LOG_OVER_PROTO=n.
     log_proto_start();
 
-    ESP_LOGI(TAG, "touchy-pad v2 booting");
+    // If the previous boot panicked, decode the saved core dump and log
+    // its summary now — first thing, so the report lands in the first
+    // few proto log records and survives the boot flood before the host
+    // connects. Erases the image so it reports exactly once.
+    coredump_report_check_and_log();
+
+    ESP_LOGW(TAG, "touchy-pad v2 booting");
 
 #if CONFIG_SOC_USB_OTG_SUPPORTED
     // Bring USB up first so the host sees the HID device enumerate quickly,
@@ -94,9 +102,6 @@ extern "C" void app_main(void)
     // Must run after usb_hid_init() so the vendor link's TinyUSB stack is up.
     host_api_start();
 
-    // Give enough time for user to open a debug serial port to our board
-    //vTaskDelay(pdMS_TO_TICKS(5000));
-
     // Mount the on-device filesystems (stage 51). host_api command handlers
     // expect both F: (littlefs) and R: (psram) to be ready, and the LVGL
     // R: driver must be registered before any screen mentioning an `R:`
@@ -106,6 +111,22 @@ extern "C" void app_main(void)
     // Load persisted preferences (screen timeout, etc.) before any
     // subsystem that might query them.
     Prefs::instance().begin();
+
+    // FIXME - in early boot for some reason we often crash if DEBUG logs are enabled.  leave the the default
+    // level at at least INFO level until late boot
+    touchy_LogPriority log_level = (touchy_LogPriority)Prefs::instance().min_log_level();
+    log_proto_set_min_level(log_level >= touchy_LogPriority_LOG_PRIORITY_INFO 
+        ? log_level 
+        : touchy_LogPriority_LOG_PRIORITY_INFO);
+
+    // Stage 82: optional early-boot delay. The transports (USB vendor link /
+    // serial) are already up from host_api_start() above, so a host can
+    // attach to the log tunnel during this window and catch the earliest
+    // subsystem bring-up logs. 0 = disabled.
+    if (uint32_t delay_s = Prefs::instance().boot_delay_s()) {
+        ESP_LOGW(TAG, "boot-delay: sleeping %" PRIu32 "s for debug attach", delay_s);
+        vTaskDelay(pdMS_TO_TICKS(delay_s * 1000));
+    }
 
     // Initialise the host-uploaded screen registry (stage 15). Idempotent;
     // safe to call before LVGL is up because no LVGL APIs are touched yet.
@@ -131,9 +152,14 @@ extern "C" void app_main(void)
     backlight_init(Prefs::instance().screen_timeout_ms());
 
     lv_display_t *disp = display_init();
+
     esp_lcd_touch_handle_t tp = touch_init(disp);
 #endif
     (void)disp;  // handle not needed past bring-up (LVGL tracks the default)
+
+    // enable storing log records from this point forward (enabling before this can cause hangs if DEBUG logging is enabled
+    // via CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y
+    log_proto_enable();
 
     // display_init() calls lv_init() which clears LVGL's FS driver
     // linked list. (Re)register our 'R:' driver now so host-uploaded
@@ -179,6 +205,11 @@ extern "C" void app_main(void)
     }
 
     ESP_LOGI(TAG, "Ready");
+
+    // FIXME - in early boot for some reason we often crash if DEBUG logs are enabled.  leave the the default
+    //level at at least INFO level until late boot
+    log_proto_set_min_level(log_level);
+
     // Nothing else to do here — host_api dispatches screen loads driven
     // by the host CLI, Trackpad widgets inside loaded screens react to
     // LVGL touch events on the LVGL task, and TinyUSB runs in its own

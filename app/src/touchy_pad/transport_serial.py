@@ -25,7 +25,7 @@ from .transport import TransportError, _StreamFramedTransport
 _log = logging.getLogger(__name__)
 
 #: The protocol always runs at this fixed baud rate.
-BAUD_RATE = 115200
+BAUD_RATE = 460800
 
 
 class SerialTransport(_StreamFramedTransport):

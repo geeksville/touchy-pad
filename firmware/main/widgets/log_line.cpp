@@ -3,6 +3,7 @@
 // Stage 18 — shared device log sink. See log_line.h.
 
 #include "log_line.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 
@@ -11,7 +12,7 @@
 #include <cstring>
 #include <vector>
 
-static const char *TAG = "logw";
+static const char *TAG = TOUCHY_TAG("logw");
 
 namespace {
 

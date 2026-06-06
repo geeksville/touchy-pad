@@ -17,7 +17,7 @@ use crate::error::{Result, TouchyError};
 use crate::transport::{FrameDecoder, Transport, pack};
 
 /// The protocol always runs at this fixed baud rate.
-pub const BAUD_RATE: u32 = 115_200;
+pub const BAUD_RATE: u32 = 460_800;
 
 /// Serial-port-backed [`Transport`].
 pub struct SerialTransport {

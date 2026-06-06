@@ -36,6 +36,16 @@ CONFIG_TOUCHY_PROTO_OVER_SERIAL=y
 # the protocol UART carries only binary frames, never raw console text.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_TOUCHY_LOG_OVER_PROTO=y
+# CRITICAL: the protocol rides UART0, so the device must NOT also forward raw
+# ESP_LOG text to UART0 — that interleaves byte-for-byte with the binary
+# protocol frames and desyncs the host's frame decoder (it mis-reads a length
+# field and then waits forever for bytes that never arrive). The global
+# default (firmware/sdkconfig.defaults) is CONFIG_TOUCHY_LOG_TO_UART=y, which
+# is fine for native-USB boards (their console UART is a *separate* wire from
+# the USB-CDC protocol link) but harmful here. Turn it off so logs reach the
+# host only via the LogRecord tunnel. (Mirrors the esp32_2432s028rv3 board.)
+# NOTE: `# CONFIG_X is not set` is the real X=n directive in sdkconfig syntax.
+# CONFIG_TOUCHY_LOG_TO_UART is not set
 
 # ----- First-light bring-up override (manual; do NOT leave enabled) ---------
 # Before the protocol link is trusted it can be handy to see boot logs on a

@@ -3,12 +3,13 @@
 // Fs base-class helpers, drive-letter routing, and one-shot init.
 
 #include "fs.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 
 #include <string>
 
-static const char *TAG = "fs";
+static const char *TAG = TOUCHY_TAG("fs");
 
 // ---------------------------------------------------------------------------
 // Shared path helper

@@ -3,12 +3,13 @@
 // Stage 15 / 20.1 / 24.1 / 24.2 — layout-widget configuration + child placement. See header.
 
 #include "screen_layout.h"
+#include "tc_tag.h"
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "lvgl.h"
 
-static const char *TAG = "screens.layout";
+static const char *TAG = TOUCHY_TAG("screens.layout");
 
 bool widget_is_layout(const touchy_Widget &w)
 {
@@ -160,7 +161,7 @@ void apply_layout(lv_obj_t *parent, const touchy_Widget &w)
     case touchy_Widget_layout_flex_tag: {
         const touchy_LayoutFlex &fl = w.kind.layout_flex;
         lv_obj_set_flex_flow(parent, flex_flow_from_proto(fl.flow));
-        ESP_LOGI(TAG, "apply_layout flex id='%s' flow=%d gap=%ld",
+        ESP_LOGD(TAG, "apply_layout flex id='%s' flow=%d gap=%ld",
                  w.id, (int)fl.flow, (long)fl.gap);
         if (fl.gap > 0) {
             lv_obj_set_style_pad_column(parent, fl.gap, 0);

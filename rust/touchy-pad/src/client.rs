@@ -15,8 +15,8 @@ use crate::error::{Result, TouchyError};
 use crate::proto::Action;
 use crate::proto::{Command, LogPriority, LogRecord, LvEvent, ResultCode, command, response};
 use crate::proto::{
-	EventConsumeCmd, FileCloseCmd, FileDeleteCmd, FileOpenWriteCmd, FileWriteCmd, Response, RunActionsCmd, ScreenLoadCmd, ScreenSleepTimeoutCmd, ScreenWakeCmd, SysBoardInfoGetCmd,
-	SysBoardInfoResponse, SysRebootBootloaderCmd,
+	EventConsumeCmd, FileCloseCmd, FileDeleteCmd, FileOpenWriteCmd, FileWriteCmd, PreferencesFile, Response, RunActionsCmd, ScreenWakeCmd, SetPreferencesCmd, SysBoardInfoGetCmd, SysBoardInfoResponse,
+	SysRebootBootloaderCmd,
 };
 use crate::transport::Transport;
 
@@ -112,15 +112,45 @@ impl Client {
 		Ok(())
 	}
 
-	/// Configure the display sleep timeout (milliseconds; 0 = never).
-	pub async fn screen_sleep_timeout(&self, timeout_ms: u32) -> Result<()> {
+	/// Apply a partial set of device preferences (Stage 82). Only the
+	/// fields present on `prefs` are changed device-side; the device
+	/// persists the merged result.
+	pub async fn set_preferences(&self, prefs: PreferencesFile) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
-				cmd: Some(command::Cmd::ScreenSleepTimeout(ScreenSleepTimeoutCmd { timeout_ms })),
+				cmd: Some(command::Cmd::SetPreferences(SetPreferencesCmd { prefs: Some(prefs) })),
 			})
 			.await?,
 		)?;
 		Ok(())
+	}
+
+	/// Configure the display sleep timeout (milliseconds; 0 = never).
+	pub async fn screen_sleep_timeout(&self, timeout_ms: u32) -> Result<()> {
+		self.set_preferences(PreferencesFile {
+			screen_timeout_ms: Some(timeout_ms),
+			..Default::default()
+		})
+		.await
+	}
+
+	/// Set the minimum device log priority queued back to the host
+	/// (Stage 82). Records below this level are dropped device-side.
+	pub async fn set_min_log_level(&self, level: LogPriority) -> Result<()> {
+		self.set_preferences(PreferencesFile {
+			min_log_level: Some(level as u32),
+			..Default::default()
+		})
+		.await
+	}
+
+	/// Configure the early-boot delay in seconds (Stage 82; 0 = none).
+	pub async fn set_boot_delay(&self, seconds: u32) -> Result<()> {
+		self.set_preferences(PreferencesFile {
+			boot_delay_s: Some(seconds),
+			..Default::default()
+		})
+		.await
 	}
 
 	/// Delete a file or directory subtree.
@@ -172,13 +202,11 @@ impl Client {
 
 	/// Activate a previously-uploaded screen. Empty path = default screen.
 	pub async fn screen_load(&self, path: &str) -> Result<()> {
-		Self::check(
-			self.rpc(Command {
-				cmd: Some(command::Cmd::ScreenLoad(ScreenLoadCmd { path: path.into() })),
-			})
-			.await?,
-		)?;
-		Ok(())
+		self.set_preferences(PreferencesFile {
+			current_screen: Some(path.into()),
+			..Default::default()
+		})
+		.await
 	}
 
 	/// Run a list of [`Action`]s device-side as if a local widget fired

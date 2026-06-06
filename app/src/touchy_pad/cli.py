@@ -89,6 +89,12 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
     "115200 baud instead of auto-discovering it by USB VID/PID. Also "
     "used by esptool-based commands such as `update`.",
 )
+@click.option(
+    "--listen",
+    is_flag=True,
+    help="After the subcommand finishes, stream device logs and host events "
+    "until Ctrl-C. Works with any subcommand.",
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -100,6 +106,7 @@ def cli(
     sim_serial: str,
     sim_dir: Path | None,
     port: str | None,
+    listen: bool,
 ) -> None:
     """Talk to a connected Touchy-Pad USB device."""
     # Configure logging level
@@ -125,6 +132,7 @@ def cli(
     ctx.obj["sim_serial"] = sim_serial
     ctx.obj["sim_dir"] = sim_dir
     ctx.obj["port"] = port
+    ctx.obj["listen"] = listen
 
     if not sim_active:
         if ctx.invoked_subcommand is None:
@@ -208,9 +216,54 @@ def _after_subcommand(ctx: click.Context, _result, **_kwargs) -> None:
     then we hand control to ``QApplication.exec()`` so the window
     stays interactive until the user closes it or hits Ctrl+C.
     """
+    if ctx.obj.get("listen") and not ctx.obj.get("sim_gui"):
+        logger.info("streaming device logs and events (Ctrl-C to stop)\u2026")
+        conn = ctx.obj.pop("live_conn", None)
+        if conn is None:
+            # Bare `--listen` with no subcommand that opened a
+            # connection — open one now.
+            _stream_events(_client())
+            return
+        # Reuse the exact connection the subcommand already opened
+        # instead of closing it and re-opening (re-enumerating the USB
+        # device in the same process transiently fails right after a
+        # heavy upload — see _keep_alive_for_listen). `conn` carries a
+        # stashed `_real_close` because its own `close()` was no-op'd so
+        # the subcommand's `with` block wouldn't tear it down.
+        from .api.device import Touchy
+
+        real_close = getattr(conn, "_real_close", conn.close)
+        if isinstance(conn, Touchy):
+            # A Touchy already has a background thread streaming device
+            # logs (→ `touchy_pad.device` logger) and dispatching host
+            # events. Just park the main thread until interrupted.
+            import time
+
+            try:
+                while True:
+                    time.sleep(0.2)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                real_close()
+            return
+        # A plain TouchyClient (no background thread): drive the event
+        # stream from the main thread.
+        try:
+            for evt in conn.stream_events():
+                logger.info("host-event code=0x%x", evt.host_code)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            real_close()
+        return
+
     if not ctx.obj.get("sim_gui"):
         return
     app = ctx.obj["sim_app"]
+
+    if ctx.obj.get("listen"):
+        logger.info("listening for host events; close the sim window or press Ctrl-C to stop.")
 
     import signal
 
@@ -283,19 +336,55 @@ class _SharedSimTransport(Transport):
 def _client() -> TouchyClient:
     t = _make_transport()
     if t is not None:
-        return TouchyClient(t)
+        return _keep_alive_for_listen(TouchyClient(t))
     try:
-        return TouchyClient.open()
+        return _keep_alive_for_listen(TouchyClient.open())
     except DeviceNotFoundError as e:
         logger.error("%s", e)
         sys.exit(2)
+
+
+def _keep_alive_for_listen(conn):
+    """Stash a freshly-opened connection so the ``--listen`` phase reuses it.
+
+    When the top-level ``--listen`` flag is set, the subcommand's
+    ``with _client()/_open_pad()`` block would normally close the USB
+    transport on the way out — and the post-subcommand listen phase
+    would then have to re-open it. Re-enumerating the same device inside
+    one process right after a heavy upload transiently fails (libusb
+    keeps returning "not found" even though the device never rebooted),
+    whereas a brand-new process connects fine.
+
+    So instead of closing and re-opening, we keep the *same* connection
+    alive: stash it on the click context and neutralise its ``close()``
+    (preserving the real one as ``_real_close``) so the subcommand's
+    ``with`` block leaves it open for :func:`_after_subcommand`.
+    """
+    ctx = click.get_current_context(silent=True)
+    if ctx is None or not ctx.obj or not ctx.obj.get("listen"):
+        return conn
+    ctx.obj["live_conn"] = conn
+    conn._real_close = conn.close
+    conn.close = lambda: None  # type: ignore[method-assign]
+    return conn
+
+
+def _stream_events(client: TouchyClient) -> None:
+    """Park the main thread streaming device logs + host events."""
+    try:
+        for evt in client.stream_events():
+            logger.info("host-event code=0x%x", evt.host_code)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        getattr(client, "_real_close", client.close)()
 
 
 def _open_pad():
     """Counterpart to :func:`_client` that goes through the high-level API."""
     from .api import touchy_open
 
-    return touchy_open(transport=_make_transport())
+    return _keep_alive_for_listen(touchy_open(transport=_make_transport()))
 
 
 @cli.command("simulator")
@@ -394,6 +483,16 @@ def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int |
         server.close()
 
 
+def _fmt_bytes(n: int) -> str:
+    """Render a byte count as a compact human-readable string."""
+    value = float(n)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024.0 or unit == "GiB":
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024.0
+    return f"{n} B"  # unreachable
+
+
 @cli.command("board-info")
 def board_info() -> None:
     """Print board name, protocol version, and firmware version."""
@@ -409,6 +508,9 @@ def board_info() -> None:
     table.add_row("display", f"{v.display_width}x{v.display_height}")
     table.add_row("multitouch", "yes" if v.is_multitouch else "no")
     table.add_row("usb", "yes" if v.has_usb else "no")
+    table.add_row("free RAM", _fmt_bytes(v.free_heap_bytes))
+    table.add_row("free PSRAM", _fmt_bytes(v.free_psram_bytes))
+    table.add_row("flash FS", f"{_fmt_bytes(v.fs_used_bytes)} / {_fmt_bytes(v.fs_total_bytes)}")
     Console().print(table)
 
 
@@ -521,6 +623,53 @@ def events() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Pref — persistent device preferences (Stage 82)
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def pref() -> None:
+    """Set persistent device preferences (backlight, logging, boot delay)."""
+
+
+@pref.command("backlight-timeout")
+@click.argument("seconds", type=float)
+def pref_backlight_timeout(seconds: float) -> None:
+    """Auto-sleep the backlight after SECONDS of no input (0 disables)."""
+    with _client() as c:
+        c.screen_sleep_timeout(round(seconds * 1000))
+
+
+@pref.command("log-level")
+@click.argument(
+    "level",
+    type=click.Choice(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"], case_sensitive=False),
+)
+def pref_log_level(level: str) -> None:
+    """Set the minimum device log priority queued for the host.
+
+    Lines below LEVEL are dropped device-side and never tunneled over the
+    protocol. Persists across reboots (default ERROR).
+    """
+    from . import _proto
+
+    value = _proto.LogPriority.Value(f"LOG_PRIORITY_{level.upper()}")
+    with _client() as c:
+        c.set_min_log_level(value)
+
+
+@pref.command("boot-delay")
+@click.argument("seconds", type=int)
+def pref_boot_delay(seconds: int) -> None:
+    """Sleep SECONDS early in boot so a debug-log connection can attach.
+
+    Persists across reboots (0 disables). Applied at the next boot.
+    """
+    with _client() as c:
+        c.set_boot_delay(seconds)
+
+
+# ---------------------------------------------------------------------------
 # Screen — backlight control, layout management, and screen authoring
 # ---------------------------------------------------------------------------
 
@@ -537,14 +686,6 @@ def screen_wake() -> None:
         c.screen_wake()
 
 
-@screen.command("set-timeout")
-@click.argument("seconds", type=float)
-def screen_set_timeout(seconds: float) -> None:
-    """Auto-sleep the backlight after SECONDS of no input (0 disables)."""
-    with _client() as c:
-        c.screen_sleep_timeout(round(seconds * 1000))
-
-
 @screen.command("load")
 @click.argument("path")
 def screen_load(path: str) -> None:
@@ -553,24 +694,45 @@ def screen_load(path: str) -> None:
         c.screen_load(path)
 
 
+_TOUCHY_IMG_PATH = "F:host/images/touchy.png"
+_USER_BG_IMG_PATH = "F:host/images/user-background.bin"
+
+
+def _do_write_trackpad(pad, background_image: str) -> None:
+    """Upload the trackpad page body using *background_image* as the backdrop.
+
+    Writes ``F:host/uscr/trackpad.pb`` referencing *background_image* (a
+    device-side drive-prefixed path that must already exist on the device).
+    Does **not** upload the image file itself — the caller is responsible for
+    that.  Does **not** reload any screen.
+    """
+    from .pages import trackpad as _trackpad_page
+
+    _, trackpad_widget = _trackpad_page.build(background_image=background_image)
+    pad.user_screen_save("trackpad", trackpad_widget)
+    logger.info("sent F:host/uscr/trackpad.pb (background=%s)", background_image)
+
+
 def _do_screen_init(pad) -> None:
     """Write the default chrome screen + baseline trackpad page.
 
     Uploads ``F:host/s/default.pb`` (the persistent prev/next chrome with
-    a ``widget_ref(id="page")`` body) and the baseline ``trackpad`` page
-    into ``F:host/uscr/`` so the device has a usable layout out of the
-    box. Shared by ``touchy init`` and ``screen demo``.
+    a ``widget_ref(id="page")`` body), the Touchy-Pad logo image, and the
+    baseline ``trackpad`` page into ``F:host/uscr/`` so the device has a
+    usable layout out of the box. Shared by ``touchy init`` and ``screen demo``.
     """
-    from .api.screens import build_default_screen, build_user_pages
+    from .api.images import make_touchy_png
+    from .api.screens import build_default_screen
     from .paths import DEFAULT_SCREEN_PATH
 
     pad.screen_save(build_default_screen())
     logger.info("sent %s", DEFAULT_SCREEN_PATH)
 
-    pages = dict(build_user_pages())
-    trackpad = pages["trackpad"]
-    pad.user_screen_save("trackpad", trackpad)
-    logger.info("sent F:host/uscr/trackpad.pb")
+    touchy_png = make_touchy_png()
+    pad.file_save(_TOUCHY_IMG_PATH, touchy_png, max_width=128, max_height=128)
+    logger.info("sent %s (%d bytes source)", _TOUCHY_IMG_PATH, len(touchy_png))
+
+    _do_write_trackpad(pad, _TOUCHY_IMG_PATH)
 
     pad.screen_load(DEFAULT_SCREEN_PATH)
     logger.info("loaded %s", DEFAULT_SCREEN_PATH)
@@ -578,19 +740,13 @@ def _do_screen_init(pad) -> None:
 
 @screen.command("demo")
 @click.option(
-    "--listen",
-    is_flag=True,
-    help="After uploading, stream host events from the demo screen until "
-    "Ctrl-C. Registers handlers for the demo's host action codes.",
-)
-@click.option(
     "--json",
     "as_json",
     is_flag=True,
     help="Print the screen definition as protobuf JSON to stdout; " "do not talk to the device.",
 )
 @click.pass_context
-def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
+def screens_demo(ctx: click.Context, as_json: bool) -> None:
     """Upload the sample demo on top of the default chrome.
 
     Runs ``touchy init`` first (writing ``F:host/s/default.pb`` plus the
@@ -601,9 +757,8 @@ def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
     body ``widget_ref`` through ``F:host/uscr/``; flip to the ``test``
     page on-device with ``Next >``.
 
-    With ``--listen`` the CLI parks and the Stage-67 inline
-    ``host_action(on_event=...)`` callbacks on the ``test`` page print
-    incoming events.
+    Pass the top-level ``--listen`` flag to stream host events after
+    uploading: ``touchy --listen screen demo``.
     """
     from .api.images import make_smiley_png
     from .api.screens import build_default_screen, build_user_pages
@@ -645,29 +800,6 @@ def screens_demo(ctx: click.Context, listen: bool, as_json: bool) -> None:
         pad.show_user_screen("test")
         logger.info("showing F:host/uscr/test.pb")
 
-        if listen:
-            # Stage 67: the demo widgets carry inline ``host_action(on_event=...)``
-            # callbacks, registered automatically by ``user_screen_save`` /
-            # ``screen_save`` above. Nothing left to wire up here — just park
-            # and let the background event thread dispatch them.
-            if ctx.obj.get("sim_gui"):
-                # The group's result callback runs QApplication.exec()
-                # right after this returns, which both keeps the
-                # window interactive *and* parks the main thread
-                # — host events fire from the sim's worker thread
-                # and print straight to stdout from there.
-                logger.info(
-                    "listening for host events; close the sim window or press Ctrl-C to stop."
-                )
-            else:
-                logger.info("listening for host events (Ctrl-C to stop)...")
-                try:
-                    import threading
-
-                    threading.Event().wait()
-                except KeyboardInterrupt:
-                    pass
-
 
 @cli.command("reboot-bootloader")
 def reboot_bootloader() -> None:
@@ -698,6 +830,77 @@ def init() -> None:
                 str(info.protocol_version),
             )
         _do_screen_init(pad)
+
+
+# ---------------------------------------------------------------------------
+# Touchpad — trackpad-specific management
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def touchpad() -> None:
+    """Manage the touchpad settings."""
+
+
+@touchpad.command("image")
+@click.argument("url")
+def touchpad_image(url: str) -> None:
+    """Set a custom background image for the trackpad page.
+
+    Fetches the image at URL, scales it to fit within 180×180 px (preserving
+    aspect ratio), converts it to LVGL's native format, and saves it to
+    ``F:host/images/user-background.bin`` on the device.  The trackpad page
+    (``F:host/uscr/trackpad.pb``) is then regenerated to reference the new
+    image.  Reload the default screen afterwards to see the change.
+
+    URL must be an http or https address pointing at a supported image
+    (PNG, JPEG, BMP, GIF, or WebP).
+    """
+    import urllib.request
+
+    if not url.lower().startswith(("http://", "https://")):
+        raise click.BadParameter("URL must start with http:// or https://", param_hint="URL")
+
+    logger.info("fetching %s …", url)
+    # cloudflare blocks python by default
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; touchy-pad/1.0)"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 – scheme validated above
+        image_data = resp.read()
+    logger.info("fetched %d bytes", len(image_data))
+
+    from .api.lvgl_image import is_gif
+
+    # GIFs keep their extension (the firmware's lv_gif decoder is selected
+    # by the `.gif` suffix); everything else converts to LVGL `.bin`.
+    bg_path = "F:host/images/user-background.gif" if is_gif(image_data) else _USER_BG_IMG_PATH
+
+    with _open_pad() as pad:
+        pad.file_save(bg_path, image_data, max_width=180, max_height=180)
+        logger.info("sent %s", bg_path)
+        _do_write_trackpad(pad, bg_path)
+
+
+@touchpad.command("gif")
+def touchpad_gif() -> None:
+    """Set the bundled animated cat GIF as the trackpad background.
+
+    Uploads the packaged ``touchy_pad/assets/cat-space.gif`` (scaled to fit
+    within 180×180 px) and regenerates the trackpad page to reference it,
+    just like ``touchpad image URL`` but with no network fetch.
+    """
+    from importlib import resources
+
+    image_data = resources.files("touchy_pad.assets").joinpath("cat-space.gif").read_bytes()
+    logger.info("loaded bundled cat-space.gif (%d bytes)", len(image_data))
+
+    bg_path = "F:host/images/user-background.gif"
+    with _open_pad() as pad:
+        pad.file_save(bg_path, image_data, max_width=180, max_height=180)
+        logger.info("sent %s", bg_path)
+        _do_write_trackpad(pad, bg_path)
 
 
 def main() -> None:

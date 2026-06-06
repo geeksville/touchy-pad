@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "board.h"          // public API (main/board.h)
+#include "tc_tag.h"
 #include "board_pins.h"     // private pin map
 #include "platform.h"       // capability descriptor
 
@@ -10,7 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "board";
+static const char *TAG = TOUCHY_TAG("board");
 
 static i2c_master_bus_handle_t s_i2c_bus     = nullptr;
 static i2c_master_dev_handle_t s_ch422_wrset = nullptr;

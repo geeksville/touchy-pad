@@ -36,7 +36,9 @@ from pathlib import Path
 __all__ = [
     "LVGL_BIN_MAGIC",
     "looks_like_supported_image",
+    "is_gif",
     "is_lvgl_bin",
+    "rescale_gif",
     "rewrite_to_bin_path",
     "to_lvgl_bin",
 ]
@@ -71,6 +73,17 @@ def is_lvgl_bin(data: bytes) -> bool:
     return len(data) >= 12 and data[0] == LVGL_BIN_MAGIC
 
 
+def is_gif(data: bytes) -> bool:
+    """Return True if *data* is a GIF (``GIF87a`` / ``GIF89a`` magic).
+
+    GIFs are *not* converted to LVGL ``.bin`` on the host: the firmware
+    has a native ``lv_gif`` decoder (Stage 80) and keeps the animation,
+    so the raw bytes are uploaded verbatim and the ``.gif`` extension on
+    the device path acts as the discriminator.
+    """
+    return data.startswith((b"GIF87a", b"GIF89a"))
+
+
 def looks_like_supported_image(data: bytes) -> bool:
     """Return True if *data* looks like a BMP / PNG / JPEG / GIF / WebP file.
 
@@ -88,13 +101,15 @@ def looks_like_supported_image(data: bytes) -> bool:
 
 
 # File extensions we know how to convert to LVGL ``.bin``. Kept lowercase;
-# matched case-insensitively via :func:`rewrite_to_bin_path`.
+# matched case-insensitively via :func:`rewrite_to_bin_path`. Note ``.gif``
+# is deliberately absent: GIFs are uploaded verbatim and rendered by the
+# firmware's native ``lv_gif`` decoder (Stage 80), so their path keeps the
+# ``.gif`` extension.
 _CONVERTIBLE_EXTS: tuple[str, ...] = (
     ".bmp",
     ".png",
     ".jpg",
     ".jpeg",
-    ".gif",
     ".webp",
 )
 
@@ -205,6 +220,8 @@ def to_lvgl_bin(
     *,
     cf: str | None = None,
     dest_path: str | None = None,
+    max_width: int | None = None,
+    max_height: int | None = None,
 ) -> bytes:
     """Convert *source* (image bytes or a path) to an LVGL ``.bin`` blob.
 
@@ -219,6 +236,11 @@ def to_lvgl_bin(
       (flash) never mmaps, so the fallback is silent there.
     * ``"RGB565"`` — force opaque RGB565 (alpha is dropped).
     * ``"RGB565A8"`` — force RGB565 + A8 plane.
+
+    *max_width* and *max_height* \u2014 if given, the image is scaled down
+    (preserving aspect ratio using :data:`PIL.Image.LANCZOS`) so that
+    neither dimension exceeds the respective limit.  Has no effect when
+    the image is already within the bounds.
 
     Requires Pillow at runtime; raises :class:`ImportError` with a
     helpful hint otherwise.
@@ -239,6 +261,12 @@ def to_lvgl_bin(
         raise TypeError(f"unsupported source type: {type(source).__name__}")
 
     img.load()  # force decoding now so the BytesIO can be GC'd
+
+    if max_width is not None or max_height is not None:
+        limit_w = max_width or img.width
+        limit_h = max_height or img.height
+        if img.width > limit_w or img.height > limit_h:
+            img.thumbnail((limit_w, limit_h), Image.LANCZOS)
 
     chosen = (cf or "").upper()
     if chosen == "":
@@ -270,3 +298,55 @@ def to_lvgl_bin(
         # same width.
         return _build_header(_CF_RGB565A8, w, h, w * 2) + pixels
     raise NotImplementedError(f"output color format not supported yet: {cf}")
+
+
+def rescale_gif(
+    data: bytes,
+    *,
+    max_width: int | None = None,
+    max_height: int | None = None,
+) -> bytes:
+    """Scale every frame of an animated GIF down to fit *max_width*/*max_height*.
+
+    Returns the original bytes unchanged when no limit is given or the GIF
+    already fits. Otherwise each frame is resized (preserving aspect ratio,
+    animation timing, loop count and a sane disposal) and the GIF is
+    re-encoded. The device renders the result with its native ``lv_gif``
+    decoder, so the bytes stay in GIF format rather than LVGL ``.bin``.
+    """
+    if max_width is None and max_height is None:
+        return data
+    try:
+        from PIL import Image, ImageSequence  # type: ignore[import-untyped]
+    except ImportError as exc:  # pragma: no cover - exercised manually
+        raise ImportError(
+            "Pillow is required to rescale GIFs. Install with `pip install pillow`."
+        ) from exc
+
+    img = Image.open(io.BytesIO(data))
+    limit_w = max_width or img.width
+    limit_h = max_height or img.height
+    if img.width <= limit_w and img.height <= limit_h:
+        return data
+
+    ratio = min(limit_w / img.width, limit_h / img.height)
+    new_w = max(1, round(img.width * ratio))
+    new_h = max(1, round(img.height * ratio))
+
+    frames: list = []
+    durations: list[int] = []
+    for frame in ImageSequence.Iterator(img):
+        frames.append(frame.convert("RGBA").resize((new_w, new_h), Image.LANCZOS))
+        durations.append(frame.info.get("duration", 100))
+
+    out = io.BytesIO()
+    frames[0].save(
+        out,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=img.info.get("loop", 0),
+        disposal=2,
+    )
+    return out.getvalue()

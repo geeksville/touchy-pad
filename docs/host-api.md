@@ -286,7 +286,7 @@ configuration for `bInterfaceClass == 0xFF`. See
 ### Wire framing
 
 Every protobuf message — `Command`, `Response`, or `Event` — is wrapped in
-a self-synchronising frame (Stage 64.3, `ProtocolVersion.CURRENT == 7`):
+a self-synchronising frame (Stage 64.3, `ProtocolVersion.CURRENT == 9`):
 
 ```
 +----------+----------+--------------------+---------+
@@ -334,7 +334,8 @@ behind the `serial` feature) speak the UART layer; pass `--port
 ### Board capabilities
 
 `SysBoardInfoResponse` advertises what a connected board can do so the
-host adapts at runtime (Stage 65, protocol V6; serial added in V7):
+host adapts at runtime (Stage 65, protocol V6; serial added in V7; free
+memory + storage added in V8; `SetPreferencesCmd` in V9):
 
 * `is_multitouch` — `false` on resistive single-touch panels
   (`esp32_2432s028rv3`), `true` on the GT911 capacitive boards. The sim
@@ -348,8 +349,41 @@ host adapts at runtime (Stage 65, protocol V6; serial added in V7):
   string is exposed as the USB `iSerialNumber` descriptor so the OS and
   the vendor transport agree. The simulator reports the constant
   `tsim001`. Hosts use it as the canonical enumeration id.
+* `free_heap_bytes` / `free_psram_bytes` — current free internal RAM and
+  PSRAM (`uint64`; Stage 81, protocol V8). PSRAM is `0` on no-PSRAM
+  boards. Filled from `heap_caps_get_free_size(MALLOC_CAP_INTERNAL` /
+  `MALLOC_CAP_SPIRAM)`.
+* `fs_total_bytes` / `fs_used_bytes` — LittleFS (`F:`) capacity and usage
+  (`uint64`; Stage 81), from `FlashFs::usage()`.
 
 `touchy board-info` surfaces these (plus the display size) as table rows.
+
+### Preferences (`SetPreferencesCmd`)
+
+Stage 82 replaced the per-setting `ScreenLoadCmd` and
+`ScreenSleepTimeoutCmd` commands with a single partial-update message
+(`ProtocolVersion.V9`):
+
+```
+message SetPreferencesCmd { PreferencesFile prefs = 1; }
+```
+
+Every value field on `PreferencesFile` is `optional` (proto3 presence),
+so the host sets only the fields it wants changed; the device merges them
+into its persisted prefs and fires the matching side effects. The host
+MUST NOT set `file_version` — it is device-owned. Fields:
+
+* `screen_timeout_ms` — backlight auto-sleep timeout (`0` = never).
+  Wrapper: `screen_sleep_timeout` / CLI `pref backlight-timeout`.
+* `current_screen` — activate an uploaded screen (empty = default).
+  Returns `RESULT_NOT_FOUND` if the path is unknown. Wrapper:
+  `screen_load` / CLI `screen load`.
+* `min_log_level` — minimum `LogPriority` (as `uint32`) queued back over
+  the log tunnel; lower-priority records are dropped device-side.
+  Default `ERROR`. Wrapper: `set_min_log_level` / CLI `pref log-level`.
+* `boot_delay_s` — early-boot `vTaskDelay` (seconds) so a debug-log
+  connection can attach before subsystem bring-up. Wrapper:
+  `set_boot_delay` / CLI `pref boot-delay`.
 
 ### Channel semantics
 

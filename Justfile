@@ -247,8 +247,36 @@ app-build: build-proto-py
 
 # Run the touchy CLI inside the Poetry venv. Forward extra args:
 #   just app-run -- version
+# On segfault: PYTHONFAULTHANDLER prints the Python traceback; catchsegv
+# (when available) prints the C-level backtrace via libSegFault.so.
 app-run *ARGS: build-proto-py
-    env -u VIRTUAL_ENV poetry run --directory app touchy {{ARGS}}
+    #!/usr/bin/env bash
+    if command -v catchsegv &>/dev/null; then
+        PYTHONFAULTHANDLER=1 catchsegv env -u VIRTUAL_ENV poetry run --directory app touchy {{ARGS}}
+    else
+        PYTHONFAULTHANDLER=1 env -u VIRTUAL_ENV poetry run --directory app touchy {{ARGS}}
+    fi
+
+# Change touchpad image to a custom graphic
+app-touchpad-image *ARGS:
+    just app-run {{ARGS}} touchpad image https://www.geeksville.com/robots.png 
+
+# Change touchpad image to the bundled cute cat gif
+app-touchpad-gif *ARGS:
+    just app-run {{ARGS}} touchpad gif 
+
+# Decode a coredump backtrace from the firmware logs. Forward the raw hex PCs as args:
+app-backtrace *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # activate_idf_v6.0.1.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
+    # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
+    # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
+    # var (not IDF_PATH) to break the re-exec loop.
+    if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
+        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
+    fi
+    xtensa-esp32s3-elf-addr2line -pfiaC -e firmware/build/touchy_pad_v2.elf {{ARGS}}
 
 # ---------------------------------------------------------------------------
 # Rust library + demo (rust/) — pure-Rust async client.
@@ -418,6 +446,33 @@ firmware-reconfigure board="":
         idf.py -C firmware -DBOARD="${_BOARD}" set-target "${_IDF_TARGET}"
         idf.py -C firmware -DBOARD="${_BOARD}" reconfigure
     '
+
+# Erase the flash filesystem
+flash-erase: 
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # activate_idf_v6.0.1.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
+    # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
+    # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
+    # var (not IDF_PATH) to break the re-exec loop.
+    if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
+        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
+    fi
+    # Pick the first readable+writable ttyACM*/ttyUSB* under /host/dev/.
+    # Native-USB boards enumerate as ttyACM*; UART-bridge boards (CH340 on
+    # esp32_2432s028rv3) enumerate as ttyUSB*.
+    port=""
+    for candidate in $(ls /host/dev/ttyACM* /host/dev/ttyUSB* 2>/dev/null | sort); do
+        if [ -r "$candidate" ] && [ -w "$candidate" ]; then
+            port="$candidate"
+            break
+        fi
+    done
+    if [ -z "$port" ]; then
+        echo "error: no accessible ttyACM*/ttyUSB* device found under /host/dev/" >&2
+        exit 1
+    fi    
+    esptool -p "$port" -b 460800 --chip esp32s3 erase_region 0x310000 0xC0000
 
 flash: firmware-build
     #!/usr/bin/env bash

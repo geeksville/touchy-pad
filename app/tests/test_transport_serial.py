@@ -36,7 +36,7 @@ def _pty_port() -> tuple[int, str]:
 
 
 def test_baud_rate_constant() -> None:
-    assert BAUD_RATE == 115200
+    assert BAUD_RATE == 460800
 
 
 def test_send_command_writes_a_frame() -> None:

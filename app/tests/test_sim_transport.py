@@ -45,6 +45,31 @@ def test_board_info_reports_sim_serial() -> None:
     assert v.serial == "tsim001"
 
 
+def test_board_info_reports_memory_and_storage() -> None:
+    """Stage 81 — the sim advertises plausible free RAM / PSRAM / FS values."""
+    with make_tempdir_transport() as t:
+        c = TouchyClient(t)
+        v = c.sys_board_info_get()
+    assert v.free_heap_bytes > 0
+    assert v.free_psram_bytes > 0
+    assert v.fs_total_bytes >= v.fs_used_bytes > 0
+
+
+def test_set_preferences_partial_update_merges() -> None:
+    """Stage 82 — a partial update only changes the fields it carries."""
+    with make_tempdir_transport() as t:
+        c = TouchyClient(t)
+        # Only set the boot delay; the log level keeps its default.
+        c.set_boot_delay(7)
+        dev = t._device  # noqa: SLF001 — white-box check of merged prefs
+        assert dev._prefs.boot_delay_s == 7  # noqa: SLF001
+        assert dev._prefs.min_log_level == _proto.LOG_PRIORITY_ERROR  # noqa: SLF001
+        # A second partial update leaves the first field intact.
+        c.set_min_log_level(_proto.LOG_PRIORITY_DEBUG)
+        assert dev._prefs.boot_delay_s == 7  # noqa: SLF001
+        assert dev._prefs.min_log_level == _proto.LOG_PRIORITY_DEBUG  # noqa: SLF001
+
+
 def test_run_actions_runs_host_action_headless(tmp_path: pathlib.Path) -> None:
     """Stage 71 — RunActionsCmd with no GUI dispatcher runs ActionHost inline."""
     from touchy_pad.sim.device import SimDevice
@@ -115,7 +140,14 @@ def test_screen_load_missing_returns_not_found() -> None:
     with make_tempdir_transport() as t:
         c = TouchyClient(t)
         # _check raises on non-OK; assert the underlying response code.
-        reply = c._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(path="F:host/s/nope.pb")))
+        # Stage 82 — screen load goes through SetPreferencesCmd.
+        reply = c._rpc(
+            _proto.Command(
+                set_preferences=_proto.SetPreferencesCmd(
+                    prefs=_proto.PreferencesFile(current_screen="F:host/s/nope.pb")
+                )
+            )
+        )
         assert reply.code == _proto.RESULT_NOT_FOUND
 
 

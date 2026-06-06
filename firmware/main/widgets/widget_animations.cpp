@@ -4,6 +4,7 @@
 // See widget_animations.h for the rationale.
 
 #include "widget_animations.h"
+#include "tc_tag.h"
 
 #include "widget_styles.h"   // lv_prop_from_proto / lv_path_from_proto
 #include "widgets.pb.h"
@@ -14,7 +15,7 @@
 #include <new>
 #include <vector>
 
-static const char *TAG = "widgets.anim";
+static const char *TAG = TOUCHY_TAG("widgets.anim");
 
 namespace {
 

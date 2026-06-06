@@ -278,11 +278,21 @@ def _usbfs_disconnect_claim(fd: int, ifnum: int) -> None:
         pass
 
 
+def _in_dev_container() -> bool:
+    """Return True when running inside a VS Code / GitHub dev container."""
+    import os
+
+    return os.environ.get("REMOTE_CONTAINERS", "").lower() in ("true", "1", "yes")
+
+
 def _install_host_dev_fallback() -> None:
     import ctypes
     import os
 
     from usb.backend import libusb1 as _lb
+
+    if not _in_dev_container():
+        return
 
     if getattr(_lb, "_touchy_host_dev_patched", False):
         return

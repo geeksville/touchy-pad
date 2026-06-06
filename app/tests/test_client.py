@@ -75,12 +75,80 @@ def test_screen_sleep_timeout_arg_passed(make_client):
     seen = {}
 
     def server(cmd, _t):
-        seen["timeout"] = cmd.screen_sleep_timeout.timeout_ms
+        # Stage 82 — screen_sleep_timeout is implemented via SetPreferencesCmd.
+        seen["timeout"] = cmd.set_preferences.prefs.screen_timeout_ms
         return _proto.Response(code=_proto.RESULT_OK)
 
     with make_client(server) as c:
         c.screen_sleep_timeout(5000)
     assert seen == {"timeout": 5000}
+
+
+def test_set_preferences_only_sets_given_field(make_client):
+    """A partial SetPreferencesCmd must carry presence only for set fields."""
+    seen = {}
+
+    def server(cmd, _t):
+        assert cmd.WhichOneof("cmd") == "set_preferences"
+        prefs = cmd.set_preferences.prefs
+        seen["has_timeout"] = prefs.HasField("screen_timeout_ms")
+        seen["has_screen"] = prefs.HasField("current_screen")
+        seen["has_log"] = prefs.HasField("min_log_level")
+        seen["has_boot"] = prefs.HasField("boot_delay_s")
+        return _proto.Response(code=_proto.RESULT_OK)
+
+    with make_client(server) as c:
+        c.set_preferences(_proto.PreferencesFile(screen_timeout_ms=10))
+    assert seen == {
+        "has_timeout": True,
+        "has_screen": False,
+        "has_log": False,
+        "has_boot": False,
+    }
+
+
+def test_set_min_log_level_passed(make_client):
+    seen = {}
+
+    def server(cmd, _t):
+        assert cmd.WhichOneof("cmd") == "set_preferences"
+        seen["level"] = cmd.set_preferences.prefs.min_log_level
+        return _proto.Response(code=_proto.RESULT_OK)
+
+    with make_client(server) as c:
+        c.set_min_log_level(_proto.LOG_PRIORITY_DEBUG)
+    assert seen == {"level": _proto.LOG_PRIORITY_DEBUG}
+
+
+def test_set_boot_delay_passed(make_client):
+    seen = {}
+
+    def server(cmd, _t):
+        assert cmd.WhichOneof("cmd") == "set_preferences"
+        seen["delay"] = cmd.set_preferences.prefs.boot_delay_s
+        return _proto.Response(code=_proto.RESULT_OK)
+
+    with make_client(server) as c:
+        c.set_boot_delay(3)
+    assert seen == {"delay": 3}
+
+
+@pytest.mark.parametrize(
+    ("count", "expected"),
+    [
+        (0, "0 B"),
+        (512, "512 B"),
+        (1024, "1.0 KiB"),
+        (1536, "1.5 KiB"),
+        (1048576, "1.0 MiB"),
+        (1073741824, "1.0 GiB"),
+    ],
+)
+def test_fmt_bytes(count, expected):
+    """Stage 81 — board-info byte formatter renders compact units."""
+    from touchy_pad.cli import _fmt_bytes
+
+    assert _fmt_bytes(count) == expected
 
 
 def test_run_actions_passes_actions(make_client):
@@ -161,6 +229,41 @@ def test_image_save_binary_round_trip(make_client):
         c.file_save("F:host/img/test.png", blob)
     assert bytes(state["buf"]) == blob
     assert state["writes"] >= 1
+
+
+def test_gif_save_is_uploaded_verbatim(make_client):
+    """GIFs bypass LVGL-bin conversion and keep their ``.gif`` path."""
+    import io as _io
+
+    from PIL import Image
+
+    state = {"buf": bytearray(), "path": None}
+
+    def server(cmd, _t):
+        kind = cmd.WhichOneof("cmd")
+        if kind == "file_open_write":
+            state["path"] = cmd.file_open_write.path
+            return _proto.Response(
+                code=_proto.RESULT_OK,
+                file_open_write=_proto.FileOpenWriteResponse(handle=1),
+            )
+        if kind == "file_write":
+            state["buf"].extend(cmd.file_write.data)
+            return _proto.Response(code=_proto.RESULT_OK)
+        if kind == "file_close":
+            return _proto.Response(code=_proto.RESULT_OK)
+        raise AssertionError(f"unexpected command {kind!r}")
+
+    buf = _io.BytesIO()
+    Image.new("P", (8, 6), 0).save(buf, format="GIF")
+    gif = buf.getvalue()
+
+    with make_client(server) as c:
+        c.file_save("F:host/images/bg.gif", gif)
+    # Path kept verbatim (NOT rewritten to .bin) and bytes uploaded as-is.
+    assert state["path"] == "F:host/images/bg.gif"
+    assert bytes(state["buf"]) == gif
+    assert bytes(state["buf"]).startswith((b"GIF87a", b"GIF89a"))
 
 
 def test_event_consume_empty_returns_none(make_client):

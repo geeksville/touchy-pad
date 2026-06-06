@@ -8,6 +8,9 @@ the package is installable from PyPI without protoc.
 
 from __future__ import annotations
 
+from .preferences_pb2 import (  # noqa: F401  (re-exported)
+    PreferencesFile,
+)
 from .touchy_pb2 import (  # noqa: F401  (re-exported)
     Command,
     Event,
@@ -24,9 +27,8 @@ from .touchy_pb2 import (  # noqa: F401  (re-exported)
     Response,
     ResultCode,
     RunActionsCmd,
-    ScreenLoadCmd,
-    ScreenSleepTimeoutCmd,
     ScreenWakeCmd,
+    SetPreferencesCmd,
     SysBoardInfoGetCmd,
     SysBoardInfoResponse,
     SysRebootBootloaderCmd,
