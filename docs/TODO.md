@@ -6,8 +6,10 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [x] move background drawing out of trackpad widget.  that was a mistake. 
 * [x] allow arbitrary image backgrounds for standard trackpad layout.  for now use the touchy icon.
 * [x] investigate hang on setting large gifs
-* [ ] make sure plugin is solid
-* [ ] add reddit link for support
+* [ ] board-info improvements, include free RAM, PSRAM and flash-file-system numbers
+* [ ] properly warn user if selected gif/file is too large to use (based on ram size)
+* [ ] make sure opendeck plugin is solid
+* [ ] add a reddit link for support/discussion
 * [ ] support no-touch devices
 * [ ] add photo of the small board
 * [ ] add some of the example JSON to the API docs
@@ -19,7 +21,6 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] Allow setting a persistent device pref for 'min-log-level' logs with lower pri than this will not be queued for the host, just drop em.  default threshold is ERROR. Update python cli to add a "set-log-level FOO" cmd.  Also add a "boot-delay" param, to cause a sleep early on - to allow time for debug logging connection establishment.
 * [ ] support eink displays in my test devices drawer
 * [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/
-* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] try turning off GPIO matrix for SPI display writes - per https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/spi_master.html#_CPPv416spi_bus_config_t might allow increase to 80Mhz.  "You can use this structure to specify the GPIO pins of the bus. Normally, the driver will use the GPIO matrix to route the signals. An exception is made when all signals either can be routed through the IO_MUX or are -1. In that case, the IO_MUX is used. On ESP32, using GPIO matrix will bring about 25ns of input delay, which may cause incorrect read for >40MHz speeds."
 * [x] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
@@ -37,6 +38,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 
 # Alpha 4
 
+* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] expose device API via wifi/tcp (for arbitary smart signage applications).   Find a good esp32 lib for wifi settings/management/firmware update?
 * [ ] Haptics (figure out best way to mount haptics for best effect)
 * [ ] tactile precut sticker/3d printable case for screen overlay?

@@ -3496,6 +3496,21 @@ Firmware was **not** compiled in the implementing environment (no ESP-IDF in
 PATH); the `lv_gif_*` APIs were verified present in the vendored
 `lvgl__lvgl` component and exported via the `lvgl.h` umbrella.
 
+## Stage 81: boardinfo improvements
+include free RAM, PSRAM and flash-file-system numbers in the boardinfo protobuf.  have python tool print it
+
+## stage 82: preferences improvements
+The current approach for changing preferences is brittle - it requires a new message type every time we want to let a preferences value be updated.  Change it.  Instead add a new SetPreferencesCmd(PreferencesFile prefs).
+
+* Change all the fields in PreferencesFile protobuf to be "optional"
+* The device or sim will respond to this message by setting any specified field in the master settings used on the device. The host should never include a file_version" field in messages it sends.  It should only set entries it wants changed.
+* On the device code if the host changes a preferences entry make sure to trigger any necessary state changes (e.x. backlight level)
+* remove ScreenSleepTimeoutCmd - instead use our new SetPreferencesCmd
+* Allow setting a persistent device pref for 'min-log-level' logs with lower pri than this will not be queued for the host, just drop em.  default threshold is ERROR. 
+* Update python cli to add a "set-log-level FOO" cmd.  
+* Also add a persistent "boot-delay(num_seconds)" preferences, to cause a sleep early on - to allow time for debug logging connection establishment.
+* Remove ScreenLoadCmd, because the host should instead include API glue that uses the SetPreferencesCmd to change that field
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:
