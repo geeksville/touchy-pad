@@ -158,7 +158,7 @@ extern "C" void app_main(void)
     (void)disp;  // handle not needed past bring-up (LVGL tracks the default)
 
     // enable storing log records from this point forward (enabling before this can cause hangs if DEBUG logging is enabled
-    // via CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y)
+    // via CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y
     log_proto_enable();
 
     // display_init() calls lv_init() which clears LVGL's FS driver

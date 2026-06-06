@@ -13,6 +13,7 @@
 // differences (resolution, orientation flags) come from board_pins.h.
 
 #include "touch.h"
+#include "tc_tag.h"
 
 #include "board_pins.h"
 
@@ -26,7 +27,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "touch";
+static const char *TAG = TOUCHY_TAG("touch");
 
 static lv_indev_t            *s_indev = nullptr;
 static esp_lcd_touch_handle_t s_tp    = nullptr;

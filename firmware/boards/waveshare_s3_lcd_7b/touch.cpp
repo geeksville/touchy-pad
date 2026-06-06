@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "touch.h"
+#include "tc_tag.h"
 
 #include "board.h"
 #include "board_pins.h"
@@ -10,7 +11,7 @@
 #include "esp_lcd_touch_gt911.h"
 #include "esp_lvgl_port.h"
 
-static const char *TAG = "touch";
+static const char *TAG = TOUCHY_TAG("touch");
 
 extern "C" esp_lcd_touch_handle_t touch_init(lv_display_t *disp)
 {

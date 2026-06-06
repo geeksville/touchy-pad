@@ -3,13 +3,14 @@
 // Stage 24 — live FPS readout widget. See fps_widget.h.
 
 #include "fps_widget.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 #include "lvgl.h"
 
 #include <cstdio>
 
-static const char *TAG = "fps";
+static const char *TAG = TOUCHY_TAG("fps");
 
 namespace {
 

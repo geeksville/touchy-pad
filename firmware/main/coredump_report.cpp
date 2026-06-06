@@ -3,6 +3,7 @@
 // See coredump_report.h.
 
 #include "coredump_report.h"
+#include "tc_tag.h"
 
 #include "sdkconfig.h"
 
@@ -17,7 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 
-static const char *TAG = "coredump";
+static const char *TAG = TOUCHY_TAG("coredump");
 
 void coredump_report_check_and_log(void)
 {

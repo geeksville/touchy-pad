@@ -8,6 +8,7 @@
 //      not natively speak the NV3041A QSPI framing).
 
 #include "display.h"
+#include "tc_tag.h"
 
 #include "board.h"
 #include "board_pins.h"
@@ -18,7 +19,7 @@
 #include "esp_heap_caps.h"
 #include "driver/gpio.h"
 
-static const char *TAG = "display";
+static const char *TAG = TOUCHY_TAG("display");
 
 static nv3041a_handle_t s_panel = nullptr;
 

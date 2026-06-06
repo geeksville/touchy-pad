@@ -4,6 +4,7 @@
 // See widget_actions.h for the design notes.
 
 #include "widget_actions.h"
+#include "tc_tag.h"
 
 #include "fs/fs.h"
 #include "host_api.h"
@@ -23,7 +24,7 @@
 #include <string>
 #include <vector>
 
-static const char *TAG = "screens.actions";
+static const char *TAG = TOUCHY_TAG("screens.actions");
 
 namespace {
 

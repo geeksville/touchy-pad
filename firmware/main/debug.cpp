@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "debug.h"
+#include "tc_tag.h"
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -9,7 +10,7 @@
 
 #include <new>
 
-static const char *TAG = "debug";
+static const char *TAG = TOUCHY_TAG("debug");
 
 void dump_critical_info()
 {

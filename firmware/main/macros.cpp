@@ -3,6 +3,7 @@
 // Stage 16 — device-side macro runner. See macros.h.
 
 #include "macros.h"
+#include "tc_tag.h"
 
 #include "protobuf.h"
 #include "usb_hid.h"
@@ -16,7 +17,7 @@
 #include <cstring>
 #include <new>
 
-static const char *TAG = "macros";
+static const char *TAG = TOUCHY_TAG("macros");
 
 // Default inter-step delay (ms). Overridable per-macro via a `set_delay_ms`
 // step.

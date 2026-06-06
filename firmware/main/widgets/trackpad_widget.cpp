@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "trackpad_widget.h"
+#include "tc_tag.h"
 
 #include "log_line.h"
 #include "usb_hid.h"
@@ -13,7 +14,7 @@
 #include <algorithm>
 #include <new>
 
-static const char *TAG = "trackpad";
+static const char *TAG = TOUCHY_TAG("trackpad");
 
 static uint32_t millis()
 {

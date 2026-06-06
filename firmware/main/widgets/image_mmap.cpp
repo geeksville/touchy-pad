@@ -3,6 +3,7 @@
 // Stage 52 \u2014 see image_mmap.h.
 
 #include "image_mmap.h"
+#include "tc_tag.h"
 
 #include "fs/fs.h"
 
@@ -11,7 +12,7 @@
 #include <cstdio>
 #include <cstring>
 
-static const char *TAG = "image.mmap";
+static const char *TAG = TOUCHY_TAG("image.mmap");
 
 // Buffer used to format the per-call rejection reason string. Static
 // is fine here because the LVGL task runs single-threaded and the

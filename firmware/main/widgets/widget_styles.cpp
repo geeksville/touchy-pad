@@ -4,6 +4,7 @@
 // the rationale; this file used to live inline in screens.cpp.
 
 #include "widget_styles.h"
+#include "tc_tag.h"
 
 #include "widgets.pb.h"
 
@@ -13,7 +14,7 @@
 #include <new>
 #include <vector>
 
-static const char *TAG = "screens.styles";
+static const char *TAG = TOUCHY_TAG("screens.styles");
 
 namespace {
 

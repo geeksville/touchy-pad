@@ -3,6 +3,7 @@
 // Touchy-Pad host_api dispatcher — see host_api.h.
 
 #include "host_api.h"
+#include "tc_tag.h"
 
 #include "backlight.h"
 #include "display.h"
@@ -38,7 +39,7 @@
 #include <string.h>
 #include <string>
 
-static const char *TAG = "host_api";
+static const char *TAG = TOUCHY_TAG("host_api");
 
 // Wire protocol version. Bump when the on-the-wire framing or any oneof
 // numbering changes in a way that breaks existing host clients.

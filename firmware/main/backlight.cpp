@@ -3,6 +3,7 @@
 // Touchy-Pad backlight control + auto-sleep (stage 19).
 
 #include "backlight.h"
+#include "tc_tag.h"
 
 #include "board.h"
 #include "prefs.h"
@@ -12,7 +13,7 @@
 
 #include <stdatomic.h>
 
-static const char *TAG = "backlight";
+static const char *TAG = TOUCHY_TAG("backlight");
 
 static esp_timer_handle_t s_timer    = nullptr;
 static uint32_t           s_timeout_ms = 0;

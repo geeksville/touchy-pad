@@ -9,6 +9,7 @@
 // screens module can focus on registry / decode / dispatch concerns.
 
 #include "widget_builders.h"
+#include "tc_tag.h"
 
 #include "fps_widget.h"
 #include "force_render_widget.h"
@@ -41,7 +42,7 @@
 #include <unordered_set>
 #include <vector>
 
-static const char *TAG = "screens.builders";
+static const char *TAG = TOUCHY_TAG("screens.builders");
 
 namespace {
 

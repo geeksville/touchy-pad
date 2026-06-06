@@ -12,6 +12,7 @@
 // deliberately small (a few dozen lines, ping-ponged).
 
 #include "display.h"
+#include "tc_tag.h"
 
 #include "board_pins.h"
 
@@ -35,7 +36,7 @@
 #  define BOARD_LCD_CONTROLLER_NAME "ST7789"
 #endif
 
-static const char *TAG = "display";
+static const char *TAG = TOUCHY_TAG("display");
 
 extern "C" lv_display_t *display_init(void)
 {

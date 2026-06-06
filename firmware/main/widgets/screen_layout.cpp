@@ -3,12 +3,13 @@
 // Stage 15 / 20.1 / 24.1 / 24.2 — layout-widget configuration + child placement. See header.
 
 #include "screen_layout.h"
+#include "tc_tag.h"
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "lvgl.h"
 
-static const char *TAG = "screens.layout";
+static const char *TAG = TOUCHY_TAG("screens.layout");
 
 bool widget_is_layout(const touchy_Widget &w)
 {

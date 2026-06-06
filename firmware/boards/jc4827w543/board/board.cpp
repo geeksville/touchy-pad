@@ -6,13 +6,14 @@
 // and is configured in display.cpp.
 
 #include "board.h"           // public API (main/board.h)
+#include "tc_tag.h"
 #include "board_pins.h"      // private pin map
 #include "platform.h"        // capability descriptor
 
 #include "esp_log.h"
 #include "driver/i2c_master.h"
 
-static const char *TAG = "board";
+static const char *TAG = TOUCHY_TAG("board");
 
 static i2c_master_bus_handle_t s_i2c_bus = nullptr;
 

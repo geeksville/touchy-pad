@@ -20,6 +20,7 @@
 //   * the small public C API in screens.h.
 
 #include "screens.h"
+#include "tc_tag.h"
 
 #include "debug.h"
 #include "default_screen_pb.h"
@@ -44,7 +45,7 @@
 #include <string>
 #include <vector>
 
-static const char *TAG = "screens";
+static const char *TAG = TOUCHY_TAG("screens");
 
 // Touch controller handle, set once at boot by main.cpp via
 // screens_set_touch(). Trackpad widgets need it to recover multi-finger

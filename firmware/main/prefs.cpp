@@ -3,6 +3,7 @@
 // Touchy-Pad per-device preferences (stage 19).
 
 #include "prefs.h"
+#include "tc_tag.h"
 
 #include "backlight.h"
 #include "fs.h"
@@ -15,7 +16,7 @@
 
 #include <cstdio>
 
-static const char *TAG = "prefs";
+static const char *TAG = TOUCHY_TAG("prefs");
 
 // Filesystem path (relative to the LittleFS mount root). Stays on flash
 // regardless of the new R:/F: drive-letter scheme — device-private

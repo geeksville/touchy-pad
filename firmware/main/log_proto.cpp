@@ -5,6 +5,7 @@
 // rationale.
 
 #include "log_proto.h"
+#include "tc_tag.h"
 
 #include "sdkconfig.h"
 
@@ -224,9 +225,22 @@ static int s_vprintf(const char *fmt, va_list ap)
     const char *body;
     parse_esp_log_prefix(line, &prio, &tag, &body);
 
-    // Stage 82 — drop anything below the host's requested threshold. This
-    // is intentional filtering, not loss, so we don't bump s_pending_dropped.
-    if ((int)prio < s_min_level.load(std::memory_order_relaxed)) {
+    // Stage 82 — drop anything below the host's requested threshold.
+    // Additionally, DEBUG/TRACE records from tags that don't carry the
+    // "tc-" prefix (i.e. third-party ESP-IDF / driver noise) are always
+    // suppressed regardless of the configured min_log_level. This prevents
+    // a DEBUG pref from flooding the tunnel with system internals and is the
+    // root fix for the intermittent early-boot crash: system drivers emit
+    // heavy DEBUG traffic during bring-up; by the time our hook is active
+    // (post-enable) those logs are already past the dangerous init window,
+    // but filtering them here keeps the queue healthy.
+    // Intentional filtering — do NOT bump s_pending_dropped.
+    int min_level = s_min_level.load(std::memory_order_relaxed);
+    bool is_touchy = (strncmp(tag, "tc-", 3) == 0);
+    int effective_min = (!is_touchy && min_level < touchy_LogPriority_LOG_PRIORITY_INFO)
+                        ? (int)touchy_LogPriority_LOG_PRIORITY_INFO
+                        : min_level;
+    if ((int)prio < effective_min) {
         in_emit_clear();
         return written;
     }
