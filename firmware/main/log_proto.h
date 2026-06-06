@@ -33,6 +33,13 @@ void log_proto_start(void);
 // field) or call free(out->message) when done.
 bool log_proto_pop(touchy_LogRecord *out);
 
+// Stage 82 — set the minimum log priority that gets queued for the host.
+// Records strictly below `level` are dropped device-side (intentional
+// filtering, not counted as loss). Called from the prefs subsystem on boot
+// and whenever a SetPreferencesCmd changes min_log_level. No-op when the
+// proto log tunnel is disabled.
+void log_proto_set_min_level(touchy_LogPriority level);
+
 // Block until the host has drained every queued log record (the queue
 // is empty), or until timeout_ms elapses. Returns true if fully
 // flushed, false on timeout. Returns true immediately when the proto

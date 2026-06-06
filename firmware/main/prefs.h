@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <string>
 
+#include "touchy.pb.h"
+
 class Prefs {
 public:
     // Load preferences from `/prefs/prefs.pb`. Falls back to built-in
@@ -24,6 +26,23 @@ public:
 
     // Update the timeout and persist it immediately to flash.
     void set_screen_timeout_ms(uint32_t ms);
+
+    // Stage 82 — minimum log priority queued for the host (a
+    // touchy_LogPriority value). Lines below this are dropped device-side.
+    // Default LOG_PRIORITY_ERROR.
+    uint32_t min_log_level() const { return m_min_log_level; }
+
+    // Stage 82 — early-boot delay in seconds (0 = disabled). Read at boot
+    // to give a host debug-log connection time to attach.
+    uint32_t boot_delay_s() const { return m_boot_delay_s; }
+
+    // Stage 82 — apply a partial PreferencesFile from a SetPreferencesCmd.
+    // Only fields with explicit presence (has_*) are merged; the host's
+    // file_version (if any) is ignored. Each applied field fires its side
+    // effect (backlight timeout, screen load, log threshold) and the merged
+    // result is persisted once. Returns false only if a requested
+    // current_screen could not be loaded.
+    bool apply_partial(const touchy_PreferencesFile &p);
 
     // Full drive-prefixed path of the screen the firmware was most
     // recently asked to show (set by screens.cpp after every successful
@@ -52,4 +71,9 @@ private:
     // image-retention without surprising someone who briefly steps away.
     uint32_t    m_timeout_ms     = 5u * 60u * 1000u;   // 5 minutes
     std::string m_current_screen;       // default: empty (no preference)
+
+    // Stage 82 — see accessors above. Default min log level is ERROR so the
+    // host log tunnel is quiet unless explicitly turned up.
+    uint32_t    m_min_log_level  = touchy_LogPriority_LOG_PRIORITY_ERROR;
+    uint32_t    m_boot_delay_s   = 0;
 };

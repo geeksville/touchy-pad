@@ -87,7 +87,11 @@ pub fn build_page(cols: u8, rows: u8) -> Widget {
 			let k = r * cols + c;
 			let code = host_code_for(k);
 			let asset = asset_path_for(k);
-			let img = Image { path: asset, align: Some(image::Align::ImageAlignStretch as i32), ..Default::default() };
+			let img = Image {
+				path: asset,
+				align: Some(image::Align::ImageAlignStretch as i32),
+				..Default::default()
+			};
 			let act_press = Action {
 				kind: Some(action::Kind::Host(ActionHost { code })),
 			};
@@ -103,7 +107,11 @@ pub fn build_page(cols: u8, rows: u8) -> Widget {
 				grow_y: 1,
 				// Dark-grey fill for cells with no image assigned.
 				// When an image is loaded it renders on top and hides this.
-				styles: vec![Style { bg_color: Some(0x101010), shadow_width: Some(0), ..Default::default() }],
+				styles: vec![Style {
+					bg_color: Some(0x101010),
+					shadow_width: Some(0),
+					..Default::default()
+				}],
 				kind: Some(widget::Kind::ImageButton(ImageButton {
 					released: Some(img),
 					on_press: vec![act_press],

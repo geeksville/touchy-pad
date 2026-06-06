@@ -4,9 +4,12 @@
 
 #include "prefs.h"
 
+#include "backlight.h"
 #include "fs.h"
+#include "log_proto.h"
 #include "protobuf.h"
 #include "preferences.pb.h"
+#include "screens.h"
 
 #include "esp_log.h"
 
@@ -48,11 +51,15 @@ bool Prefs::begin()
     delete[] data;
 
     if (ok) {
-        m_timeout_ms = pf->screen_timeout_ms;
-        m_current_screen = pf->current_screen;  // fixed-size buf, NUL-terminated
+        if (pf->has_screen_timeout_ms) m_timeout_ms = pf->screen_timeout_ms;
+        if (pf->has_current_screen) m_current_screen = pf->current_screen;
+        if (pf->has_min_log_level) m_min_log_level = pf->min_log_level;
+        if (pf->has_boot_delay_s) m_boot_delay_s = pf->boot_delay_s;
         ESP_LOGI(TAG, "Loaded prefs: screen_timeout_ms=%" PRIu32
-                      " current_screen='%s'",
-                 m_timeout_ms, m_current_screen.c_str());
+                      " current_screen='%s' min_log_level=%" PRIu32
+                      " boot_delay_s=%" PRIu32,
+                 m_timeout_ms, m_current_screen.c_str(), m_min_log_level,
+                 m_boot_delay_s);
     } else {
         ESP_LOGW(TAG, "Prefs file corrupt — using defaults");
     }
@@ -72,14 +79,55 @@ void Prefs::set_screen_timeout_ms(uint32_t ms)
     save();
 }
 
+bool Prefs::apply_partial(const touchy_PreferencesFile &p)
+{
+    // Stage 82 — merge only the fields the host actually set. file_version
+    // is device-owned and intentionally ignored. We fire each field's side
+    // effect, then persist once at the end.
+    bool screen_ok = true;
+
+    if (p.has_screen_timeout_ms) {
+        m_timeout_ms = p.screen_timeout_ms;
+        backlight_set_timeout(m_timeout_ms);
+    }
+    if (p.has_min_log_level) {
+        m_min_log_level = p.min_log_level;
+        log_proto_set_min_level((touchy_LogPriority)m_min_log_level);
+    }
+    if (p.has_boot_delay_s) {
+        m_boot_delay_s = p.boot_delay_s;  // applied at next boot only
+    }
+    if (p.has_current_screen) {
+        // screens_load() updates g_current_path and calls back into
+        // set_current_screen(), but we also mirror it here so the value
+        // persists even if the load path changes.
+        if (screens_load(p.current_screen)) {
+            m_current_screen = p.current_screen;
+        } else {
+            screen_ok = false;
+        }
+    }
+
+    save();
+    return screen_ok;
+}
+
 void Prefs::save()
 {
     PbMessage<touchy_PreferencesFile> pf(touchy_PreferencesFile_fields);
     pf->file_version      = touchy_PreferencesFile_Version_CURRENT;
+    // Stage 82 — fields are now `optional` (explicit presence); set the
+    // has_* flags so nanopb serialises them.
+    pf->has_screen_timeout_ms = true;
     pf->screen_timeout_ms = m_timeout_ms;
+    pf->has_min_log_level = true;
+    pf->min_log_level = m_min_log_level;
+    pf->has_boot_delay_s = true;
+    pf->boot_delay_s = m_boot_delay_s;
     // current_screen is a fixed-size char[N] in the generated struct;
     // snprintf truncates safely if the source ever exceeds the bound
-    // (which it shouldn't — the bound matches ScreenLoadCmd.path).
+    // (which it shouldn't — the bound matches FileOpenWriteCmd.path).
+    pf->has_current_screen = true;
     snprintf(pf->current_screen, sizeof(pf->current_screen), "%s",
              m_current_screen.c_str());
 

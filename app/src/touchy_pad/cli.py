@@ -483,6 +483,16 @@ def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int |
         server.close()
 
 
+def _fmt_bytes(n: int) -> str:
+    """Render a byte count as a compact human-readable string."""
+    value = float(n)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024.0 or unit == "GiB":
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024.0
+    return f"{n} B"  # unreachable
+
+
 @cli.command("board-info")
 def board_info() -> None:
     """Print board name, protocol version, and firmware version."""
@@ -498,6 +508,9 @@ def board_info() -> None:
     table.add_row("display", f"{v.display_width}x{v.display_height}")
     table.add_row("multitouch", "yes" if v.is_multitouch else "no")
     table.add_row("usb", "yes" if v.has_usb else "no")
+    table.add_row("free RAM", _fmt_bytes(v.free_heap_bytes))
+    table.add_row("free PSRAM", _fmt_bytes(v.free_psram_bytes))
+    table.add_row("flash FS", f"{_fmt_bytes(v.fs_used_bytes)} / {_fmt_bytes(v.fs_total_bytes)}")
     Console().print(table)
 
 
@@ -610,6 +623,53 @@ def events() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Pref — persistent device preferences (Stage 82)
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def pref() -> None:
+    """Set persistent device preferences (backlight, logging, boot delay)."""
+
+
+@pref.command("backlight-timeout")
+@click.argument("seconds", type=float)
+def pref_backlight_timeout(seconds: float) -> None:
+    """Auto-sleep the backlight after SECONDS of no input (0 disables)."""
+    with _client() as c:
+        c.screen_sleep_timeout(round(seconds * 1000))
+
+
+@pref.command("log-level")
+@click.argument(
+    "level",
+    type=click.Choice(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"], case_sensitive=False),
+)
+def pref_log_level(level: str) -> None:
+    """Set the minimum device log priority queued for the host.
+
+    Lines below LEVEL are dropped device-side and never tunneled over the
+    protocol. Persists across reboots (default ERROR).
+    """
+    from . import _proto
+
+    value = _proto.LogPriority.Value(f"LOG_PRIORITY_{level.upper()}")
+    with _client() as c:
+        c.set_min_log_level(value)
+
+
+@pref.command("boot-delay")
+@click.argument("seconds", type=int)
+def pref_boot_delay(seconds: int) -> None:
+    """Sleep SECONDS early in boot so a debug-log connection can attach.
+
+    Persists across reboots (0 disables). Applied at the next boot.
+    """
+    with _client() as c:
+        c.set_boot_delay(seconds)
+
+
+# ---------------------------------------------------------------------------
 # Screen — backlight control, layout management, and screen authoring
 # ---------------------------------------------------------------------------
 
@@ -624,14 +684,6 @@ def screen_wake() -> None:
     """Turn the device backlight on (cancels any pending auto-sleep)."""
     with _client() as c:
         c.screen_wake()
-
-
-@screen.command("set-timeout")
-@click.argument("seconds", type=float)
-def screen_set_timeout(seconds: float) -> None:
-    """Auto-sleep the backlight after SECONDS of no input (0 disables)."""
-    with _client() as c:
-        c.screen_sleep_timeout(round(seconds * 1000))
 
 
 @screen.command("load")

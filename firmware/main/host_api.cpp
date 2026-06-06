@@ -7,9 +7,11 @@
 #include "backlight.h"
 #include "display.h"
 #include "fs.h"
+#include "flash_fs.h"
 #include "log_proto.h"
 #include "protobuf.h"
 #include "platform.h"
+#include "prefs.h"
 #include "screens.h"
 #include "touchy.pb.h"
 #include "usb_hid.h"
@@ -20,6 +22,7 @@
 
 #include "version.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -400,6 +403,15 @@ static void fill_board_info(touchy_Response *resp)
     // Stage 71: stable MAC-derived serial (matches USB iSerialNumber).
     strncpy(v->serial, platform_serial(), sizeof(v->serial) - 1);
     v->serial[sizeof(v->serial) - 1] = '\0';
+
+    // Stage 81: runtime memory / storage headroom (snapshot at query time).
+    v->free_heap_bytes  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    v->free_psram_bytes = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t fs_total = 0, fs_used = 0;
+    if (FlashFs::instance().usage(&fs_total, &fs_used)) {
+        v->fs_total_bytes = fs_total;
+        v->fs_used_bytes  = fs_used;
+    }
 }
 
 static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
@@ -499,12 +511,6 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         break;
     }
 
-    case touchy_Command_screen_load_tag:
-        resp->code = screens_load(cmd->cmd.screen_load.path)
-                         ? touchy_ResultCode_RESULT_OK
-                         : touchy_ResultCode_RESULT_NOT_FOUND;
-        break;
-
     case touchy_Command_event_consume_tag: {
         touchy_LvEvent evt;
         if (s_evt_queue && xQueueReceive(s_evt_queue, &evt, 0) == pdTRUE) {
@@ -535,9 +541,14 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         resp->code = touchy_ResultCode_RESULT_OK;
         break;
 
-    case touchy_Command_screen_sleep_timeout_tag:
-        backlight_set_timeout(cmd->cmd.screen_sleep_timeout.timeout_ms);
-        resp->code = touchy_ResultCode_RESULT_OK;
+    case touchy_Command_set_preferences_tag:
+        // Stage 82 — apply a partial preferences update. The device merges
+        // only the present fields and fires each one's side effect
+        // (backlight timeout, screen switch, log threshold). Returns
+        // RESULT_NOT_FOUND if a requested current_screen can't be loaded.
+        resp->code = Prefs::instance().apply_partial(cmd->cmd.set_preferences.prefs)
+                         ? touchy_ResultCode_RESULT_OK
+                         : touchy_ResultCode_RESULT_NOT_FOUND;
         break;
 
     case touchy_Command_run_actions_tag: {

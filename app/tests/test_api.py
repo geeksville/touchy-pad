@@ -102,8 +102,10 @@ def _make_server(*, protocol_version: int = MINIMUM_FIRMWARE_VERSION):
             for k in removed:
                 saved.pop(k, None)
             return _proto.Response(code=_proto.RESULT_OK)
-        if kind == "screen_load":
-            loaded.append(cmd.screen_load.path)
+        if kind == "set_preferences":
+            # Stage 82 — screen switching goes through SetPreferencesCmd.
+            if cmd.set_preferences.prefs.HasField("current_screen"):
+                loaded.append(cmd.set_preferences.prefs.current_screen)
             return _proto.Response(code=_proto.RESULT_OK)
         if kind == "event_consume":
             try:

@@ -139,14 +139,36 @@ class TouchyClient:
     def screen_wake(self) -> None:
         _check(self._rpc(_proto.Command(screen_wake=_proto.ScreenWakeCmd())))
 
+    def set_preferences(self, prefs: _proto.PreferencesFile) -> None:
+        """Apply a partial preferences update on the device.
+
+        Stage 82 — *prefs* should carry only the fields you want changed
+        (every value field has explicit presence). The device merges them
+        into its master settings, fires each field's side effect (backlight
+        timeout, screen switch, log threshold, …) and persists the result.
+        Never set ``prefs.file_version`` — that is device-owned.
+        """
+        _check(self._rpc(_proto.Command(set_preferences=_proto.SetPreferencesCmd(prefs=prefs))))
+
     def screen_sleep_timeout(self, timeout_ms: int) -> None:
-        _check(
-            self._rpc(
-                _proto.Command(
-                    screen_sleep_timeout=_proto.ScreenSleepTimeoutCmd(timeout_ms=timeout_ms)
-                )
-            )
-        )
+        """Set the backlight auto-sleep timeout (Stage 82: via SetPreferences)."""
+        self.set_preferences(_proto.PreferencesFile(screen_timeout_ms=timeout_ms))
+
+    def set_min_log_level(self, level: int) -> None:
+        """Set the minimum log priority the device queues for the host.
+
+        *level* is a :class:`LogPriority` value (0=TRACE … 4=ERROR). Lines
+        below it are dropped device-side and never tunneled to the host.
+        """
+        self.set_preferences(_proto.PreferencesFile(min_log_level=level))
+
+    def set_boot_delay(self, seconds: int) -> None:
+        """Set the persistent early-boot delay (seconds; 0 disables).
+
+        Stage 82 — gives a host debug-log connection time to attach before
+        the device brings up its UI. Applied at the next boot.
+        """
+        self.set_preferences(_proto.PreferencesFile(boot_delay_s=seconds))
 
     def run_actions(self, actions: Iterable[_proto.Action]) -> None:
         """Run a list of Actions device-side as if a local widget fired them.
@@ -284,9 +306,13 @@ class TouchyClient:
         *path* is the full drive-prefixed path the screen was uploaded
         to (e.g. ``"F:host/s/home.pb"``). Passing an empty string
         loads the device's default screen.
+
+        Stage 82 — implemented over ``SetPreferencesCmd`` (sets
+        ``current_screen``), which both switches the displayed screen and
+        persists it across reboots.
         """
         logger.debug("screen_load: %s", path or "(default)")
-        _check(self._rpc(_proto.Command(screen_load=_proto.ScreenLoadCmd(path=path))))
+        self.set_preferences(_proto.PreferencesFile(current_screen=path))
 
     def event_consume(self) -> _proto.LvEvent | None:
         """Pop one pending event from the device queue, or return ``None``.

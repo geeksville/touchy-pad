@@ -23,6 +23,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <cinttypes>
 #include <string>
 
 static const char *TAG = "main";
@@ -85,7 +86,7 @@ extern "C" void app_main(void)
     // connects. Erases the image so it reports exactly once.
     coredump_report_check_and_log();
 
-    ESP_LOGI(TAG, "touchy-pad v2 booting");
+    ESP_LOGW(TAG, "touchy-pad v2 booting");
 
 #if CONFIG_SOC_USB_OTG_SUPPORTED
     // Bring USB up first so the host sees the HID device enumerate quickly,
@@ -101,9 +102,6 @@ extern "C" void app_main(void)
     // Must run after usb_hid_init() so the vendor link's TinyUSB stack is up.
     host_api_start();
 
-    // Give enough time for user to open a debug serial port to our board
-    //vTaskDelay(pdMS_TO_TICKS(5000));
-
     // Mount the on-device filesystems (stage 51). host_api command handlers
     // expect both F: (littlefs) and R: (psram) to be ready, and the LVGL
     // R: driver must be registered before any screen mentioning an `R:`
@@ -113,6 +111,19 @@ extern "C" void app_main(void)
     // Load persisted preferences (screen timeout, etc.) before any
     // subsystem that might query them.
     Prefs::instance().begin();
+
+    // Stage 82: apply the persisted log threshold now that prefs are loaded
+    // so the host log tunnel honours it from here on.
+    log_proto_set_min_level((touchy_LogPriority)Prefs::instance().min_log_level());
+
+    // Stage 82: optional early-boot delay. The transports (USB vendor link /
+    // serial) are already up from host_api_start() above, so a host can
+    // attach to the log tunnel during this window and catch the earliest
+    // subsystem bring-up logs. 0 = disabled.
+    if (uint32_t delay_s = Prefs::instance().boot_delay_s()) {
+        ESP_LOGW(TAG, "boot-delay: sleeping %" PRIu32 "s for debug attach", delay_s);
+        vTaskDelay(pdMS_TO_TICKS(delay_s * 1000));
+    }
 
     // Initialise the host-uploaded screen registry (stage 15). Idempotent;
     // safe to call before LVGL is up because no LVGL APIs are touched yet.

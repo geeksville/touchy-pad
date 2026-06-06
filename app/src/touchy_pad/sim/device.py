@@ -119,6 +119,14 @@ class SimDevice:
         self._is_multitouch = bool(is_multitouch)
         self._has_usb = bool(has_usb)
 
+        # Stage 82 — in-memory preferences mirror. The sim has no flash, so
+        # these are not persisted, but a partial SetPreferencesCmd merges
+        # into this so behaviour matches the device (screen switch, backlight
+        # timeout no-op, log threshold filtering, boot delay stored).
+        self._prefs = _proto.PreferencesFile(
+            min_log_level=_proto.LOG_PRIORITY_ERROR,
+        )
+
         #: Active write transactions: handle → (path, accumulated bytes).
         #: Only one in flight at a time, matching firmware constraints,
         #: but we key by handle so a bug-ridden client trying multiple
@@ -282,6 +290,13 @@ class SimDevice:
                 is_multitouch=self._is_multitouch,
                 has_usb=self._has_usb,
                 serial=_SIM_SERIAL,
+                # Stage 81 — plausible, self-consistent constants so host
+                # formatting code is exercised (the sim tracks no real
+                # allocations). PSRAM reported as present.
+                free_heap_bytes=200_000,
+                free_psram_bytes=4_000_000,
+                fs_total_bytes=1_048_576,
+                fs_used_bytes=65_536,
             ),
         )
 
@@ -292,7 +307,26 @@ class SimDevice:
     def _cmd_screen_wake(self, _msg: _proto.ScreenWakeCmd) -> _proto.Response:
         return _result()
 
-    def _cmd_screen_sleep_timeout(self, _msg: _proto.ScreenSleepTimeoutCmd) -> _proto.Response:
+    def _cmd_set_preferences(self, msg: _proto.SetPreferencesCmd) -> _proto.Response:
+        # Stage 82 — apply a partial preferences update. Only fields with
+        # explicit presence are merged; file_version from the host is
+        # ignored (device-owned). Each applied field fires its side effect.
+        p = msg.prefs
+        if p.HasField("screen_timeout_ms"):
+            self._prefs.screen_timeout_ms = p.screen_timeout_ms  # backlight: no-op in sim
+        if p.HasField("min_log_level"):
+            self._prefs.min_log_level = p.min_log_level
+        if p.HasField("boot_delay_s"):
+            self._prefs.boot_delay_s = p.boot_delay_s
+        if p.HasField("current_screen"):
+            self._prefs.current_screen = p.current_screen
+            try:
+                self._do_screen_load(p.current_screen)
+            except FileNotFoundError:
+                return _result(_proto.RESULT_NOT_FOUND)
+            except Exception as exc:  # noqa: BLE001 — surface protocol error
+                _log.warning("sim: set_preferences screen %r failed: %s", p.current_screen, exc)
+                return _result(_proto.RESULT_INVALID_ARG)
         return _result()
 
     def _cmd_run_actions(self, msg: _proto.RunActionsCmd) -> _proto.Response:
@@ -376,16 +410,6 @@ class SimDevice:
                 self._on_image_update(path)
             except Exception:  # noqa: BLE001
                 _log.exception("sim: on_image_update callback raised")
-        return _result()
-
-    def _cmd_screen_load(self, msg: _proto.ScreenLoadCmd) -> _proto.Response:
-        try:
-            self._do_screen_load(msg.path)
-        except FileNotFoundError:
-            return _result(_proto.RESULT_NOT_FOUND)
-        except Exception as exc:  # noqa: BLE001 — surface protocol error
-            _log.warning("sim: screen_load(%r) failed: %s", msg.path, exc)
-            return _result(_proto.RESULT_INVALID_ARG)
         return _result()
 
     def _cmd_event_consume(self, _msg: _proto.EventConsumeCmd) -> _proto.Response:

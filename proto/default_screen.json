@@ -33,8 +33,7 @@
                     "styles": [
                       {
                         "bgColor": 1710638,
-                        "radius": 16,
-                        "borderW": 2
+                        "radius": 16
                       }
                     ],
                     "cell": {},

@@ -12,7 +12,6 @@
 # Drive-letter prefix included ("F:host/...").
 touchy.FileDeleteCmd.path              max_size:96
 touchy.FileOpenWriteCmd.path           max_size:96
-touchy.ScreenLoadCmd.path              max_size:96
 
 # Streamed file payload chunk (FileWriteCmd.data). Allocated dynamically
 # (FT_POINTER) so we don't burn ~4 KiB of .bss on every device; the

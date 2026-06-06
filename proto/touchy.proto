@@ -36,6 +36,10 @@ package touchy;
 // `Action`s defined in widgets.proto, so pull those widget/action types in.
 import "widgets.proto";
 
+// Stage 82 — `SetPreferencesCmd` carries a partial `PreferencesFile`
+// (only the fields the host wants changed), so pull that type in.
+import "preferences.proto";
+
 // ---------------------------------------------------------------------------
 // Common types
 // ---------------------------------------------------------------------------
@@ -134,17 +138,27 @@ message FileCloseCmd {
 // path must be drive-letter prefixed (e.g. "F:host/s/home.pb").
 // An empty path loads the first registered screen, or the built-in
 // fallback if none have been uploaded.
-message ScreenLoadCmd {
-    string path = 1;
-}
+//
+// Stage 82 — ScreenLoadCmd was removed; the host now changes the active
+// screen via SetPreferencesCmd { prefs { current_screen } }, which both
+// switches the screen and persists it. See preferences.proto.
 
 // Force the backlight on (cancels any pending auto-sleep).
 message ScreenWakeCmd {
 }
 
-// Auto-sleep the backlight after `timeout_ms` of no user input. 0 disables.
-message ScreenSleepTimeoutCmd {
-    uint32 timeout_ms = 1;
+// Stage 82 — ScreenSleepTimeoutCmd was removed; the host now sets the
+// backlight auto-sleep timeout via
+// SetPreferencesCmd { prefs { screen_timeout_ms } }. See preferences.proto.
+
+// Apply a partial preferences update. `prefs` carries only the fields the
+// host wants changed (every PreferencesFile value field has explicit
+// presence); the device applies each present field, fires its side effect
+// (backlight timeout, screen switch, log threshold, …), and persists the
+// merged result. The host must never set `prefs.file_version` — that is
+// written by the device on save.
+message SetPreferencesCmd {
+    PreferencesFile prefs = 1;
 }
 
 // Pop a single event from the device's event queue. The corresponding
@@ -167,18 +181,21 @@ message SysBoardInfoGetCmd {
 
 // Top-level command envelope. Exactly one `cmd` is set per message.
 message Command {
+    // Stage 82 — retired tags. `screen_load` (3) → SetPreferencesCmd
+    // { current_screen }; `screen_sleep_timeout` (5) → SetPreferencesCmd
+    // { screen_timeout_ms }. Never reuse these numbers.
+    reserved 3, 5;
     oneof cmd {
         FileDeleteCmd          file_delete           = 1;
         FileOpenWriteCmd       file_open_write       = 2;
-        ScreenLoadCmd          screen_load           = 3;
         ScreenWakeCmd          screen_wake           = 4;
-        ScreenSleepTimeoutCmd  screen_sleep_timeout  = 5;
         EventConsumeCmd        event_consume         = 6;
         FileWriteCmd           file_write            = 7;
         FileCloseCmd           file_close            = 8;
         SysRebootBootloaderCmd sys_reboot_bootloader = 9;
         SysBoardInfoGetCmd     sys_board_info_get    = 10;
         RunActionsCmd          run_actions           = 11;
+        SetPreferencesCmd      set_preferences       = 12;
     }
 }
 
@@ -223,7 +240,11 @@ message SysBoardInfoResponse {
                  //           has_usb capability flags (additive scalar fields)
         V7 = 7;  // stage 71: SysBoardInfoResponse gains `serial`; Command
                  //           gains RunActionsCmd (both additive)
-        CURRENT = 7;  // alias: always equals the latest defined version
+        V8 = 8;  // stage 81: SysBoardInfoResponse gains free_heap_bytes,
+                 //           free_psram_bytes, fs_total_bytes, fs_used_bytes
+        V9 = 9;  // stage 82: SetPreferencesCmd replaces ScreenSleepTimeoutCmd
+                 //           + ScreenLoadCmd; PreferencesFile fields optional
+        CURRENT = 9;  // alias: always equals the latest defined version
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
@@ -252,6 +273,13 @@ message SysBoardInfoResponse {
     // the vendor transport agree. The simulator reports a fixed "tsim001".
     // Host-side enumeration uses this as the device's stable identity.
     string serial = 9;
+    // Stage 81 — runtime memory / storage headroom, sampled at query time.
+    // All values are a snapshot; they change as the device allocates and
+    // writes files.
+    uint64 free_heap_bytes  = 10;  // free internal RAM (MALLOC_CAP_INTERNAL)
+    uint64 free_psram_bytes = 11;  // free PSRAM (MALLOC_CAP_SPIRAM); 0 if none
+    uint64 fs_total_bytes   = 12;  // LittleFS (F:) capacity in bytes
+    uint64 fs_used_bytes    = 13;  // LittleFS (F:) bytes currently in use
 }
 
 // Reply to FileOpenWriteCmd. Carries the handle the host must echo
@@ -369,11 +397,15 @@ service Touchy {
     rpc FileClose(FileCloseCmd) returns (Response);
 
     // ----- Screen management ------------------------------------------
-    rpc ScreenLoad(ScreenLoadCmd) returns (Response);
+    // Stage 82 — ScreenLoad removed; use SetPreferences { current_screen }.
 
     // ----- Backlight / power ------------------------------------------
     rpc ScreenWake(ScreenWakeCmd) returns (Response);
-    rpc ScreenSleepTimeout(ScreenSleepTimeoutCmd) returns (Response);
+    // Stage 82 — ScreenSleepTimeout removed; use
+    // SetPreferences { screen_timeout_ms }.
+
+    // ----- Preferences ------------------------------------------------
+    rpc SetPreferences(SetPreferencesCmd) returns (Response);
 
     // ----- System -----------------------------------------------------
     rpc SysRebootBootloader(SysRebootBootloaderCmd) returns (Response);

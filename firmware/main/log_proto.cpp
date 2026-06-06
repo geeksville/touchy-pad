@@ -51,6 +51,13 @@ static __thread bool s_in_emit;
 // Accessed from arbitrary task / ISR contexts so atomic is required.
 static std::atomic<uint32_t> s_pending_dropped;
 
+// Stage 82 — minimum priority that gets queued for the host. Records
+// strictly below this are dropped silently (intentional filtering, so we
+// do NOT bump s_pending_dropped for them). Default ERROR; the prefs
+// subsystem overrides it on boot and on SetPreferencesCmd. Atomic because
+// it's read from arbitrary task contexts inside s_vprintf.
+static std::atomic<int> s_min_level{touchy_LogPriority_LOG_PRIORITY_ERROR};
+
 // Translate an ESP-IDF level letter (the first character ESP_LOG
 // prepends to every line: 'E', 'W', 'I', 'D', 'V') to our wire
 // LogPriority enum. Anything else maps to TRACE (the default).
@@ -200,6 +207,13 @@ static int s_vprintf(const char *fmt, va_list ap)
     const char *body;
     parse_esp_log_prefix(line, &prio, &tag, &body);
 
+    // Stage 82 — drop anything below the host's requested threshold. This
+    // is intentional filtering, not loss, so we don't bump s_pending_dropped.
+    if ((int)prio < s_min_level.load(std::memory_order_relaxed)) {
+        in_emit_clear();
+        return written;
+    }
+
     // Heap-allocate the message body (FT_POINTER field). enqueue()
     // transfers ownership to the queue; it frees on drop.
     size_t body_len = strlen(body);
@@ -222,6 +236,11 @@ static int s_vprintf(const char *fmt, va_list ap)
 
     in_emit_clear();
     return written;
+}
+
+extern "C" void log_proto_set_min_level(touchy_LogPriority level)
+{
+    s_min_level.store((int)level, std::memory_order_relaxed);
 }
 
 extern "C" void log_proto_start(void)
@@ -266,5 +285,6 @@ extern "C" bool touchy_logs_flush(uint32_t timeout_ms)
 extern "C" void log_proto_start(void) {}
 extern "C" bool log_proto_pop(touchy_LogRecord *out) { (void)out; return false; }
 extern "C" bool touchy_logs_flush(uint32_t timeout_ms) { (void)timeout_ms; return true; }
+extern "C" void log_proto_set_min_level(touchy_LogPriority level) { (void)level; }
 
 #endif // CONFIG_TOUCHY_LOG_OVER_PROTO

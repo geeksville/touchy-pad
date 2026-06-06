@@ -3497,19 +3497,216 @@ PATH); the `lv_gif_*` APIs were verified present in the vendored
 `lvgl__lvgl` component and exported via the `lvgl.h` umbrella.
 
 ## Stage 81: boardinfo improvements
-include free RAM, PSRAM and flash-file-system numbers in the boardinfo protobuf.  have python tool print it
 
-## stage 82: preferences improvements
-The current approach for changing preferences is brittle - it requires a new message type every time we want to let a preferences value be updated.  Change it.  Instead add a new SetPreferencesCmd(PreferencesFile prefs).
+**Status: DONE.** Shipped as described below, except the four new fields
+are `uint64` (not `uint32`) — see `SysBoardInfoResponse` tags 10–13. The
+CLI prints them via a `_fmt_bytes` helper (`touchy board-info`); firmware
+fills them in `host_api.cpp::fill_board_info`.
 
-* Change all the fields in PreferencesFile protobuf to be "optional"
-* The device or sim will respond to this message by setting any specified field in the master settings used on the device. The host should never include a file_version" field in messages it sends.  It should only set entries it wants changed.
-* On the device code if the host changes a preferences entry make sure to trigger any necessary state changes (e.x. backlight level)
-* remove ScreenSleepTimeoutCmd - instead use our new SetPreferencesCmd
-* Allow setting a persistent device pref for 'min-log-level' logs with lower pri than this will not be queued for the host, just drop em.  default threshold is ERROR. 
-* Update python cli to add a "set-log-level FOO" cmd.  
-* Also add a persistent "boot-delay(num_seconds)" preferences, to cause a sleep early on - to allow time for debug logging connection establishment.
-* Remove ScreenLoadCmd, because the host should instead include API glue that uses the SetPreferencesCmd to change that field
+**Goal.** Surface runtime memory and storage headroom in the board-info
+response so the host CLI (and OpenDeck/StreamController adapters) can show how
+much free RAM, PSRAM, and flash-filesystem space a connected board has. This
+is a purely *additive* proto change — three new scalar fields plus a
+`ProtocolVersion` bump — so old hosts keep working.
+
+### 1. Proto — additive fields on `SysBoardInfoResponse`
+* `proto/touchy.proto`, `message SysBoardInfoResponse`: append (after
+  `serial = 9`)
+
+  ```proto
+  uint32 free_heap_bytes   = 10;  // free internal RAM (MALLOC_CAP_INTERNAL)
+  uint32 free_psram_bytes  = 11;  // free PSRAM (MALLOC_CAP_SPIRAM); 0 if none
+  uint32 fs_total_bytes    = 12;  // LittleFS (F:) capacity
+  uint32 fs_used_bytes     = 13;  // LittleFS (F:) bytes in use
+  ```
+
+  Keep them `uint32` (boards top out well under 4 GiB; PSRAM is ≤ 8 MiB,
+  flash partitions a few MiB). Add an enum entry to
+  `SysBoardInfoResponse.ProtocolVersion`: `V8 = 8; // stage 81:
+  SysBoardInfoResponse gains free_heap/free_psram/fs_total/fs_used` and move
+  `CURRENT = 8`. No `.options` entries needed (scalars are fixed-size).
+* Bump the AGENTS.md / CLAUDE.md "latest active wire-format" note to
+  `SysBoardInfoResponse.ProtocolVersion.CURRENT == 8` once landed.
+
+### 2. Firmware — populate the numbers
+* `firmware/main/host_api.cpp` `fill_board_info()`: fill the four new fields.
+  * Free RAM: `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` (use
+    `MALLOC_CAP_INTERNAL` rather than `esp_get_free_heap_size()` so PSRAM is
+    not double-counted; include `esp_heap_caps.h`).
+  * Free PSRAM: `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)`. Returns 0 on
+    no-PSRAM boards (CYD), which is exactly what we want to report.
+  * Flash FS: query LittleFS via `esp_littlefs_info(<label>, &total, &used)`
+    (`esp_littlefs.h`). The partition label already lives in `fs.cpp`;
+    expose a small `fs_usage(size_t *total, size_t *used)` accessor on
+    `FlashFs` rather than duplicating the label here. On error report 0/0.
+  * Cast each `size_t` down to `uint32_t` when assigning.
+
+### 3. Simulator — plausible values
+* `app/src/touchy_pad/sim/device.py` `_cmd_sys_board_info_get()`: set the new
+  fields to fixed, plausible constants (e.g. `free_heap_bytes=200_000`,
+  `free_psram_bytes=0` unless the sim is emulating a PSRAM board,
+  `fs_total_bytes` / `fs_used_bytes` from the in-memory fake FS if one exists,
+  else fixed constants). Goal is non-zero, self-consistent numbers so host
+  formatting code is exercised; no need to track real allocations.
+
+### 4. Host — print the numbers
+* `app/src/touchy_pad/cli.py` `board_info()`: add rows for free RAM, free
+  PSRAM (omit or show "n/a" when 0), and `fs_used/fs_total` (render as a
+  human-readable `123.4 KiB / 2.0 MiB` via a small `_fmt_bytes()` helper).
+  Old firmware that doesn't set the fields reports 0 — show "n/a" rather than
+  a misleading "0 B".
+* `rust/touchy-demo/src/main.rs` `info` subcommand: print the same fields (the
+  prost-generated struct gains them automatically once `build-proto` /
+  Rust proto regen runs).
+
+### 5. Docs & tests
+* `docs/host-api.md` (the `SysBoardInfoResponse` section): document the four
+  fields and that they are a snapshot at query time.
+* `app/tests/test_client.py`: extend the board-info round-trip to set and
+  assert the new fields. Add a `_fmt_bytes` unit test for the formatter.
+
+### Validation
+`just build-proto`, `just app-test`, `just app-lint`, and a `just
+firmware-build` for one S3 (PSRAM) board + one CYD (no-PSRAM) board to confirm
+`esp_littlefs_info` / `heap_caps_*` link and PSRAM reports 0 on CYD. Manual:
+`touchy board-info` shows the new rows.
+
+## Stage 82: preferences improvements
+
+**Status: DONE.** Implemented across proto, firmware, host (Python +
+Rust), and the simulator. `ScreenLoadCmd` / `ScreenSleepTimeoutCmd` were
+removed (oneof tags 3/5 `reserved`) in favour of `SetPreferencesCmd`. The
+firmware merge is `Prefs::apply_partial`; the CLI moved the per-setting
+commands under a `touchy pref` group (`backlight-timeout`, `log-level`,
+`boot-delay`). `min_log_level` is carried as a plain `uint32` holding a
+`LogPriority` value (to avoid a circular proto import).
+
+**Goal.** Stop minting a new `Command` message every time a setting needs to
+change. Replace the one-off `ScreenSleepTimeoutCmd` / `ScreenLoadCmd` pattern
+with a single, extensible `SetPreferencesCmd(PreferencesFile prefs)` that
+carries *only the fields the host wants changed*. Make every `PreferencesFile`
+field `optional` so "present vs. absent" is meaningful on the wire, and add
+two new persistent prefs (`min_log_level`, `boot_delay_s`).
+
+**Why.** proto3 scalar fields have no presence by default — a `0`/empty value
+is indistinguishable from "unset". Marking fields `optional` (proto3 explicit
+presence) gives nanopb `has_*` flags so the device can apply a partial update
+without clobbering unspecified settings.
+
+### 1. Proto — partial-update `PreferencesFile` + new command
+* `proto/preferences.proto`: mark **every** value field `optional`
+  (`optional uint32 screen_timeout_ms`, `optional string current_screen`,
+  plus the two new ones below). Leave `file_version` non-optional but document
+  that **the host must never set it** — it's written only by the device on
+  save. Bump `Version`: `V4 = 4; // stage 82: + min_log_level, boot_delay_s`,
+  move `CURRENT = 4`.
+  * Add `optional LogPriority min_log_level = 4;` — logs below this priority
+    are dropped device-side and never queued for the host. Default ERROR.
+  * Add `optional uint32 boot_delay_s = 5;` — seconds to sleep early in boot
+    before bringing up subsystems, to give a debug log connection time to
+    attach. Default 0.
+  * `min_log_level` is a `LogPriority` (already defined in `touchy.proto`);
+    add `import "touchy.proto";`? — note `touchy.proto` already imports
+    `widgets.proto`; to avoid a circular import, move `LogPriority` into a
+    shared file **or** redeclare the level as a plain `uint32` here. Prefer
+    the plain `uint32` (store the `LogPriority` numeric value) to keep the
+    import graph acyclic; document the mapping in a comment.
+* `proto/touchy.proto`:
+  * Add `message SetPreferencesCmd { PreferencesFile prefs = 1; }`.
+  * Add it to the `Command` oneof: `SetPreferencesCmd set_preferences = 12;`.
+  * **Remove** `ScreenSleepTimeoutCmd` and `ScreenLoadCmd` message
+    definitions and their `Command` oneof entries (`screen_sleep_timeout = 5`,
+    `screen_load = 3`). Leave the field *numbers* retired (don't reuse 3/5) —
+    add a `reserved 3, 5;` to `Command` and a comment so the tags are never
+    recycled.
+  * Bump `SysBoardInfoResponse.ProtocolVersion`: `V9 = 9; // stage 82:
+    SetPreferencesCmd replaces ScreenSleepTimeout/ScreenLoad; Preferences
+    fields optional`, move `CURRENT = 9`.
+* `proto/preferences.options` / `touchy.options`: no size changes (existing
+  string bounds carry over); confirm `SetPreferencesCmd.prefs` is a nested
+  submessage (static) — it is, no `.options` needed.
+
+### 2. Firmware — apply a partial update + trigger side effects
+* `firmware/main/prefs.{h,cpp}`:
+  * Add storage + accessors for `m_min_log_level` (default
+    `LOG_PRIORITY_ERROR`) and `m_boot_delay_s` (default 0). Persist both in
+    `save()` / read both in `begin()`.
+  * Add `void apply_partial(const touchy_PreferencesFile &p);` that checks
+    each `has_*` flag and updates only the present fields, calling `save()`
+    once at the end. **Ignore** any `file_version` the host sends.
+  * Each applied field must fire its side effect (don't just store):
+    `screen_timeout_ms` → `backlight_set_timeout(...)`; `current_screen` →
+    `screens_load(...)`; `min_log_level` → `log_proto_set_min_level(...)`;
+    `boot_delay_s` is read at next boot only (no live effect).
+* `firmware/main/host_api.cpp` `dispatch()`:
+  * Add `case touchy_Command_set_preferences_tag:` →
+    `Prefs::instance().apply_partial(cmd->cmd.set_preferences.prefs);` →
+    `RESULT_OK`.
+  * Delete the `screen_sleep_timeout` and `screen_load` cases.
+* `firmware/main/log_proto.{h,cpp}`: add `void log_proto_set_min_level(
+  touchy_LogPriority)` storing an `std::atomic<int>` threshold (default
+  `LOG_PRIORITY_ERROR`). In `enqueue()` / the vprintf hook, after parsing the
+  line's priority, drop the record (no queue, no `s_pending_dropped` bump —
+  intentional filtering, not loss) when `prio < threshold`. Apply the
+  persisted value during boot once `Prefs` is loaded.
+* `firmware/main/main.cpp`: very early in boot (after logging is up but before
+  heavy init), if `Prefs::instance().boot_delay_s() > 0`, `vTaskDelay` that
+  many seconds so a host can attach to the log tunnel. Gate behind a clear
+  `ESP_LOGW` so it's obvious why boot paused.
+  * Ordering caveat: `boot_delay` needs prefs loaded first; ensure
+    `Prefs::begin()` runs before the delay. The delay itself must not block
+    the USB stack coming up if that's what the host attaches to — verify the
+    sleep sits after USB/serial transport init but before screen/UI bring-up.
+
+### 3. Host — new client wrappers + API glue, retire old ones
+* `app/src/touchy_pad/client.py`:
+  * Add `set_preferences(self, **fields)` (or a typed
+    `set_preferences(prefs: PreferencesFile)`) that builds a `PreferencesFile`
+    with only the requested fields set and sends `SetPreferencesCmd`. Never
+    set `file_version`.
+  * Reimplement `screen_sleep_timeout(timeout_ms)` and `screen_load(path)` as
+    thin wrappers over `set_preferences(screen_timeout_ms=...)` /
+    `set_preferences(current_screen=...)` so existing callers
+    (`cli.py`, Rust parity, `touchydeck`, OpenDeck) keep working without
+    churn, but the underlying wire message is the new one. Drop the old
+    `ScreenSleepTimeoutCmd` / `ScreenLoadCmd` constructions.
+  * Add `set_min_log_level(level)`.
+* `app/src/touchy_pad/cli.py`: add a `set-log-level FOO` command (choices
+  TRACE/DEBUG/INFO/WARN/ERROR, case-insensitive → `LogPriority`) that calls
+  `set_min_log_level`. Update `screen-load` / sleep-timeout commands to use
+  the new wrappers (no user-visible change).
+* `rust/touchy-pad/src/`: mirror — add `set_preferences`, re-express
+  `screen_load` / `screen_sleep_timeout` over it, update `plugin.rs` callers.
+  Remove references to the deleted message types so the prost-generated code
+  still compiles.
+
+### 4. Simulator
+* `app/src/touchy_pad/sim/device.py`: replace `_cmd_screen_sleep_timeout` and
+  the `screen_load` handler with a `_cmd_set_preferences` that reads the
+  `has_*`/presence of each field and mirrors the device behaviour (update sim
+  backlight-timeout state, switch the displayed screen on `current_screen`,
+  store `min_log_level` and filter the sim's `LogRecord` emission, accept
+  `boot_delay_s` as a no-op stored value). Keep an in-memory `PreferencesFile`
+  so a subsequent query (if any) is consistent.
+
+### 5. Docs & tests
+* `docs/host-api.md`: document `SetPreferencesCmd`, the partial-update
+  semantics (only set fields are applied, no `file_version` from host), and
+  the removal of `ScreenSleepTimeoutCmd` / `ScreenLoadCmd`. Note the
+  `min_log_level` (default ERROR) and `boot_delay_s` prefs.
+* `app/tests/`: tests that (a) `set_preferences(screen_timeout_ms=...)` emits a
+  `SetPreferencesCmd` with only that field present; (b) `set-log-level` maps
+  names → `LogPriority`; (c) the sim applies a partial update without
+  clobbering other fields; (d) below-threshold sim log records are dropped.
+* Update `AGENTS.md` / `CLAUDE.md`: drop `ScreenSleepTimeoutCmd` from the prose
+  and note the new `SetPreferencesCmd` + protocol version.
+
+### Validation
+`just build-proto`, `just app-test`, `just app-lint`, Rust `cargo build` /
+tests, and a `just firmware-build` for one S3 + one CYD board. Manual smoke:
+`touchy set-log-level DEBUG` then watch the log tunnel verbosity change;
+`touchy screen-load ...` and sleep-timeout still work via the new path; set
+`boot_delay_s` and confirm boot pauses.
 
 # Old/Existing projects
 

@@ -25,8 +25,9 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, and 72 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 6`.
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, and 82 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 9`,
+`PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:
 
 - **Boards span two chips (Stage 65).** ESP32-S3 boards (`jc4827w543`,
@@ -149,6 +150,29 @@ Highlights worth remembering:
   default `y` in `firmware/sdkconfig.defaults`). Host dispatchers:
   `TouchyClient._dispatch_log_record` → `touchy_pad.device` logger;
   Rust `dispatch_log_record` → `log` crate at target `touchy_pad::device::<TAG>`.
+- Stage 81 added free-memory/storage numbers to `SysBoardInfoResponse`
+  (`free_heap_bytes`, `free_psram_bytes`, `fs_total_bytes`, `fs_used_bytes`,
+  all `uint64`; `ProtocolVersion.V8`). Firmware fills them in
+  `host_api.cpp::fill_board_info` via `heap_caps_get_free_size` +
+  `FlashFs::usage()`; the CLI `touchy board-info` prints them via
+  `_fmt_bytes`.
+- Stage 82 replaced the per-setting `ScreenLoadCmd` / `ScreenSleepTimeoutCmd`
+  messages with one `SetPreferencesCmd { PreferencesFile prefs }`
+  (`ProtocolVersion.V9`). Every value field on `PreferencesFile` is now
+  `optional` (proto3 presence) so the host sends only what it wants
+  changed; the device merges + persists. `file_version` stays
+  non-optional (device-owned — the host must never set it). Two new prefs:
+  `min_log_level` (uint32 holding a `LogPriority` value, default ERROR —
+  drops device logs below it in `log_proto.cpp`) and `boot_delay_s`
+  (early-boot `vTaskDelay` in `main.cpp` so a debug-log connection can
+  attach). Firmware merge logic is `Prefs::apply_partial`
+  (`firmware/main/prefs.cpp`), which fires side effects
+  (`backlight_set_timeout`, `log_proto_set_min_level`, `screens_load`).
+  Host: `TouchyClient.set_preferences` plus thin wrappers
+  `screen_sleep_timeout` / `screen_load` / `set_min_log_level` /
+  `set_boot_delay`; Rust mirrors all of these. CLI surface moved under a
+  `touchy pref` group: `pref backlight-timeout`, `pref log-level`,
+  `pref boot-delay`.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

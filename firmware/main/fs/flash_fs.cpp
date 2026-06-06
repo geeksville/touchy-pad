@@ -143,6 +143,16 @@ bool FlashFs::begin()
     return true;
 }
 
+bool FlashFs::usage(size_t *total, size_t *used) const
+{
+    if (!_mounted) return false;
+    size_t t = 0, u = 0;
+    if (esp_littlefs_info(FLASH_PARTITION, &t, &u) != ESP_OK) return false;
+    if (total) *total = t;
+    if (used) *used = u;
+    return true;
+}
+
 uint8_t *FlashFs::readBinary(const std::string &name, size_t *len_out)
 {
     if (len_out) *len_out = 0;

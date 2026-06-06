@@ -23,6 +23,10 @@ public:
     bool     appendWrite(uint32_t handle, const uint8_t *data, size_t len) override;
     bool     closeWrite(uint32_t handle, bool commit) override;
 
+    // Stage 81 — report LittleFS capacity / usage in bytes. Returns true
+    // on success; on error leaves *total / *used untouched and returns false.
+    bool usage(size_t *total, size_t *used) const;
+
 private:
     FlashFs() = default;
     bool _mounted = false;
