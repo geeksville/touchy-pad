@@ -154,7 +154,35 @@ Inversion: If the screen looks like a film negative, flip the inversion flag:
 
 ![waveshare](images/waveshare-7.jpg)
 
-The [Waveshare 7 inch](https://docs.waveshare.com/ESP32-S3-Touch-LCD-7), eventually many other similar boards will be supported.  For more information on this board see https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7B.  This board is slightly expensive but has a very high-res screen.  Costs about $30 USD on aliexpress.
+The [Waveshare 7 inch](https://docs.waveshare.com/ESP32-S3-Touch-LCD-7), eventually many other similar boards will be supported. For more information on this board see https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7B. This board is slightly expensive but has a very high-res screen. Costs about $30 USD on aliexpress.
+
+## Elecrow CrowPanel Advanced 7" ESP32-P4 (`elecrow_p4_lcd_7`)
+
+The [Elecrow CrowPanel Advanced 7" ESP32-P4](https://www.elecrow.com/crowpanel-advanced-7inch-esp32-p4-hmi-ai-display-1024x600-ips-touch-screen-with-wifi-6-compatible-with-arduino-lvgl-micropython.html) runs the ESP32-P4 chip (dual-core Xtensa LX9 at 400 MHz) paired with a crisp 1024×600 MIPI-DSI display driven through an EK79007 bridge IC. 16 MB flash, 32 MB hex-PSRAM at 200 MHz. GT911 capacitive multitouch. Costs roughly $30–40 USD.
+
+**USB HID works fully** — the P4 has a USB 2.0 High-Speed OTG controller (480 Mbps), and the firmware negotiates HS descriptors (512-byte bulk endpoints) automatically. This means you get the full mouse + keyboard HID experience, exactly like the jc4827w543.
+
+The board also contains an ESP32-C6 WiFi companion chip, held in reset for now (WiFi is not yet implemented).
+
+Notable quirks discovered during bring-up:
+- The LDO channel 3 must be raised to 2.5 V before DSI bus init, or the PHY PLL never locks.
+- ESP32-P4 v1.x silicon requires a few Kconfig workarounds (`REV_MIN_100`, `SPIRAM_SPEED_200M`, `MBEDTLS_HARDWARE_ECDSA=n`).
+
+Board id: `elecrow_p4_lcd_7`, IDF target `esp32p4`.
+
+## Elecrow CrowPanel 7" ESP32-S3 (`elecrow_s3_lcd_7` / `elecrow_s3_lcd_7_adv`)
+
+Two variants of the Elecrow 7" ESP32-S3 board are supported: the [regular CrowPanel 7"](https://www.elecrow.com/esp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html) and the [CrowPanel Advance 7"](https://www.elecrow.com/crowpanel-advance-7-hmi-esp32-ai-display-800x480-ai-ips-touch-screen.html). Both use an ESP32-S3 with an 800×480 RGB panel and GT911 capacitive multitouch, and cost around $20–25 USD.
+
+**Important limitation:** neither variant exposes the ESP32-S3's USB-OTG pins — the USB-C port is wired to the UART0 bridge only. As a result **USB HID is not available**; the protocol runs over serial (115200 baud, `CONFIG_TOUCHY_PROTO_OVER_SERIAL`) and `has_usb` is reported `false` to the host. If you need HID (mouse/keyboard emulation), choose a different board.
+
+The firmware supports all hardware revisions under one build. At boot it probes I²C address `0x51` for the Advance-only RTC chip and selects the correct pin assignments and backlight controller automatically:
+
+- **Regular (v2/v3):** PCA9557 IO expander for GT911 reset and backlight.
+- **Advance (v1.0):** PCA9557 IO expander, different GPIO routing.
+- **Advance (v1.2):** STC8H1K28 backlight controller instead of PCA9557.
+
+Two board IDs exist because the Advance variant requires slightly different sdkconfig defaults, but they share all C++ source files. Board ids: `elecrow_s3_lcd_7` (regular) and `elecrow_s3_lcd_7_adv` (Advance), IDF target `esp32s3` for both.
 
 # Typical links
 (No endorsement of particular vendors is implied)

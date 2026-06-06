@@ -58,7 +58,7 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3-esp32p4
           # This item is very expensive to fetch, so try to always keep it cached
           # One caveat worth knowing: save-always: true means if the ESP-IDF install step itself 
           # fails partway through (corrupted clone, network blip), the broken partial installation 
@@ -86,9 +86,10 @@ jobs:
           git clone --branch "${IDF_VERSION}" --single-branch \
             https://github.com/espressif/esp-idf.git "$HOME/esp/esp-idf"
           cd "$HOME/esp/esp-idf"
-          # Install both architectures: most boards are esp32s3, but
-          # esp32_2432s028rv3 (CYD2USB) is a classic esp32.
-          ./install.sh esp32,esp32s3
+          # Install all required architectures: most boards are esp32s3,
+          # esp32_2432s028rv3 (CYD2USB) is classic esp32, and
+          # elecrow_p4_lcd_7 uses esp32p4.
+          ./install.sh esp32,esp32s3,esp32p4
           [ -f "$HOME/esp/esp-idf/export.sh" ] || \
             { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
 
@@ -102,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board: [jc4827w543, waveshare_s3_lcd_7b, esp32_2432s028rv3]
+        board: [jc4827w543, waveshare_s3_lcd_7b, esp32_2432s028rv3, elecrow_p4_lcd_7, elecrow_s3_lcd_7, elecrow_s3_lcd_7_adv]
         os: [ubuntu-latest] # mac-os doesn't work yet macos-latest
     runs-on: ${{ matrix.os }}
     env:
@@ -120,7 +121,7 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3-esp32p4
 
       - name: Install libusb (Linux)
         if: runner.os == 'Linux'
