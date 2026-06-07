@@ -1,6 +1,8 @@
 
 
 # Touchy-pad
+[![app CI](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml/badge.svg)](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml)
+
 Touchy-pad is an open-source app that turns various cheap ($15-$30) 'aliexpress' displays into:
 * A high end graphical USB HID touchpad, with multitouch gestures, scrolling, dragging, keyboard macros, etc...
 * A 'StreamDeck' like graphical macropad via an [OpenDeck](https://github.com/nekename/OpenDeck) plugin.
