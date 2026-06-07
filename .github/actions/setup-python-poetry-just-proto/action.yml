@@ -32,32 +32,8 @@ runs:
         python -m pip install --upgrade pip
         python -m pip install poetry
 
-    - name: Install just (macOS)
-      if: runner.os == 'macOS'
-      shell: bash
-      run: brew install just
-
-    - name: Install just (Linux)
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends just
-
-    - name: Install just (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: choco install just --yes --no-progress
-
-    - name: Verify just (Linux/macOS)
-      if: runner.os != 'Windows'
-      shell: bash
-      run: just --version
-
-    - name: Verify just (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: just --version
+    - name: Install just
+      uses: extractions/setup-just@v4
 
     - name: Install Python tooling for proto generation
       shell: bash
