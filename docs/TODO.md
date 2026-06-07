@@ -8,11 +8,13 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [x] investigate hang on setting large gifs
 * [x] board-info improvements, include free RAM, PSRAM and flash-file-system numbers
 * [x] add auto discovery of uart based touchys
+* [ ] add a which hw/why guide (psram etc...)
 * [ ] properly warn user if selected gif/file is too large to use (based on ram size)
 * [ ] make sure opendeck plugin is solid
 * [ ] add a reddit link for support/discussion
 * [ ] support no-touch devices
 * [ ] add photo of the small board
+* [ ] make opendeck much faster by storing images via hashed names. thus allowing quick button switching by just swapping WidgetRefs
 * [ ] add some of the example JSON to the API docs
 * [x] shrink images slightly in opendeck plugin
 * [ ] implement the StreamDeck background graphic API
