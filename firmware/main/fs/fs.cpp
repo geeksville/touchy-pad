@@ -112,8 +112,11 @@ uint32_t  g_active_write_handle = 0;
 uint32_t fs_open_write(const std::string &full_path)
 {
     if (g_active_write_fs) {
-        ESP_LOGE(TAG, "fs_open_write: another transaction is already open");
-        return 0;
+        // A stale transaction from a dropped connection. The host is starting
+        // a new write, so the old one is definitively abandoned — abort it.
+        ESP_LOGW(TAG, "fs_open_write: stale transaction detected, aborting before opening %s",
+                 full_path.c_str());
+        fs_abort_open_transaction();
     }
     std::string rest;
     Fs *fs = fs_resolve(full_path, &rest);

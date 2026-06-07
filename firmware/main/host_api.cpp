@@ -583,16 +583,29 @@ static void host_api_task(void *arg)
     HostApiLink *link = static_cast<HostApiLink *>(arg);
     ESP_LOGI(TAG, "host_api dispatcher started (%s)", link->name());
 
+    bool was_connected = false;
     for (;;) {
         // Wait until the link is up before trying to read a frame.
-        if (!link->connected()) {
+        bool now_connected = link->connected();
+        if (!now_connected) {
+            if (was_connected) {
+                // Host just disconnected — abort any in-progress write so the
+                // next session starts clean.
+                fs_abort_open_transaction();
+            }
+            was_connected = false;
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
+        was_connected = true;
 
         // Read one validated, self-synchronising frame into link->rx_buf.
         size_t payload_len = 0;
-        if (!read_frame(link, &payload_len)) continue;
+        if (!read_frame(link, &payload_len)) {
+            // read_frame returns false only when the link drops mid-frame.
+            fs_abort_open_transaction();
+            continue;
+        }
 
         // Stage 51: PbMessage owns any heap-allocated FT_POINTER fields
         // (currently just `FileWriteCmd.data`) and calls pb_release() in
