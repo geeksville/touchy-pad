@@ -409,6 +409,16 @@ firmware-build: build-proto-c build-default-screen
         idf.py -C firmware build
     '
 
+# List supported board names (one per line).  Used by shell completion:
+#   bash: complete -C 'just _boards' -F firmware-reconfigure
+#   fish: complete -c just -n '__fish_seen_subcommand_from firmware-reconfigure' -f -a "(just _boards 2>/dev/null)"
+#   zsh:  (add to ~/.zshrc after eval "$(just --completions zsh)")
+#         _just_firmware_reconfigure() { compadd $(just _boards 2>/dev/null) }
+#         compdef _just_firmware_reconfigure 'just firmware-reconfigure'
+[private]
+_boards:
+    @ls firmware/boards/ | grep -v '^cyd_common$'
+
 # Regenerate the per-board sdkconfig from defaults.  Accepts an optional board
 # name; if omitted, honours the $BOARD env var (set by CI) and falls back to
 # the CMakeLists.txt default (jc4827w543).
