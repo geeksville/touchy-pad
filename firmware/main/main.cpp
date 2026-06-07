@@ -28,6 +28,22 @@
 
 static const char *TAG = "main";
 
+// Fires on *every* failed heap allocation (malloc / calloc / realloc /
+// heap_caps_* / C++ new — they all route through the heap component).
+// Keep it allocation-free and re-entrancy-safe: only ESP_LOG + heap query
+// helpers. The free/largest-block figures distinguish true exhaustion from
+// fragmentation, and `caps` distinguishes internal RAM vs PSRAM. These
+// ESP_LOGE lines ride the Stage 64.1 proto log tunnel back to the host.
+static void heap_alloc_failed_cb(size_t size, uint32_t caps, const char *func)
+{
+    ESP_LOGE(TAG,
+             "ALLOC FAILED: %u bytes, caps=0x%" PRIx32 " in %s "
+             "(free=%u, largest=%u)",
+             (unsigned)size, caps, func ? func : "?",
+             (unsigned)heap_caps_get_free_size(caps),
+             (unsigned)heap_caps_get_largest_free_block(caps));
+}
+
 #if CONFIG_TOUCHY_NO_DISPLAY
 // Stage 64.4: bring LVGL up against an off-screen framebuffer with a no-op
 // flush callback. This keeps the entire screen / host_api stack running
@@ -79,6 +95,11 @@ extern "C" void app_main(void)
     // call so the host can drain tunneled log records from its normal
     // event-poll loop. No-op when CONFIG_TOUCHY_LOG_OVER_PROTO=n.
     log_proto_start();
+
+    // Log an ERROR on any failed heap allocation, device-wide. Registered
+    // right after the log tunnel so even early-boot allocation failures are
+    // captured and forwarded to the host.
+    heap_caps_register_failed_alloc_callback(heap_alloc_failed_cb);
 
     // If the previous boot panicked, decode the saved core dump and log
     // its summary now — first thing, so the report lands in the first
