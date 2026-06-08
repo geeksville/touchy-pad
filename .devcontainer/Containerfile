@@ -159,6 +159,8 @@ RUN curl -sSL https://install.python-poetry.org | python3 - \
 # so the shell init order is predictable.
 RUN curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path \
  && echo 'source "$HOME/.cargo/env"' | tee -a $HOME/.bashrc $HOME/.zshrc
+# For rust-analyzer, which provides IDE features like code completion and go-to-definition. The Rust extension for VS Code looks for it in ~/.local/bin/rust-analyzer, so install it there.
+RUN rustup component add rust-analyzer 
 
 # Deno — OpenDeck's build system uses `deno task tauri dev/build`.
 RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.deno" sh \

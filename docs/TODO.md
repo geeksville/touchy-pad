@@ -11,6 +11,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] properly warn user if selected gif/file is too large to use (based on ram size)
 * [ ] make sure opendeck plugin is solid
+* [ ] rust logs in opendeck are not seeing device log messages
 * [ ] add a reddit link for support/discussion
 * [ ] support no-touch devices
 * [ ] add photo of the small board
