@@ -2,7 +2,7 @@
 
 # Touchy-pad
 [![app CI](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml/badge.svg)](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml) 
-![Subreddit subscribers](https://img.shields.io/reddit/subreddit-subscribers/touchypad)
+[![Subreddit subscribers](https://img.shields.io/reddit/subreddit-subscribers/touchypad)](https://www.reddit.com/r/touchypad/)
 
 
 Touchy-pad is an open-source app that turns various cheap ($15-$30) 'aliexpress' displays into:
