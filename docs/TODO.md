@@ -5,9 +5,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] properly warn user if selected gif/file is too large to use (based on ram size)
-* [ ] make sure opendeck plugin is solid
 * [ ] rust logs in opendeck are not seeing device log messages
-* [ ] add a reddit link for support/discussion
 * [ ] support no-touch devices
 * [ ] add photo of the small board
 * [ ] make opendeck much faster by storing images via hashed names. thus allowing quick button switching by just swapping WidgetRefs
@@ -105,6 +103,8 @@ Main new features: Works with StreamController app to provide arbitrary user but
 ## Alpha 3 (0.2.11)
 I'm going to be out of town for a couple of weeks so I wanted to push out a new release before I go.  Thank you all early users for bug reports and feedback!  Thanks @ckirmse for support for three new boards (one of which looks particularly cool).  OpenDeck support is now solid (I'll ask them to add the plugin to their store when I get back)
 
+* [x] make sure opendeck plugin is solid
+* [x] add a reddit link for support/discussion
 * [x] move background drawing out of trackpad widget.  that was a mistake. 
 * [x] allow arbitrary image backgrounds for standard trackpad layout.  for now use the touchy icon.
 * [x] investigate hang on setting large gifs

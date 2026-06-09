@@ -1,7 +1,9 @@
 
 
 # Touchy-pad
-[![app CI](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml/badge.svg)](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml)
+[![app CI](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml/badge.svg)](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml) 
+![Subreddit subscribers](https://img.shields.io/reddit/subreddit-subscribers/touchypad)
+
 
 Touchy-pad is an open-source app that turns various cheap ($15-$30) 'aliexpress' displays into:
 * A high end graphical USB HID touchpad, with multitouch gestures, scrolling, dragging, keyboard macros, etc...
@@ -126,6 +128,11 @@ There are [lots](docs/hardware.md) of $15-ish USD "Cheap Yellow Displays" that w
 * Current [design documents](docs/README.md).
 * [Developer setup](docs/development.md) — new-machine setup, `just` recipes, git hooks.
 * Current rough [TODO list](docs/TODO.md).
+
+# Support/Issues/Discussion
+
+* If you find a bug/want-to-discuss making a feature or send a pull-request.  Please open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues).  We promise to be nice.
+* If you'd like to be notified of new releases or just want to discuss any topic related to Touchy-pad with other users and devs, [post in our subreddit](https://www.reddit.com/r/touchypad/).
 
 ## AI slop and development
 I'm okay with using AI tools to help make code.  In fact, I used them a fair amount so far on this project (one of my first experiments with not writing all my code 'by hand').  So far it has been pretty fun.
