@@ -45,32 +45,79 @@ async fn sim_tcp_board_info() {
 		return;
 	}
 	let port = find_free_port();
-	let app_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../app");
+	let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../");
 	let mut child = Command::new("poetry")
-		.args(["run", "touchy", "--sim-serial", "SIMRUST", "simulator", "--headless", "--port", &port.to_string()])
-		.current_dir(&app_dir)
+		.args(["-P", "app", "run", "touchy", "--sim-serial", "SIMRUST", "simulator", "--headless", "--port", &port.to_string()])
+		.current_dir(&repo_root)
 		.env_remove("VIRTUAL_ENV")
 		.stdout(Stdio::null())
-		.stderr(Stdio::null())
+		.stderr(Stdio::piped()) // captured so we can print it on failure
 		.spawn()
 		.expect("spawn touchy simulator");
 
 	let started = wait_for_port(port, Instant::now() + Duration::from_secs(15));
 	if !started {
-		let _ = child.kill();
-		panic!("sim server didn't open port {port}");
+		let stderr = child.wait_with_output().map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_default();
+		panic!("sim server didn't open port {port}\nsim stderr:\n{stderr}");
 	}
 
-	let result = async {
-		let t = Arc::new(TcpTransport::connect("127.0.0.1", port).await?) as Arc<dyn Transport>;
-		let pad = Touchy::from_transport(t);
-		let info = pad.client().sys_board_info_get().await?;
-		assert_eq!(info.board_name, "sim");
-		touchy_pad::Result::Ok(())
+	// `wait_for_port` opens and immediately drops a probe TCP connection,
+	// which the Python asyncio sim accepts and then resets. Give the sim
+	// a moment to finish handling that phantom connection before we send
+	// a real RPC — otherwise we race and get "Connection reset by peer".
+	// We also retry a few times with backoff so the test is robust even
+	// if the sim is briefly slow on a loaded CI runner.
+	const MAX_ATTEMPTS: u32 = 5;
+	let result: touchy_pad::Result<()> = async {
+		for attempt in 0..MAX_ATTEMPTS {
+			if attempt == 0 {
+				// Initial grace period for the sim to settle after the probe.
+				tokio::time::sleep(Duration::from_millis(200)).await;
+			} else {
+				eprintln!("sim_tcp: attempt {attempt} — retrying in 500 ms");
+				tokio::time::sleep(Duration::from_millis(500)).await;
+			}
+			let t = match TcpTransport::connect("127.0.0.1", port).await {
+				Ok(t) => Arc::new(t) as Arc<dyn Transport>,
+				Err(e) => {
+					eprintln!("sim_tcp: connect error on attempt {attempt}: {e}");
+					if attempt + 1 == MAX_ATTEMPTS {
+						return Err(e);
+					}
+					continue;
+				}
+			};
+			let pad = Touchy::from_transport(t);
+			match pad.client().sys_board_info_get().await {
+				Ok(info) => {
+					assert_eq!(info.board_name, "sim");
+					pad.close().await;
+					return Ok(());
+				}
+				Err(e) if attempt + 1 < MAX_ATTEMPTS => {
+					eprintln!("sim_tcp: RPC error on attempt {attempt}: {e}");
+					pad.close().await;
+					continue;
+				}
+				Err(e) => {
+					pad.close().await;
+					return Err(e);
+				}
+			}
+		}
+		unreachable!()
 	}
 	.await;
 
 	let _ = child.kill();
-	let _ = child.wait();
+	// Drain stderr so wait_with_output() doesn't block on the pipe buffer.
+	let output = child.wait_with_output().ok();
+	if result.is_err() {
+		let stderr = output
+			.as_ref()
+			.map(|o| String::from_utf8_lossy(&o.stderr).into_owned())
+			.unwrap_or_default();
+		eprintln!("sim stderr:\n{stderr}");
+	}
 	result.expect("rust ↔ python sim TCP roundtrip");
 }
