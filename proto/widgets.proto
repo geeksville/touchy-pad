@@ -600,11 +600,6 @@ message Image {
     // `lv_image_set_src`. The firmware always supports its native LVGL
     // `.bin` format; other decoders (BMP/PNG/JPG) require the matching
     // `LV_USE_*` flag in sdkconfig.
-    //
-    // Stage 55: renamed from `asset` for uniformity with `WidgetRef.path`
-    // The reverse-index built at screen-load time keys off this field
-    // to know which LVGL objects need invalidating when this image file
-    // is overwritten by the host.
     string path = 1;
     // Scale factor in 1/256 units (256 = 100%, 512 = 2x, 128 = 50%).
     // Mapped to `lv_image_set_scale`. When unset, the image is rendered
