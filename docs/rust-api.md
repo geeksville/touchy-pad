@@ -22,7 +22,8 @@ feature adds a serial-port transport (via `tokio-serial`).
 | `touchy_pad::discover` | `discover()` + `DiscoveredDevice` — unified USB + sim enumeration. |
 | `touchy_pad::transport::Transport` | Async trait — frame in, frame out. Mockable for tests. |
 | `touchy_pad::transport_usb::UsbTransport` | Default `nusb`-backed bulk transport. |
-| `touchy_pad::images` | LVGL `.bin` conversion (`to_lvgl_bin`, `LvFormat`). |
+| `touchy_pad::images` | LVGL `.bin` conversion (`to_lvgl_bin`, `LvFormat`, `normalize_for_device`). |
+| `touchy_pad::image_cache::ImageCache` | Content-addressed, one-upload-per-image device cache. |
 | `touchy_pad::error` | `TouchyError` + `Result<T>`. |
 | `touchy_pad::proto` | Generated `prost` types (re-exposed for advanced callers). |
 
@@ -99,6 +100,58 @@ the source has non-opaque alpha) by `to_lvgl_bin`. `file_save` checks
 the path extension and the destination: anything written to `R:` or `F:`
 with an image extension is converted on the host side, mirroring the
 Python `touchy_pad.api.images` behaviour.
+
+The shared normaliser `images::normalize_for_device(data, needs_conversion)`
+returns the exact bytes `file_save` would upload plus the on-device file
+suffix (`.bin` for a converted image or an unrecognised blob, otherwise
+the detected format). The image cache reuses it so cached assets are
+byte-for-byte identical to a direct `file_save`.
+
+## Image cache
+
+Sending image bytes over USB / UART is slow, and StreamDeck-style key
+grids repaint the same handful of icons constantly. `ImageCache` uploads
+each **distinct** image to the device exactly once, keyed by a 128-bit
+content hash (xxh3), and returns the on-device path so a widget can
+point at it cheaply:
+
+```rust,no_run
+use std::sync::Arc;
+use touchy_pad::{ImageCache, Touchy};
+
+# async fn demo() -> anyhow::Result<()> {
+let pad = Arc::new(Touchy::open().await?);
+let cache = ImageCache::new(pad.clone());
+
+let png = std::fs::read("icon.png")?;
+// First call uploads the (normalised) bytes and returns its path…
+let path = cache.set_cached_image(&png).await?;
+// …a second identical call uploads nothing and returns the same path.
+let again = cache.set_cached_image(&png).await?;
+assert_eq!(path, again);
+# Ok(())
+# }
+```
+
+Properties:
+
+* **Host-side and volatile.** The map is never serialized; assets live
+  on the `R:` PSRAM ramdisk (`image_cache::IMAGE_CACHE_ROOT`,
+  `R:host/icache/`), wiped on device reboot. Build a fresh `ImageCache`
+  per (re)attach — the first `set_cached_image` clears the cache root on
+  the device so a crashed prior session leaves no stale files.
+* **LRU eviction.** Once `image_cache::MAX_IMAGE_CACHE` (128) distinct
+  images are resident, the next miss deletes the least-recently-used
+  asset before uploading.
+* **Repaint by file overwrite.** The firmware auto-reloads the active
+  screen whenever a file a visible `WidgetRef` (or `Image`/`ImageButton`
+  asset) targets is rewritten. So to swap a key's icon you keep the
+  cell's `WidgetRef` path constant and just rewrite the small stub it
+  points at to reference the new cached `.bin` — no `run_actions` round
+  trip. The OpenDeck plugin (`rust/touchy-opendeck/`) uses exactly this
+  model: each grid cell is a `WidgetRef` to a per-key `ImageButton` stub
+  under `R:host/opendeck/`, and `set_image` repoints the stub at a
+  cached asset.
 
 ## Errors
 

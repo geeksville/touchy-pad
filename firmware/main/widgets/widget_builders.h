@@ -90,6 +90,20 @@ const char *widget_refs_active_path(size_t i);
 const char *widget_refs_current_path(const char *target_id);
 bool        widget_refs_change(const char *target_id, const char *new_path);
 
+// Stage 85 — rebuild every active WidgetRef whose current path equals
+// `path`, re-reading the (just-overwritten) file in place. This is the
+// non-destructive repaint primitive used by
+// `screens_notify_file_changed`: when a host upload overwrites a file
+// that an active ref targets (e.g. an OpenDeck per-key stub, or the
+// chrome's `page` body), we rebuild only that ref's subtree instead of
+// reloading the whole screen. A full `screens_load()` would re-decode
+// the screen file from the registry and discard any prior
+// `widget_refs_change()` page switch (reverting the display); rebuilding
+// the ref in place avoids that and is far cheaper. Returns the number of
+// refs rebuilt (0 if none targeted `path`). Caller must hold the LVGL
+// lock.
+size_t      widget_refs_rebuild_by_path(const char *path);
+
 // ---------------------------------------------------------------------------
 // Stage 60 — image binding registry.
 //
@@ -109,6 +123,26 @@ bool        widget_refs_change(const char *target_id, const char *new_path);
 // ---------------------------------------------------------------------------
 
 bool widget_image_registry_notify(const char *wire_path);
+
+// Stage 86 — repoint an `ImageButton`'s released- or pressed-state
+// image source in place, addressed by the button's outer `Widget.id`
+// (rather than by file path as `widget_image_registry_notify` is).
+// Used by the `ActionChangeWidgetRef` IMAGE_BUTTON_RELEASED /
+// IMAGE_BUTTON_PRESSED behaviours so a host can repaint a key without
+// rebuilding the widget — preserving the touch state machine so a key
+// the user is currently holding still emits its RELEASE event.
+//
+// `pressed_slot` selects which slot to retarget. The change becomes
+// visible immediately only if that slot is the one currently displayed
+// (released while idle; pressed while the finger is physically down and
+// a pressed image is configured); otherwise the bytes are staged and
+// shown on the next press/release edge.
+//
+// Returns true if a matching ImageButton was found on the active
+// screen. Caller must hold the LVGL lock.
+bool widget_image_button_set_slot(const char *target_id,
+                                  bool pressed_slot,
+                                  const char *wire_path);
 
 // Stage 80 — release any animated GIF decoder currently rendering
 // `wire_path` so a flash atomic overwrite (rename-over-destination)

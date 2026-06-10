@@ -24,6 +24,7 @@
 #include "version.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -442,7 +443,12 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         // Try as a tree first; FlashFs::removeTree falls back to a
         // file unlink when the path doesn't refer to a directory.
         bool ok = fs->removeTree(rest);
-        screens_clear();   // any cached screen objects may now be stale
+        // Stage 85: drop only the registered screens at/under the
+        // deleted path rather than wiping the whole registry. Deleting
+        // an unrelated tree (e.g. the `R:host/icache/` image cache)
+        // must not unregister the active screen, or its auto-reload
+        // after a later stub write would fail with "not registered".
+        screens_notify_path_deleted(path);
         resp->code = ok ? touchy_ResultCode_RESULT_OK
                         : touchy_ResultCode_RESULT_IO_ERROR;
         break;
@@ -483,16 +489,20 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         ESP_LOGD(TAG, "file_close: handle=%u commit=%d path='%s'",
                  (unsigned)fc.handle, (int)fc.commit,
                  s_active_write_path.c_str());
+        int64_t t0 = esp_timer_get_time();
         if (fc.commit && !s_active_write_path.empty()) {
             screens_prepare_file_overwrite(s_active_write_path.c_str());
         }
+        int64_t t_prep = esp_timer_get_time();
         bool ok = fs_close_write(fc.handle, fc.commit);
+        int64_t t_close = esp_timer_get_time();
         ESP_LOGD(TAG, "file_close: fs_close_write -> %d (path='%s')",
                  (int)ok, s_active_write_path.c_str());
         if (ok && fc.commit && !s_active_write_path.empty()) {
             // Hand the freshly-committed file to the screen registry;
             // it's a no-op for anything outside `*:host/s/*.pb`.
             screens_register_from_file(s_active_write_path.c_str());
+            int64_t t_reg = esp_timer_get_time();
             // Stage 55: poke the active screen so any widget that
             // references this path picks up the new bytes. Cheap when
             // nothing references it (a path-comparison walk over the
@@ -503,8 +513,19 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
             // service event_consume polls (draining the log tunnel)
             // while the rebuild runs.
             screens_notify_file_changed(s_active_write_path.c_str());
+            int64_t t_notify = esp_timer_get_time();
             ESP_LOGD(TAG, "file_close: notify scheduled for '%s'",
                      s_active_write_path.c_str());
+            // Surface slow commits: anything near the host's 2 s RPC
+            // timeout is a prime suspect for the intermittent failures.
+            int64_t total_us = t_notify - t0;
+            if (total_us >= 200000) {
+                ESP_LOGW(TAG,
+                         "file_close SLOW '%s': total=%lldms (prep=%lld close=%lld reg=%lld notify=%lld)",
+                         s_active_write_path.c_str(), total_us / 1000,
+                         (t_prep - t0) / 1000, (t_close - t_prep) / 1000,
+                         (t_reg - t_close) / 1000, (t_notify - t_reg) / 1000);
+            }
         }
         s_active_write_path.clear();
         resp->code = ok ? touchy_ResultCode_RESULT_OK

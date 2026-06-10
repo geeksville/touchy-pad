@@ -41,6 +41,7 @@
 pub mod client;
 pub mod discover;
 pub mod error;
+pub mod image_cache;
 pub mod images;
 pub mod pad;
 pub mod proto;
@@ -52,6 +53,7 @@ pub mod transport_usb;
 
 pub use discover::{DiscoveredDevice, discover};
 pub use error::{Result, TouchyError};
+pub use image_cache::ImageCache;
 pub use pad::Touchy;
 
 /// On-device directory holding screen-layout blobs (Stage 68; moved from

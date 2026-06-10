@@ -114,9 +114,7 @@ pub fn discover_serial_ports() -> Vec<String> {
 		Ok(ports) => {
 			for p in ports {
 				if let SerialPortType::UsbPort(info) = &p.port_type {
-					if UART_BRIDGE_VID_PIDS.iter().any(|(v, pid)| *v == info.vid && *pid == info.pid)
-						&& is_rw_accessible(&p.port_name)
-					{
+					if UART_BRIDGE_VID_PIDS.iter().any(|(v, pid)| *v == info.vid && *pid == info.pid) && is_rw_accessible(&p.port_name) {
 						paths.push(p.port_name);
 					}
 				}
@@ -133,8 +131,7 @@ pub fn discover_serial_ports() -> Vec<String> {
 				.filter_map(|e| {
 					let name = e.file_name();
 					let s = name.to_string_lossy();
-					(s.starts_with("ttyUSB") || s.starts_with("ttyACM"))
-						.then(|| format!("{HOST_DEV_DIR}/{s}"))
+					(s.starts_with("ttyUSB") || s.starts_with("ttyACM")).then(|| format!("{HOST_DEV_DIR}/{s}"))
 				})
 				.filter(|p| is_rw_accessible(p))
 				.collect();
@@ -162,4 +159,3 @@ mod tests {
 		let _ = discover_serial_ports();
 	}
 }
-

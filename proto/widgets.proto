@@ -422,11 +422,27 @@ message ActionDevice {
 // Combined with `Button`s carrying labels like "Next" / "Previous" and
 // a single ref widget in the content area this gives users a no-code
 // way to build paged UIs while keeping persistent chrome on screen.
+//
+// Stage 86 — the two IMAGE_BUTTON_* behaviours repurpose the same
+// `target_id` + `path` fields to retarget the image source of an
+// `ImageButton` *in place* (no widget rebuild), via the Stage 60 image
+// registry:
+//
+//   * IMAGE_BUTTON_RELEASED: `target_id` is the `ImageButton`'s own
+//     `Widget.id`; `path` is a drive-prefixed image asset (e.g. a
+//     cached `R:host/icache/<hash>.bin`). The button's *released*-state
+//     image is repointed at `path`. If that slot is currently displayed
+//     (the button is not being pressed) the change is visible at once;
+//     otherwise it takes effect when the finger lifts.
+//   * IMAGE_BUTTON_PRESSED: same, for the *pressed*-state image.
+//
 message ActionChangeWidgetRef {
     enum Behavior {
-        BY_PATH  = 0;
-        NEXT     = 1;
-        PREVIOUS = 2;
+        BY_PATH               = 0;
+        NEXT                  = 1;
+        PREVIOUS              = 2;
+        IMAGE_BUTTON_RELEASED = 3;
+        IMAGE_BUTTON_PRESSED  = 4;
     }
     Behavior behavior  = 1;
     string   path      = 2;   // file path (BY_PATH) or directory (NEXT/PREV)

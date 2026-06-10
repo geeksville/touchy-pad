@@ -73,6 +73,16 @@ bool screens_load(const char *path);
 // FileDeleteCmd so the device state matches the post-wipe filesystem.
 void screens_clear(void);
 
+// Stage 85: targeted counterpart to screens_clear(). Called by host_api
+// when handling FileDeleteCmd: drop only the registered screens at or
+// under the deleted drive-prefixed `path` (exact match, or any entry
+// whose key starts with `path + "/"`). A bare directory delete such as
+// `R:host/icache/` therefore leaves an unrelated active screen like
+// `F:host/s/default.pb` registered, so the auto-reload after a later
+// stub write still finds it. Clears g_default_screen_path only when the
+// default itself was removed. Safe to call from the host_api task.
+void screens_notify_path_deleted(const char *path);
+
 // Touch controller handle stored by `screens_set_touch`. Exposed so the
 // Trackpad widget builder can recover multi-finger data without each
 // new file having to know about the screens module's internals.

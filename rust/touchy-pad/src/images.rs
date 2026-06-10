@@ -15,6 +15,8 @@
 //!
 //! This is the Rust port of `app/src/touchy_pad/api/lvgl_image.py`.
 
+use std::borrow::Cow;
+
 use image::DynamicImage;
 
 use crate::error::{Result, TouchyError};
@@ -71,6 +73,53 @@ pub fn rewrite_to_bin_path(path: &str) -> String {
 	path.to_string()
 }
 
+/// Best-effort file suffix (including the leading dot) for raw image
+/// `data`, inferred from its magic bytes. Used by callers that hold
+/// only the bytes (no filename), e.g. the [`crate::image_cache`].
+/// Returns `".bin"` for an already-converted LVGL blob or when the
+/// format is unrecognised.
+pub fn detect_image_suffix(data: &[u8]) -> &'static str {
+	if is_lvgl_bin(data) {
+		return ".bin";
+	}
+	if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+		".gif"
+	} else if data.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']) {
+		".png"
+	} else if data.starts_with(&[0xff, 0xd8, 0xff]) {
+		".jpg"
+	} else if data.starts_with(b"BM") {
+		".bmp"
+	} else if data.starts_with(b"RIFF") {
+		".webp"
+	} else {
+		".bin"
+	}
+}
+
+/// Decide the on-device bytes and file suffix for an image upload,
+/// given whether the active transport needs host-side conversion
+/// (`Transport::needs_image_conversion`).
+///
+/// This is the shared core of [`crate::Touchy::file_save`]'s
+/// image handling and the [`crate::image_cache::ImageCache`]: both must
+/// produce *identical* device bytes for the same input.
+///
+/// * When conversion is needed and `data` looks like a supported raster
+///   image, returns the LVGL `.bin` blob and `".bin"`. If `max_dim` is
+///   `Some`, the image is first downscaled so neither dimension exceeds
+///   it (aspect ratio preserved) — this avoids the device having to
+///   rescale an oversized icon every frame.
+/// * Otherwise the bytes pass through verbatim and the suffix is
+///   inferred from the magic bytes via [`detect_image_suffix`].
+pub fn normalize_for_device(data: &[u8], needs_conversion: bool, max_dim: Option<u32>) -> Result<(Cow<'_, [u8]>, &'static str)> {
+	if needs_conversion && looks_like_supported_image(data) {
+		Ok((Cow::Owned(to_lvgl_bin(data, LvFormat::Auto, max_dim)?), ".bin"))
+	} else {
+		Ok((Cow::Borrowed(data), detect_image_suffix(data)))
+	}
+}
+
 /// Color format choice for [`to_lvgl_bin`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LvFormat {
@@ -87,9 +136,25 @@ pub enum LvFormat {
 /// Convert `source` image bytes to an LVGL 9 `.bin` blob.
 ///
 /// `source` may be PNG, JPEG, BMP, GIF, or WebP — anything the `image`
-/// crate's enabled features can decode.
-pub fn to_lvgl_bin(source: &[u8], format: LvFormat) -> Result<Vec<u8>> {
-	let img = image::load_from_memory(source)?;
+/// crate's enabled features can decode. If `max_dim` is `Some`, the
+/// decoded image is first downscaled so that neither dimension exceeds
+/// it (aspect ratio preserved); images already within `max_dim` are
+/// left untouched. Pre-scaling on the host means the device receives a
+/// `.bin` already at its display size and never has to rescale per
+/// frame — on a slow MCU that runtime rescale stalls the LVGL task.
+pub fn to_lvgl_bin(source: &[u8], format: LvFormat, max_dim: Option<u32>) -> Result<Vec<u8>> {
+	let mut img = image::load_from_memory(source)?;
+	if let Some(max) = max_dim
+		&& max > 0
+		&& (img.width() > max || img.height() > max)
+	{
+		let (w0, h0) = (img.width(), img.height());
+		// `resize` fits the image within `max`×`max` preserving aspect
+		// ratio; Triangle (bilinear) is a good speed/quality tradeoff
+		// for icon-sized downscales.
+		img = img.resize(max, max, image::imageops::FilterType::Triangle);
+		log::debug!("downscaled image {w0}x{h0} -> {}x{} (max_dim={max})", img.width(), img.height());
+	}
 	let chosen = match format {
 		LvFormat::Auto => {
 			if has_non_opaque_alpha(&img) {

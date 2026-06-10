@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 
 use crate::client::{Client, FILE_WRITE_CHUNK};
 use crate::error::{Result, TouchyError};
-use crate::images::{LvFormat, looks_like_supported_image, rewrite_to_bin_path, to_lvgl_bin};
+use crate::images::{looks_like_supported_image, normalize_for_device, rewrite_to_bin_path};
 use crate::proto::{LvEvent, Screen, Widget};
 use crate::transport::Transport;
 use crate::transport_net::{TcpTransport, sim_url_from_env};
@@ -33,6 +33,15 @@ pub struct Touchy {
 	client: Client,
 	events_rx: Mutex<Option<mpsc::Receiver<LvEvent>>>,
 	poller: Mutex<Option<JoinHandle<()>>>,
+	// Serialises whole file-write sequences. The wire protocol has a
+	// single global write transaction on the device: an `open_write`
+	// from task B that lands between task A's `open_write` and
+	// `file_close` aborts A's transaction (the device logs "stale
+	// transaction detected" and drops A's bytes). Individual RPCs are
+	// already serialised by the transport, but a multi-RPC
+	// open→write→close must stay atomic as a whole. Every writer
+	// ([`file_write_raw`]) holds this for the duration of its sequence.
+	write_lock: Mutex<()>,
 	// `watch` instead of `Notify` because the poll task may not be
 	// polled even once before `close()` fires the shutdown signal —
 	// `Notify::notify_waiters()` only wakes already-registered
@@ -66,9 +75,7 @@ impl Touchy {
 									break;
 								}
 								Err(e) => {
-									log::debug!(
-										"Touchy::open: serial port {path} did not open ({e}); trying next"
-									);
+									log::debug!("Touchy::open: serial port {path} did not open ({e}); trying next");
 								}
 							}
 						}
@@ -108,6 +115,7 @@ impl Touchy {
 			client,
 			events_rx: Mutex::new(Some(rx)),
 			poller: Mutex::new(Some(poller)),
+			write_lock: Mutex::new(()),
 			shutdown_tx,
 		}
 	}
@@ -132,14 +140,36 @@ impl Touchy {
 	/// except when the input was an image and the extension was
 	/// rewritten to `.bin`.
 	pub async fn file_save(&self, path: &str, data: &[u8]) -> Result<String> {
-		let (final_path, converted): (String, Option<Vec<u8>>) = if self.client.transport().needs_image_conversion() && looks_like_supported_image(data) {
-			(rewrite_to_bin_path(path), Some(to_lvgl_bin(data, LvFormat::Auto)?))
+		let needs_conversion = self.client.transport().needs_image_conversion();
+		// Path: rewrite a recognised image extension to `.bin` only when
+		// we are actually converting. Bytes: delegate to the shared
+		// normaliser so this path and the image cache agree byte-for-byte.
+		let final_path = if needs_conversion && looks_like_supported_image(data) {
+			rewrite_to_bin_path(path)
 		} else {
-			(path.to_string(), None)
+			path.to_string()
 		};
-		let data: &[u8] = converted.as_deref().unwrap_or(data);
+		let (bytes, _suffix) = normalize_for_device(data, needs_conversion, None)?;
+		self.file_write_raw(&final_path, &bytes).await?;
+		Ok(final_path)
+	}
 
-		let handle = self.client.file_open_write(&final_path).await?;
+	/// Stream `data` to `path` verbatim (chunked), with no image
+	/// conversion or path rewriting. Used by callers that have already
+	/// normalised their bytes (e.g. [`crate::image_cache::ImageCache`]).
+	pub async fn file_write_raw(&self, path: &str, data: &[u8]) -> Result<()> {
+		// Hold the write lock for the entire open→write→close so a
+		// concurrent writer can't open the device's single global write
+		// transaction mid-sequence and abort ours (see `write_lock`).
+		let wait_start = std::time::Instant::now();
+		let _guard = self.write_lock.lock().await;
+		let waited = wait_start.elapsed();
+		let seq_start = std::time::Instant::now();
+		if waited >= Duration::from_millis(50) {
+			log::debug!("file_write_raw('{path}'): waited {waited:?} for write_lock");
+		}
+		log::debug!("file_write_raw('{path}'): {} bytes — begin", data.len());
+		let handle = self.client.file_open_write(path).await?;
 		let result: Result<()> = async {
 			for chunk in data.chunks(FILE_WRITE_CHUNK) {
 				self.client.file_write(handle, chunk).await?;
@@ -148,10 +178,13 @@ impl Touchy {
 			Ok(())
 		}
 		.await;
-		if result.is_err() {
+		if let Err(ref e) = result {
+			log::warn!("file_write_raw('{path}'): failed after {:?} (handle={handle}): {e} — aborting", seq_start.elapsed());
 			let _ = self.client.file_close(handle, false).await;
+		} else {
+			log::debug!("file_write_raw('{path}'): committed in {:?}", seq_start.elapsed());
 		}
-		result.map(|_| final_path)
+		result
 	}
 
 	/// Encode and save a [`Screen`] message at `path`.
@@ -172,10 +205,16 @@ impl Touchy {
 	pub async fn user_screen_save(&self, name: &str, widget: &Widget) -> Result<()> {
 		use crate::USER_SCREENS_DIR;
 		let path = format!("{USER_SCREENS_DIR}{name}.pb");
+		self.widget_save(&path, widget).await
+	}
+
+	/// Encode a [`Widget`] and write it verbatim to `path` (no image
+	/// conversion). Useful for standalone `WidgetRef` target files such
+	/// as the OpenDeck plugin's per-key stubs.
+	pub async fn widget_save(&self, path: &str, widget: &Widget) -> Result<()> {
 		let mut buf = Vec::with_capacity(widget.encoded_len());
 		widget.encode(&mut buf)?;
-		self.file_save(&path, &buf).await?;
-		Ok(())
+		self.file_write_raw(path, &buf).await
 	}
 
 	/// Page the default chrome's `widget_ref(id="page")` to a
@@ -197,6 +236,40 @@ impl Touchy {
 					behavior: action_change_widget_ref::Behavior::ByPath as i32,
 					target_id: "page".into(),
 					path,
+				})),
+			})),
+		};
+		self.client.run_actions(vec![act]).await
+	}
+
+	/// Repoint an `ImageButton`'s released- or pressed-state image in
+	/// place (Stage 86), addressed by the button's own `Widget.id`.
+	///
+	/// Issues a [`RunActionsCmd`][crate::proto::RunActionsCmd] carrying an
+	/// `ActionChangeWidgetRef` with the `IMAGE_BUTTON_RELEASED` /
+	/// `IMAGE_BUTTON_PRESSED` behaviour, so the device swaps just that
+	/// image source via its Stage 60 registry — without rebuilding the
+	/// widget. A button the user is currently pressing therefore keeps
+	/// its touch state and still emits its release event.
+	///
+	/// `path` is a drive-prefixed image asset (e.g. a cached
+	/// `R:host/icache/<hash>.bin` from
+	/// [`ImageCache`][crate::image_cache::ImageCache]). The change is
+	/// visible at once only if that slot is the one currently displayed;
+	/// otherwise the bytes are staged for the next press/release edge.
+	pub async fn set_image_button_slot(&self, target_id: &str, pressed: bool, path: &str) -> Result<()> {
+		use crate::proto::{Action, ActionChangeWidgetRef, ActionDevice, action, action_change_widget_ref, action_device};
+		let behavior = if pressed {
+			action_change_widget_ref::Behavior::ImageButtonPressed
+		} else {
+			action_change_widget_ref::Behavior::ImageButtonReleased
+		} as i32;
+		let act = Action {
+			kind: Some(action::Kind::Device(ActionDevice {
+				kind: Some(action_device::Kind::ChangeWidgetRef(ActionChangeWidgetRef {
+					behavior,
+					target_id: target_id.into(),
+					path: path.into(),
 				})),
 			})),
 		};

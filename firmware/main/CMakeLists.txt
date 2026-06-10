@@ -29,6 +29,7 @@ idf_component_register(
         "prefs.cpp"
         "backlight.cpp"
         "debug.cpp"
+        "lv_throttled.cpp"
         "screens.cpp"
         "widgets/screen_layout.cpp"
         "widgets/widget_actions.cpp"

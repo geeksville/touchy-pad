@@ -41,7 +41,7 @@ fn rewrite_extension() {
 #[test]
 fn rgb_png_yields_rgb565_bin() {
 	let png = tiny_png_rgb(8, 4, 255, 0, 0);
-	let bin = to_lvgl_bin(&png, LvFormat::Auto).unwrap();
+	let bin = to_lvgl_bin(&png, LvFormat::Auto, None).unwrap();
 	assert!(is_lvgl_bin(&bin));
 	assert_eq!(bin[0], LVGL_BIN_MAGIC);
 	assert_eq!(bin[1] & 0x1f, 0x12, "auto chose RGB565");
@@ -56,10 +56,32 @@ fn rgb_png_yields_rgb565_bin() {
 #[test]
 fn rgba_png_with_alpha_yields_rgb565a8() {
 	let png = tiny_png_rgba(4, 4, 0, 255, 0, 128);
-	let bin = to_lvgl_bin(&png, LvFormat::Auto).unwrap();
+	let bin = to_lvgl_bin(&png, LvFormat::Auto, None).unwrap();
 	assert_eq!(bin[1] & 0x1f, 0x14, "auto chose RGB565A8");
 	// 12-byte header + 4*4*2 RGB plane + 4*4 alpha plane.
 	assert_eq!(bin.len(), 12 + 16 * 2 + 16);
 	// Final alpha byte must be 128.
 	assert_eq!(*bin.last().unwrap(), 128);
+}
+
+#[test]
+fn max_dim_downscales_oversized_image() {
+	// 144×144 source, capped to 72 — the device should receive a
+	// 72×72 `.bin` so it never rescales per frame.
+	let png = tiny_png_rgb(144, 144, 0, 0, 255);
+	let bin = to_lvgl_bin(&png, LvFormat::Auto, Some(72)).unwrap();
+	let w = u16::from_le_bytes([bin[4], bin[5]]);
+	let h = u16::from_le_bytes([bin[6], bin[7]]);
+	assert_eq!((w, h), (72, 72));
+	assert_eq!(bin.len(), 12 + 72 * 72 * 2);
+}
+
+#[test]
+fn max_dim_leaves_smaller_image_untouched() {
+	// Source already within the cap — no scaling.
+	let png = tiny_png_rgb(32, 16, 0, 0, 255);
+	let bin = to_lvgl_bin(&png, LvFormat::Auto, Some(72)).unwrap();
+	let w = u16::from_le_bytes([bin[4], bin[5]]);
+	let h = u16::from_le_bytes([bin[6], bin[7]]);
+	assert_eq!((w, h), (32, 16));
 }

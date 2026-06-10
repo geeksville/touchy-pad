@@ -3939,6 +3939,399 @@ the devcontainer, the same with the host's `/dev/ttyUSB0` exposed as
 * Hot-plug notifications: discovery stays poll-based (callers re-call
   `touchy_get_pad_ids()` / `discover()` as they do today).
 
+# Stage 85: image cache
+
+**Status: DONE.**
+
+> **As built — one deviation from the plan below.** Repainting a key does
+> **not** use `ActionChangeWidgetRef` / `run_actions`. The firmware
+> already auto-reloads the active screen whenever a file a *visible*
+> `WidgetRef` (or `Image`/`ImageButton` asset) targets is overwritten
+> (`screens_notify_file_changed()` on the `file_close` commit). So each
+> grid cell's `WidgetRef` path stays **constant** (`stub_path_for(k)`)
+> and a repaint is just a tiny stub rewrite — no retarget RPC. Two more
+> consequences: (a) per-key stubs live in their **own** dir
+> `R:host/opendeck/` (`layout::STUB_DIR`), kept separate from the cache
+> root `R:host/icache/` so the cache's first-call wipe can't clobber
+> them; (b) there's no single shared "default" stub — every key gets its
+> own *blank* `ImageButton` stub (empty `released.path` + a dark bg
+> style, still clickable) written at attach and on clear. The cache,
+> `normalize_for_device` refactor, hash/base64 scheme, LRU eviction, and
+> reset-on-attach all match the plan. See `rust/touchy-pad/src/image_cache.rs`,
+> `rust/touchy-opendeck/src/layout.rs` (`key_stub`, `build_page`), and
+> `rust/touchy-opendeck/src/plugin.rs` (`handle_set_image`).
+
+**Goal.** Stop re-sending identical image bytes over the slow USB/UART
+link on every repaint. `handle_set_image()` in `plugin.rs` is hot (a
+profile switch repaints every key) yet most apps cycle through a small,
+repeating set of icons. Add a content-addressed image cache to the Rust
+`touchy-pad` library so an icon's bytes cross the wire **once**; later
+repaints become a cheap "repoint this key at that already-uploaded
+image" RPC.
+
+**Why a cache + WidgetRef indirection.** Today each key is an
+`ImageButton` whose `released` image path is fixed; changing the icon
+means `file_save()`-ing fresh bytes to that key's asset path. With the
+cache, the heavy image bytes live at a hash-named `.bin` uploaded once;
+each key becomes a `WidgetRef` we retarget with a cheap
+`ActionChangeWidgetRef` (no image bytes on the wire — just a tiny
+per-key `ImageButton` stub `.pb` pointing at the shared `.bin`).
+
+## 1. New `image_cache` module in `touchy-pad`
+
+* `rust/touchy-pad/src/image_cache.rs`, `pub mod image_cache;` in
+  `lib.rs`. Public type `ImageCache`.
+* `ImageCache::new(pad: Arc<Touchy>)` — one cache instance per attached
+  device.
+* Constants (mirror as `pub const` for reuse / future Python parity):
+  * `IMAGE_CACHE_ROOT: &str = "R:host/icache/"` (volatile PSRAM
+    ramdisk; wiped on device reboot — the host's in-RAM map is the
+    source of truth and is reset on attach, see Q8).
+  * `MAX_IMAGE_CACHE: usize = 128` — max distinct images kept resident
+    on the device before the least-recently-used is evicted.
+* In-RAM state (host side only — never serialized; discarded if the
+  host process restarts):
+  * An LRU map `hash(u128) -> bin_path: String`. The cache only tracks
+    the deduped image blobs; per-key stub `.pb`s are a plugin concern
+    (§3), **not** the cache's.
+  * A `first_call` guard so the very first `set_cached_image` call
+    deletes `IMAGE_CACHE_ROOT` on the device (`file_delete`, recursive)
+    to clear any stale files from a crashed prior session, then
+    proceeds with an empty map.
+
+### `set_cached_image`
+
+```rust
+/// Ensure `data` (a PNG/JPEG/BMP/GIF/WebP/already-`.bin` blob) is
+/// resident in the device cache and return the drive-prefixed path to
+/// its deduped `.bin`/`.gif` asset (suitable as the `released.path` of
+/// an `ImageButton`). Uploads bytes only on a cache miss.
+pub async fn set_cached_image(&self, data: &[u8]) -> Result<String>
+```
+
+Behaviour:
+1. **First call:** `file_delete(IMAGE_CACHE_ROOT)` once, then mark
+   initialised.
+2. **Normalise bytes exactly as `file_save` would** — reuse shared code
+   (see §2). Yields `(device_bytes, ext)` where `ext` is `.bin` for
+   converted raster images or the passthrough suffix (`.gif`) for GIFs.
+3. **Hash** the *normalised* `device_bytes` with xxh3-128 (collision
+   risk ignored per spec). Encode as URL-safe base64 **without padding**
+   → `HASH`.
+4. **Cache hit** (`HASH` already in the map): mark it most-recently-used
+   and return the stored asset path — no device I/O.
+5. **Cache miss:**
+   * If at capacity (`len == MAX_IMAGE_CACHE`), evict the LRU entry:
+     `file_delete` its asset path.
+   * Upload the asset to `R:host/icache/<HASH><ext>`. The bytes are
+     already normalised, so write them verbatim via the chunked
+     streaming path (`file_open_write`/`file_write`/`file_close`) —
+     **not** `file_save`, which would try to re-convert them.
+   * Insert into the map (most-recently-used) and return the asset path.
+
+## 2. Shared normalisation helper (refactor `file_save`)
+
+`pad.rs::file_save` currently inlines the convert-or-passthrough logic.
+Extract it to `images.rs` so the cache reuses it verbatim:
+
+```rust
+/// Decide the on-device bytes + extension for an image upload, given
+/// whether the transport needs conversion. Returns the (possibly
+/// converted) bytes and the suffix file_save would have used (".bin"
+/// for converted rasters, ".gif"/original for passthrough).
+pub fn normalize_for_device(data: &[u8], needs_conversion: bool)
+    -> Result<(Cow<[u8]>, &'static str)>;
+```
+
+The cache only has raw bytes (no filename), so the helper keys its
+decision off the detected magic bytes (`looks_like_supported_image` /
+`is_gif`), not a path. `file_save` keeps its path-based `.bin` rewrite
+but delegates the *byte* conversion to this helper so the two paths
+produce identical device bytes.
+
+## 3. `touchy-opendeck` plugin changes
+
+### `layout.rs`
+* Each key cell becomes a single `WidgetRef` whose outer `Widget.id` is
+  per-key and stable (`opendeck_key_<k>`) so
+  `ActionChangeWidgetRef(target_id=…)` can retarget just that cell.
+* New `key_stub(k: u8, bin_path: &str) -> Widget`: builds the tiny
+  per-key `ImageButton` stub — `released.path = bin_path`,
+  `on_press`/`on_release` = `host_code_for(k)` — serialized to
+  `R:host/icache/key_<k>.pb` by the plugin on repaint. This is the
+  widget the cell's ref points at after a `set_image`.
+* New `DEFAULT_KEY_STUB_PATH` constant + a builder for a single shared
+  "unused key" `ImageButton` stub `.pb` (neutral placeholder image,
+  no host code or a benign one). Uploaded once at attach; every cell's
+  ref starts pointing at it.
+* Drop `asset_path_for(key)` (per-key asset files go away; image blobs
+  are now hash-named and shared, owned by `ImageCache`).
+
+### `plugin.rs`
+* `DeviceCtx` gains a `cache: ImageCache` built fresh in `attach()`
+  (Q8). Drop the per-key `images: HashMap<u8, Vec<u8>>` byte cache —
+  the `ImageCache` dedups, and a reset-on-attach cache re-uploads on
+  the first repaint anyway.
+* `attach()`: after uploading the page body, upload the shared default
+  stub (`DEFAULT_KEY_STUB_PATH`) once.
+* `handle_set_image`, on `(Some(pos), Some(data_url))`:
+  1. decode base64 → bytes (unchanged),
+  2. `bin = ctx.cache.set_cached_image(&bytes).await?`,
+  3. build `key_stub(pos, &bin)`, encode, `file_save` to
+     `R:host/icache/key_<pos>.pb` (tiny write; skip if this key already
+     points at `bin` — track per-key current bin in `DeviceCtx`),
+  4. `run_actions(vec![ ActionChangeWidgetRef { behavior: BY_PATH,
+     target_id: "opendeck_key_<pos>", path: stub_path } ])`.
+* `(Some(pos), None)` (clear one key): retarget that key's ref back to
+  `DEFAULT_KEY_STUB_PATH`.
+* `(None, None)` (clear all): retarget every key's ref to the default
+  stub.
+
+## 4. Docs & tests
+
+* `docs/rust-api.md`: a new "Image cache" section — when to use it, the
+  `set_cached_image` → `ActionChangeWidgetRef` pattern, the
+  `IMAGE_CACHE_ROOT` / `MAX_IMAGE_CACHE` knobs, and the
+  one-upload-per-distinct-image guarantee.
+* Tests (Rust, against the mock/sim transport):
+  * miss uploads the `.bin` asset and returns its path;
+  * second identical call uploads nothing and returns the same path;
+  * eviction at `MAX_IMAGE_CACHE + 1` deletes the LRU asset;
+  * first call deletes `IMAGE_CACHE_ROOT`;
+  * `normalize_for_device` parity with `file_save` (GIF passthrough,
+    `.bin` rewrite).
+* `AGENTS.md` / `CLAUDE.md`: note the new module + the OpenDeck plugin's
+  WidgetRef-per-key model once landed.
+
+## 5. Out of scope / later
+
+* Python `touchy_pad` port of the cache (future; keep constants and the
+  hash/base64 scheme documented so it can match byte-for-byte).
+* Persisting the cache across host restarts (intentionally volatile).
+* Collision handling beyond "128-bit hash is unique enough."
+
+## Resolved decisions
+
+* **Hash (Q2):** xxh3-128 via `xxhash-rust`.
+* **Filename encoding (Q3):** URL-safe base64, no padding.
+* **Asset suffix (Q4):** `<HASH>.bin` (converted) / `<HASH>.gif`
+  (passthrough). No cache-owned `.pb` (Option B moves stubs to the
+  plugin: `R:host/icache/key_<k>.pb`).
+* **Signature (Q5):** `set_cached_image(&self, data: &[u8])` — format
+  inferred from magic bytes (matches `looks_like_supported_image`).
+* **Eviction (Q6):** LRU (least-recently-*used*).
+* **Cache ownership (Q7):** `ImageCache::new(Arc<Touchy>)` — so the
+  cache reuses `Touchy::file_save` (chunked upload) for the asset write
+  and reaches `needs_image_conversion` via `.client().transport()`.
+  The plugin already stores `Arc<Touchy>` in `DeviceCtx`.
+* **Reconnect (Q8):** Reset the cache on attach — `DeviceCtx` builds a
+  fresh `ImageCache` each `attach()`, so the first repaint after a
+  reconnect re-uploads every visible icon. The in-RAM map therefore
+  always matches device state; `set_cached_image` never has to verify a
+  file still exists. (The "first call deletes `IMAGE_CACHE_ROOT`"
+  guard in §1 still applies per cache instance, clearing any stale
+  files from a crashed prior session.)
+
+## Firmware fact that constrains the design
+
+An `ActionHost` event reports the **clickable widget's own
+`Widget.id`** in `LvEvent.user_data` and the action's `host_code`
+(`firmware/main/widgets/widget_actions.cpp`). Therefore the *clickable*
+widget must be **per-key**; a stub shared across keys can never carry
+per-key routing. This rules out "key = bare shared stub" and leaves two
+workable shapes (Q1).
+
+## Open questions (need answers before implementing)
+
+* **Q1 — clickable image composition: DECIDED → Option B.**
+  `set_cached_image` dedups/uploads only the heavy `<HASH>.bin` and
+  returns *its* path. Each grid cell is a single `WidgetRef`; on repaint
+  the host builds a tiny per-key `ImageButton` stub (`released.path` =
+  the shared `.bin`, `on_press`/`on_release` = the key's host code),
+  writes it to `R:host/icache/key_<k>.pb` (tens of bytes), and retargets
+  the cell's ref to it. This reuses today's `ImageButton` event model
+  verbatim (no new firmware behaviour); the only cost is one tiny `.pb`
+  write per repaint, skippable when the key's bin path is unchanged.
+  Rejected Option A (shared `<HASH>.pb` `Image` + per-key transparent
+  click overlay) because it relies on overlapping grid-cell children and
+  a transparent top button — layout behaviour this firmware hasn't
+  exercised.
+
+  Consequences for the rest of the plan:
+  * `set_cached_image` returns a **`.bin`** path, not a `.pb`. The cache
+    only manages the deduped image blobs (`<HASH>.bin` / `<HASH>.gif`);
+    the per-key stub `.pb` files are a plugin concern, not a cache one.
+    Drop the "also write a `<HASH>.pb` stub" step from §1.
+  * `layout.rs` gains `key_stub(k, bin_path) -> Widget` (the tiny
+    per-key `ImageButton`) and `key_cell` becomes a single `WidgetRef`.
+  * The default "unused key" stub is a single shared `ImageButton` `.pb`
+    (neutral placeholder) uploaded once at attach; cells start pointing
+    at it.
+* **Q7 — cache ownership: DECIDED → `Arc<Touchy>`** (see Resolved
+  decisions).
+* **Q8 — reconnect behaviour: DECIDED → reset cache on attach** (see
+  Resolved decisions).
+
+## Real-device debugging (post-implementation fixes)
+
+First real-hardware run (jc4827w543 over USB) surfaced three bugs that
+the host-side unit/sim tests couldn't catch:
+
+1. **Showstopper — buttons never rendered; flood of
+   `screen 'F:host/s/default.pb' not registered`.** Root cause: the
+   image cache's first-call wipe `file_delete("R:host/icache/")` hit the
+   firmware `FileDelete` handler, which unconditionally called
+   `screens_clear()` — nuking the *entire* screen registry, including
+   the unrelated active screen `F:host/s/default.pb`. Every subsequent
+   auto-reload then failed "not registered", so the repainted stubs
+   never showed. **Fix:** new `screens_notify_path_deleted(path)`
+   (firmware/main/screens.cpp) drops only the registered screens at/under
+   the deleted path; the `FileDelete` handler calls it instead of the
+   blanket `screens_clear()`. Deleting the cache dir now leaves the
+   active screen registered.
+2. **2 s RPC timeouts + `fs_open_write: stale transaction detected`
+   mid-burst.** A profile switch fires a burst of `set_image` calls, each
+   committing a stub write that — via `screens_notify_file_changed()` —
+   scheduled a *full* `screens_load` rebuild. N stub writes = N rebuilds
+   piled on the LVGL task, starving the `file_close` handler's
+   `screens_prepare_file_overwrite` LVGL-lock take and the
+   `event_consume` poll, which surfaced host-side as timeouts and a
+   leftover half-open write transaction. **Fix:** the notify path now
+   *coalesces* — `request_active_reload()` sets a single pending flag and
+   schedules one deferred `screens_load`; reload requests arriving before
+   it runs are absorbed (a reload always rebuilds the whole current
+   screen from the latest on-disk bytes, so collapsing N→1 is safe). The
+   per-file in-place image fast path is unaffected.
+3. **DEBUG device logs invisible host-side.** Two filters gate device
+   logs: the device's `min_log_level` (Stage 82, default ERROR) and the
+   host `log`-crate filter (opendeck plugin default Info). A
+   `TOUCHY_LOG=debug` run only raised the host filter; the device still
+   dropped DEBUG records. **Fix:** `TouchyPlugin::attach` now calls
+   `set_min_log_level()` to match the host filter (`log::max_level()` →
+   `LogPriority`), so a `TOUCHY_LOG=debug` host run also lowers the
+   device threshold and the DEBUG tunnel actually flows.
+
+A second hardware run (same board) surfaced a further set of
+concurrency/perf bugs once the gross failures above were cleared:
+
+4. **Concurrent / interleaved writes corrupting the single write
+   transaction.** The device keeps *one* global write transaction
+   (`g_active_write_*` in `fs.cpp`); a new `fs_open_write` while one is
+   open aborts the stale one. Two host-side sequences (the cache writing
+   a `.bin` and a stub `.pb`, or two cache calls racing) could interleave
+   their open/write/close RPCs and trip the stale-transaction abort.
+   **Fix:** every multi-RPC write sequence funnels through one choke
+   point `Touchy::file_write_raw`, which holds a per-`Touchy`
+   `write_lock: Mutex<()>` for the whole open→write→close. `file_save`
+   and `ImageCache::set_cached_image` both go through it.
+5. **Non-atomic RPC round-trips (response mis-routing).** The wire
+   protocol has **no command IDs** — every Response is matched to the
+   in-flight Command purely by FIFO order. But the USB transport locked
+   `inner` separately for `send_command` and `recv_response`, so the
+   lock was *not* held across a full round-trip. The background event
+   poller's `event_consume` could slot its send between a writer's send
+   and recv, and the two responses came back swapped → both RPCs timed
+   out at 2 s simultaneously. **Fix:** `Client.rpc()` holds a new
+   `rpc_lock: Arc<Mutex<()>>` across the whole send→recv, making each
+   round-trip atomic. (`write_lock` serialises *writers*; `rpc_lock`
+   serialises *all* round-trips — they are complementary.)
+6. **Per-frame icon rescale stalling the LVGL task.** OpenDeck keys are
+   72 px but the cache uploaded full-resolution icons (e.g. 144×144), so
+   the firmware re-scaled every icon on every redraw (~300 ms/frame,
+   holding the LVGL lock). **Fix:** the cache pre-scales host-side.
+   `images::to_lvgl_bin` / `normalize_for_device` gained a
+   `max_dim: Option<u32>`; `ImageCache::with_max_dim(pad, Some(KEY_PX))`
+   (KEY_PX = 72) shrinks oversized images (aspect-preserving, Triangle
+   filter, shrink-only) before encoding, so the device mmaps a
+   pixel-exact `.bin` and never rescales. Device bins dropped from ~41 KB
+   to ~10 KB.
+7. **A burst of stub writes monopolising the LVGL lock (~1.5 s) and
+   dropping a key.** Even after the in-place WidgetRef rebuild replaced
+   the full-reload (bug 2), each FileClose still scheduled its *own*
+   `lv_async_call` rebuild. All queued async callbacks run inside a
+   single `lv_timer_handler` invocation under one continuous port-lock
+   hold, so a profile switch's ~40 stub/bin writes rebuilt back-to-back
+   for >1 s — during which `screens_prepare_file_overwrite` couldn't take
+   the lock (logged `waited 1531ms for LVGL lock`), causing a FileClose
+   timeout that dropped one stub (the bottom-right key never rendered).
+   **Fix:** `screens.cpp` now funnels changed paths into a
+   de-duplicated FIFO (`s_changed_paths`) and processes at most
+   `kRebuildsPerSlice` (2) per slice, driving the slices from a
+   **periodic `lv_timer`** (`kDrainPeriodMs` = 8 ms) — *not*
+   `lv_async_call`. This is the crux: `lv_async_call` creates a
+   period-0 timer, and `lv_timer_handler`'s "a timer was created →
+   restart the loop" path (`lv_timer.c`) re-runs any freshly created
+   period-0 timer *within the same handler invocation*, under one
+   continuous port-lock hold — so an async reschedule drains the whole
+   burst without ever releasing the lock (the first attempt at this fix
+   still stalled ~1 s for exactly this reason). A timer created with a
+   non-zero period has `last_run == now`, so it is not ready in the
+   current pass: the handler loop ends, releases the lock, and the next
+   slice runs a few ms later in a fresh handler call — handing the
+   host_api task its window to take the lock between slices. The
+   per-path de-dup collapses repeated writes to one rebuild that reads
+   the final on-disk bytes, which also removes the ordering race that
+   lost the late stub write. (Diagnostic note: the FileClose timing
+   breakdown proved the RAM-FS write itself was never slow —
+   `close=6ms`; the entire `prep=1102ms` was `screens_prepare_file_overwrite`
+   *waiting for the LVGL lock*, i.e. pure contention, not I/O.) The
+   throttle was then extracted into a shared utility
+   `firmware/main/lv_throttled.{h,cpp}` (`lv_throttled_post`) — a single
+   periodic-timer-drained FIFO that all heavy deferred LVGL work now
+   funnels through: the per-path stub rebuilds (`screens.cpp`), the
+   coalesced full-screen reload (`request_active_reload`), and the
+   `change_widget_ref` page switch (`widget_actions.cpp`, which had the
+   same latent burst risk if a `run_actions` carried several of them).
+   Sharing one queue also globally interleaves a button-press page
+   switch fairly with an in-flight upload burst.
+8. **Press-time repaint deleted the held button → no keyUp, and a
+   repaint race dropped the last key.** Both traced to the *same* root
+   cause: the original Stage 85 repaint mechanism rewrote a key's stub
+   `.pb` to point at a new content-hash `.bin`, and a stub-`.pb` rewrite
+   triggers `widget_refs_rebuild_by_path` → `widget_refs_change`, which
+   *tears down and rebuilds* the `ImageButton` LVGL object. OpenDeck
+   repaints a key *in response to its press* (to show the pressed-state
+   art), so the rebuild deleted the very button the user was holding;
+   LVGL's input device had latched the now-deleted object, so the
+   replacement never received `LV_EVENT_RELEASED` → no keyUp was emitted
+   → OpenDeck never restored the released image. The same teardown path,
+   under a burst, also raced and lost one key's rebuild (the missing
+   bottom-right key).
+
+   **Fix (Stage 86 — make `ActionChangeWidgetRef` repaint an
+   `ImageButton` in place).** Rather than abandon the Stage 85 cache
+   (whose whole point is "icon bytes cross the wire once"), the *repoint*
+   step was made non-destructive. `ActionChangeWidgetRef.Behavior` gained
+   two variants — `IMAGE_BUTTON_RELEASED` / `IMAGE_BUTTON_PRESSED` —
+   that reuse the same `target_id` + `path` fields but address an
+   `ImageButton` by its own `Widget.id` and swap just one image *slot*
+   via the Stage 60 registry (new firmware entry point
+   `widget_image_button_set_slot`, addressed by id rather than by file
+   path). No `widget_refs_change`, no teardown: the held button keeps
+   its touch-state machine and still emits RELEASE. The grid cells went
+   back to being plain per-key `ImageButton`s (stable id
+   `opendeck_key_<k>`), and the plugin restored `ImageCache` — each
+   distinct icon uploads once to `R:host/icache/<hash>.bin`; a repaint is
+   a tens-of-bytes `run_actions([ChangeWidgetRef{IMAGE_BUTTON_*}])`.
+
+   **Pressed-vs-released slot selection.** Which slot to set is decided
+   from press state the plugin tracks itself: a `HashSet<u8>` of held
+   keys, updated by the event-forwarding task on PRESSED / RELEASED
+   *before* it dispatches the matching key_down/key_up to OpenDeck — so
+   the `set_image` OpenDeck sends back in response observes the correct
+   state. Held key → `IMAGE_BUTTON_PRESSED` (shows immediately under the
+   finger; reverts to the released art on lift); idle key →
+   `IMAGE_BUTTON_RELEASED`. The firmware's `set_slot` mirrors this: it
+   re-applies the slot to the inner `lv_image` only if that slot is the
+   one currently displayed (`lv_obj_has_state(.., LV_STATE_PRESSED)` &&
+   a configured pressed image → pressed, else released), so setting the
+   *other* slot mid-touch just stages bytes for the next edge. The plugin
+   keeps a per-`(key, pressed)` last-path map to skip redundant actions.
+   No `ProtocolVersion` bump (the change is `Screen`/action wire content,
+   an additive enum value). This restores the cache's
+   one-upload-per-distinct-image guarantee *and* preserves the press
+   state machine — fixing both the lost-keyUp and the missing-key bugs.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

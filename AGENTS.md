@@ -26,7 +26,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, and 84 are **done**. Latest active wire-format:
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, and 86 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 9`,
 `PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:
@@ -174,6 +174,44 @@ Highlights worth remembering:
   `set_boot_delay`; Rust mirrors all of these. CLI surface moved under a
   `touchy pref` group: `pref backlight-timeout`, `pref log-level`,
   `pref boot-delay`.
+
+- **Stage 85 (Rust only, image cache).** `rust/touchy-pad/src/image_cache.rs`
+  → `ImageCache::new(Arc<Touchy>)`; `set_cached_image(&[u8]) -> path`
+  uploads each *distinct* image once, keyed by an xxh3-128 content hash
+  (url-safe base64, no pad), to `R:host/icache/<HASH><suffix>` on the
+  volatile `R:` ramdisk (`IMAGE_CACHE_ROOT`). LRU eviction at
+  `MAX_IMAGE_CACHE` (128); the first call wipes `IMAGE_CACHE_ROOT`.
+  Bytes are normalised via the shared `images::normalize_for_device`
+  (extracted from `file_save`) so a cached asset is byte-identical to a
+  direct `file_save`; `pad.rs` gained `file_write_raw` (chunked, no
+  conversion) + `widget_save`. `ImageCache::with_max_dim` downscales to
+  a fixed widget size (the OpenDeck plugin caps at the key px).
+
+- **Stage 86 (in-place ImageButton repaint).** Supersedes Stage 85's
+  stub-rewrite repaint, which deleted the held button (lost keyUp) and
+  raced under bursts (dropped a key). `ActionChangeWidgetRef.Behavior`
+  gained `IMAGE_BUTTON_RELEASED` (3) / `IMAGE_BUTTON_PRESSED` (4): same
+  `target_id` + `path` fields, but they address an `ImageButton` by its
+  own `Widget.id` and swap one image *slot* in place via the Stage 60
+  registry — firmware `widget_image_button_set_slot` (in
+  `widget_builders.cpp`; `ButtonSlotBinding` now stores `widget_id`),
+  wired in `widget_actions.cpp` behind `lv_throttled_post`. No widget
+  rebuild → the pressed button keeps its touch state and still emits
+  RELEASE. No `ProtocolVersion` bump (additive enum value on action wire
+  content). The OpenDeck plugin (`rust/touchy-opendeck/`) reverted to
+  plain per-key `ImageButton`s (stable id `opendeck_key_<k>` via
+  `layout::key_widget_id`, host code on press+release) seeded with a
+  cached blank `BLANK_BIN`; `Touchy::set_image_button_slot(id, pressed,
+  path)` issues the action. Repaint = `cache.set_cached_image()` (bytes
+  cross once) + the cheap slot action. **Slot selection** keys off press
+  state the plugin tracks itself: a `HashSet<u8>` of held keys updated by
+  the event task on PRESSED/RELEASED *before* dispatching key_down/key_up
+  to OpenDeck, so the `set_image` it sends back observes the right state
+  (held → pressed slot, idle → released). Firmware only shows the new
+  bytes if that slot is currently displayed; otherwise it stages them
+  for the next edge. Per-`(key, pressed)` last-path map skips redundant
+  actions. `ActionHost` still reports the clickable widget's own
+  `Widget.id`, so the per-key `ImageButton` id routes touch events.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

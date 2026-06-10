@@ -20,6 +20,7 @@
 //!    drops the context and tells OpenDeck via `unregister_device`.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -32,6 +33,8 @@ use openaction::device_plugin;
 use openaction::global_events::{GlobalEventHandler, SetBrightnessEvent, SetImageEvent};
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
+use touchy_pad::image_cache::ImageCache;
+use touchy_pad::proto::LogPriority;
 use touchy_pad::proto::LvEventCode;
 use touchy_pad::proto::lv_event;
 use touchy_pad::{DiscoveredDevice, Touchy, discover};
@@ -64,10 +67,19 @@ struct DeviceCtx {
 	device_id: String,
 	cols: u8,
 	rows: u8,
-	/// Cached per-key image bytes (key → raw bytes as received from
-	/// OpenDeck). The `R:` ramdisk is volatile (wiped on reboot), so we
-	/// keep the bytes here and re-push every asset on each (re)connect.
-	images: Mutex<HashMap<u8, Vec<u8>>>,
+	/// Content-addressed image cache (Stage 85): each distinct icon's
+	/// bytes cross the wire once; repaints become a cheap in-place
+	/// image-slot swap.
+	cache: ImageCache,
+	/// Keys the user is currently holding (Stage 86). Updated by the
+	/// event-forwarding task on PRESSED / RELEASED edges *before* the
+	/// corresponding key_down/key_up is dispatched to OpenDeck, so the
+	/// `set_image` that OpenDeck sends back in response observes the
+	/// correct press state and we repaint the matching image slot.
+	pressed_keys: Arc<Mutex<HashSet<u8>>>,
+	/// Last image asset path written to each (key, pressed-slot), so a
+	/// repaint with unchanged content skips re-issuing the action.
+	last_slot_path: Mutex<HashMap<(u8, bool), String>>,
 	/// Event-forwarding task; cancelled on detach.
 	event_task: Mutex<Option<JoinHandle<()>>>,
 }
@@ -134,8 +146,20 @@ impl TouchyPlugin {
 				seen.push(key.clone());
 				if !self.handles.read().await.contains_key(&key) {
 					log::info!("new device {key} — attaching");
+					let attach_start = std::time::Instant::now();
 					if let Err(e) = self.attach(cand, &key).await {
-						log::warn!("attach {key} failed: {e:#}");
+						// A failed attach drops its transport, but the
+						// device may still be draining this attempt's
+						// queued writes. The next poll re-attaches and
+						// its file_open_write can then collide with that
+						// leftover transaction ("stale transaction" on
+						// the device). Log the timing so the race is
+						// visible in the combined log.
+						log::warn!(
+							"attach {key} failed after {:?}: {e:#} — device may still be \
+							 draining in-flight writes; next poll will retry",
+							attach_start.elapsed()
+						);
 					}
 				}
 			}
@@ -174,6 +198,22 @@ impl TouchyPlugin {
 		if board.display_width == 0 || board.display_height == 0 {
 			return Err(anyhow!("{device_id} reported zero display dimensions ({}×{})", board.display_width, board.display_height));
 		}
+		// Match the device's log threshold to the host log filter so a
+		// `TOUCHY_LOG=debug` run actually receives DEBUG device records.
+		// Device-side they're dropped below `min_log_level` (Stage 82,
+		// default ERROR), so without this a debug host filter still sees
+		// no device DEBUG lines.
+		let dev_level = match log::max_level() {
+			log::LevelFilter::Trace => LogPriority::Trace,
+			log::LevelFilter::Debug => LogPriority::Debug,
+			log::LevelFilter::Info => LogPriority::Info,
+			log::LevelFilter::Warn => LogPriority::Warn,
+			log::LevelFilter::Error | log::LevelFilter::Off => LogPriority::Error,
+		};
+		match pad.client().set_min_log_level(dev_level).await {
+			Ok(()) => log::info!("attach {device_id}: device min log level set to {dev_level:?}"),
+			Err(e) => log::warn!("attach {device_id}: set_min_log_level({dev_level:?}) failed: {e:#}"),
+		}
 		let cols = u8::try_from(board.display_width / KEY_PX).context("cols overflow")?;
 		// The OpenDeck page renders below the chrome's prev/next top
 		// row, so subtract that band before sizing the key grid.
@@ -184,20 +224,30 @@ impl TouchyPlugin {
 		}
 		log::info!("attach {device_id}: grid {cols}×{rows} ({} keys, {KEY_PX}px each)", cols as u32 * rows as u32);
 
-		// Upload the page body to the uscr slot and bring it to the
-		// front. Image assets live on the volatile `R:` ramdisk and are
-		// (re)pushed lazily as OpenDeck sends `set_image`; on a fresh
-		// connect there are none yet, so the grid renders empty until
-		// the host repaints — which it does right after registerDevice.
-		let page = layout::build_page(cols, rows);
+		// Stage 85/86: build a content-addressed image cache (icons
+		// cross the wire once) downscaled to the key size, and seed it
+		// with the blank placeholder so every key has a valid released
+		// image before any artwork arrives. Each grid cell is a per-key
+		// `ImageButton` whose released image starts at that blank path;
+		// repaints swap the image slot in place (no widget rebuild), so
+		// a key the user is mid-press on keeps its touch state and still
+		// emits a release event.
+		let cache = ImageCache::with_max_dim(pad.clone(), Some(KEY_PX));
+		let blank_path = cache.set_cached_image(layout::BLANK_BIN).await.context("seed blank image")?;
+		log::info!("attach {device_id}: seeded blank image at {blank_path}");
+
+		let page = layout::build_page(cols, rows, &blank_path);
 		log::info!("attach {device_id}: uploading page body '{}'", layout::PAGE_NAME);
 		pad.user_screen_save(layout::PAGE_NAME, &page).await.context("user_screen_save")?;
 		pad.show_user_screen(layout::PAGE_NAME).await.context("show_user_screen")?;
+
+		let pressed_keys: Arc<Mutex<HashSet<u8>>> = Arc::new(Mutex::new(HashSet::new()));
 
 		// Take the event receiver before we hand the pad off.
 		let mut rx = pad.events().await.ok_or_else(|| anyhow!("events() already taken"))?;
 		log::info!("attach {device_id}: spawning event-forwarding task");
 		let id_for_task = device_id.clone();
+		let pressed_for_task = pressed_keys.clone();
 		let event_task = tokio::spawn(async move {
 			while let Some(evt) = rx.recv().await {
 				if let Some(state) = &evt.state
@@ -211,10 +261,17 @@ impl TouchyPlugin {
 				};
 				let res = match evt.code {
 					LV_EVENT_PRESSED => {
+						// Record the press *before* notifying OpenDeck so
+						// the set_image it sends back targets the pressed
+						// image slot (Stage 86).
+						pressed_for_task.lock().await.insert(key);
 						log::info!("{id_for_task}: key {key} down -> keyDown");
 						device_plugin::key_down(id_for_task.clone(), key).await
 					}
 					LV_EVENT_RELEASED | LV_EVENT_PRESS_LOST => {
+						// Clear the press *before* notifying OpenDeck so a
+						// restore set_image targets the released slot.
+						pressed_for_task.lock().await.remove(&key);
 						log::info!("{id_for_task}: key {key} up -> keyUp");
 						device_plugin::key_up(id_for_task.clone(), key).await
 					}
@@ -235,7 +292,9 @@ impl TouchyPlugin {
 			device_id: device_id.clone(),
 			cols,
 			rows,
-			images: Mutex::new(HashMap::new()),
+			cache,
+			pressed_keys,
+			last_slot_path: Mutex::new(HashMap::new()),
 			event_task: Mutex::new(Some(event_task)),
 		});
 
@@ -280,44 +339,54 @@ impl TouchyPlugin {
 		self.handles.read().await.values().find(|c| c.device_id == device_id).cloned()
 	}
 
+	/// Paint `key` with `data` (any supported image, or
+	/// [`layout::BLANK_BIN`] to clear). The image bytes are deduped
+	/// through the cache (uploaded at most once), then the matching
+	/// image *slot* — pressed while the user is holding the key,
+	/// released otherwise — is repointed in place. Skips re-issuing the
+	/// action when that slot already shows this asset.
+	async fn set_key_image(&self, ctx: &DeviceCtx, key: u8, data: &[u8]) -> Result<()> {
+		let path = ctx.cache.set_cached_image(data).await.context("cache image")?;
+		let pressed = ctx.pressed_keys.lock().await.contains(&key);
+		let mut last = ctx.last_slot_path.lock().await;
+		if last.get(&(key, pressed)).is_some_and(|p| p == &path) {
+			return Ok(());
+		}
+		ctx.pad.set_image_button_slot(&layout::key_widget_id(key), pressed, &path).await.context("set image slot")?;
+		last.insert((key, pressed), path);
+		Ok(())
+	}
+
 	async fn handle_set_image(&self, ev: SetImageEvent) -> Result<()> {
 		log::info!("set_image: device={} position={:?} has_image={}", ev.device, ev.position, ev.image.is_some());
 		let Some(ctx) = self.ctx_for(&ev.device).await else {
 			log::info!("set_image for unknown device {} — ignored", ev.device);
 			return Ok(());
 		};
+		let key_count = (ctx.cols as usize) * (ctx.rows as usize);
 		match (ev.position, ev.image.as_deref()) {
 			(Some(pos), Some(data_url)) => {
-				let key = pos;
-				if key as usize >= (ctx.cols as usize) * (ctx.rows as usize) {
-					log::debug!("set_image position {key} out of range for {}", ctx.device_id);
+				if pos as usize >= key_count {
+					log::debug!("set_image position {pos} out of range for {}", ctx.device_id);
 					return Ok(());
 				}
 				let b64 = data_url.split_once(',').map(|(_, b)| b).unwrap_or(data_url);
 				let bytes = B64.decode(b64.trim()).context("base64 decode")?;
-				// Cache the raw bytes so we can re-push after a device
-				// reboot wipes the volatile `R:` ramdisk, then write the
-				// asset. The grid already references this path, so no
-				// screen reload is needed — LVGL repaints the cell once
-				// the file lands.
-				ctx.images.lock().await.insert(key, bytes.clone());
-				let asset = layout::asset_path_for(key);
-				ctx.pad.file_save(&asset, &bytes).await.context("file_save")?;
+				self.set_key_image(&ctx, pos, &bytes).await?;
 			}
 			(Some(pos), None) => {
-				// Clear a single key — forget its cached bytes and drop
-				// the asset file.
-				let key = pos;
-				ctx.images.lock().await.remove(&key);
-				let asset = layout::asset_path_for(key);
-				let _ = ctx.pad.client().file_delete(&asset).await;
+				if pos as usize >= key_count {
+					return Ok(());
+				}
+				// Clear a single key — repaint it with the blank image.
+				self.set_key_image(&ctx, pos, layout::BLANK_BIN).await?;
 			}
 			(None, None) => {
-				// Clear all — forget every cached image and drop assets.
-				ctx.images.lock().await.clear();
+				// Clear all keys.
 				for k in 0..(ctx.cols * ctx.rows) {
-					let asset = layout::asset_path_for(k);
-					let _ = ctx.pad.client().file_delete(&asset).await;
+					if let Err(e) = self.set_key_image(&ctx, k, layout::BLANK_BIN).await {
+						log::warn!("clear key {k} on {}: {e:#}", ctx.device_id);
+					}
 				}
 			}
 			(None, Some(_)) => {

@@ -107,6 +107,7 @@ const uint8_t *fs_peek(const std::string &full_path, size_t *len_out)
 namespace {
 Fs       *g_active_write_fs     = nullptr;
 uint32_t  g_active_write_handle = 0;
+std::string g_active_write_path;
 }
 
 uint32_t fs_open_write(const std::string &full_path)
@@ -114,7 +115,9 @@ uint32_t fs_open_write(const std::string &full_path)
     if (g_active_write_fs) {
         // A stale transaction from a dropped connection. The host is starting
         // a new write, so the old one is definitively abandoned — abort it.
-        ESP_LOGW(TAG, "fs_open_write: stale transaction detected, aborting before opening %s",
+        ESP_LOGW(TAG, "fs_open_write: stale transaction detected (stale handle=%u path='%s'), "
+                      "aborting before opening %s",
+                 (unsigned)g_active_write_handle, g_active_write_path.c_str(),
                  full_path.c_str());
         fs_abort_open_transaction();
     }
@@ -128,22 +131,41 @@ uint32_t fs_open_write(const std::string &full_path)
     if (h) {
         g_active_write_fs     = fs;
         g_active_write_handle = h;
+        g_active_write_path   = full_path;
+        ESP_LOGI(TAG, "fs_open_write: opened handle=%u path='%s'",
+                 (unsigned)h, full_path.c_str());
+    } else {
+        ESP_LOGW(TAG, "fs_open_write: openWrite failed for %s", full_path.c_str());
     }
     return h;
 }
 
 bool fs_append_write(uint32_t handle, const uint8_t *data, size_t len)
 {
-    if (!g_active_write_fs) return false;
+    if (!g_active_write_fs) {
+        ESP_LOGW(TAG, "fs_append_write: no active transaction (handle=%u len=%u)",
+                 (unsigned)handle, (unsigned)len);
+        return false;
+    }
     return g_active_write_fs->appendWrite(handle, data, len);
 }
 
 bool fs_close_write(uint32_t handle, bool commit)
 {
-    if (!g_active_write_fs) return false;
+    if (!g_active_write_fs) {
+        ESP_LOGW(TAG, "fs_close_write: no active transaction (handle=%u commit=%d)",
+                 (unsigned)handle, (int)commit);
+        return false;
+    }
+    if (handle != g_active_write_handle) {
+        ESP_LOGW(TAG, "fs_close_write: handle mismatch (got=%u active=%u path='%s')",
+                 (unsigned)handle, (unsigned)g_active_write_handle,
+                 g_active_write_path.c_str());
+    }
     bool ok = g_active_write_fs->closeWrite(handle, commit);
     g_active_write_fs     = nullptr;
     g_active_write_handle = 0;
+    g_active_write_path.clear();
     return ok;
 }
 
@@ -153,6 +175,7 @@ void fs_abort_open_transaction()
     g_active_write_fs->closeWrite(g_active_write_handle, false);
     g_active_write_fs     = nullptr;
     g_active_write_handle = 0;
+    g_active_write_path.clear();
 }
 
 // ---------------------------------------------------------------------------

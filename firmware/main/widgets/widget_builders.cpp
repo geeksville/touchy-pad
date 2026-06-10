@@ -427,6 +427,7 @@ struct ButtonSlotBinding {
     lv_obj_t         *anchor;       // outer lv_button (lifetime anchor)
     bool              is_pressed_slot;  // true → tracks `state->pressed`
     std::string       path;
+    std::string       widget_id;    // outer Widget.id (Stage 86 set-by-id)
 };
 
 std::vector<PlainImageBinding> g_plain_bindings;
@@ -772,6 +773,7 @@ lv_obj_t *build_image_button(lv_obj_t *parent, const touchy_Widget &w)
         b.anchor           = btn;
         b.is_pressed_slot  = is_pressed;
         b.path             = slot->wire_path;
+        b.widget_id        = w.id;
         g_button_bindings.push_back(std::move(b));
     };
     register_slot(&st->released, /*is_pressed=*/false);
@@ -964,6 +966,80 @@ bool widget_image_registry_notify(const char *wire_path)
     return any;
 }
 
+bool widget_image_button_set_slot(const char *target_id,
+                                  bool pressed_slot,
+                                  const char *wire_path)
+{
+    if (!target_id || !*target_id || !wire_path || !*wire_path) return false;
+
+    // Find the button's state + anchor via any binding carrying this
+    // id (the released slot is always registered, so one will exist as
+    // long as the ImageButton is on the active screen).
+    ImageButtonState *state  = nullptr;
+    lv_obj_t         *anchor = nullptr;
+    for (auto &b : g_button_bindings) {
+        if (b.widget_id == target_id) {
+            state  = b.state;
+            anchor = b.anchor;
+            break;
+        }
+    }
+    if (!state) {
+        ESP_LOGW(TAG, "set_slot: no image_button with id '%s'", target_id);
+        return false;
+    }
+
+    // Point the requested slot at the new bytes. Build a minimal
+    // touchy_Image carrying just the path; image_button_src_init frees
+    // any previous occupant and takes the Stage 52 mmap fast path when
+    // possible (or falls back to a file-read path).
+    ImageButtonSrc &slot = pressed_slot ? state->pressed : state->released;
+    touchy_Image im = touchy_Image_init_zero;
+    snprintf(im.path, sizeof(im.path), "%s", wire_path);
+    image_button_src_init(slot, im);
+
+    // Keep the binding registry consistent: update the matching slot's
+    // tracked path, or add a fresh binding if this slot was previously
+    // unconfigured (e.g. a pressed slot that started empty).
+    bool binding_found = false;
+    for (auto &b : g_button_bindings) {
+        if (b.widget_id == target_id && b.is_pressed_slot == pressed_slot) {
+            b.path = wire_path;
+            binding_found = true;
+            break;
+        }
+    }
+    if (!binding_found) {
+        ButtonSlotBinding b;
+        b.state           = state;
+        b.anchor          = anchor;
+        b.is_pressed_slot = pressed_slot;
+        b.path            = wire_path;
+        b.widget_id       = target_id;
+        g_button_bindings.push_back(std::move(b));
+    }
+
+    // Decide which slot should currently be on screen: the pressed art
+    // while the finger is physically down (and pressed is configured),
+    // else the released art. Re-apply only if we just changed the slot
+    // that should be visible, so setting the *other* slot mid-touch
+    // just stages bytes for later without a visible flip.
+    const bool pressed_now =
+        anchor && lv_obj_has_state(anchor, LV_STATE_PRESSED) &&
+        image_button_src_configured(state->pressed);
+    ImageButtonSrc *should_display =
+        pressed_now ? &state->pressed : &state->released;
+    state->current_slot = should_display;
+    if (&slot == should_display && state->img_child) {
+        image_button_apply(state->img_child, *should_display, state->released);
+    }
+
+    ESP_LOGI(TAG, "set_slot id='%s' %s -> '%s'%s",
+             target_id, pressed_slot ? "pressed" : "released", wire_path,
+             (&slot == should_display) ? " (visible)" : " (staged)");
+    return true;
+}
+
 void widget_build_children(lv_obj_t *parent, const touchy_Widget &container)
 {
     const touchy_Layout *L = nullptr;
@@ -1154,6 +1230,44 @@ bool widget_refs_change(const char *target_id, const char *new_path)
     const bool                 absolute_layout  = match->absolute_layout;
     const touchy_Widget       *parent_layout    = match->parent_layout;
 
+    // Stage 85 fix — the subtree we're about to tear down may itself
+    // contain nested widget_refs (e.g. swapping away from the OpenDeck
+    // page, whose body is a grid of per-key `WidgetRef` cells). Those
+    // descendant refs have their own `g_active_refs` entries whose
+    // `root` objects live *inside* match->root. If we only drop the
+    // outer ref, the descendants linger as stale entries — their LVGL
+    // objects get deleted below, but `widget_refs_active_path()` keeps
+    // enumerating their (now irrelevant) file paths, which makes
+    // screens_notify_file_changed() fire spurious full reloads every
+    // time one of those files is rewritten even though nothing on the
+    // *new* screen references it. Collect those descendants now (the
+    // LVGL pointers are still valid) so we can erase them after the
+    // teardown. The container we're clearing is `parent` for a layer
+    // root (we keep the layer object, drop its children) or `match->root`
+    // otherwise (the whole subtree goes).
+    lv_obj_t *teardown_container =
+        (layer_root && match->root == parent) ? parent : match->root;
+    std::vector<size_t> descendant_idx;
+    if (teardown_container) {
+        for (size_t i = 0; i < g_active_refs.size(); i++) {
+            if (i == match_idx) continue;  // the outer ref is erased below
+            lv_obj_t *obj = g_active_refs[i].root;
+            if (!obj) continue;
+            // Walk up to see if `obj` lives under teardown_container.
+            // For the layer-root case skip `obj == container` (that's
+            // the retained layer object itself, which isn't a ref root
+            // here anyway).
+            for (lv_obj_t *p = obj; p; p = lv_obj_get_parent(p)) {
+                if (p == teardown_container) {
+                    if (!(layer_root && obj == teardown_container)) {
+                        descendant_idx.push_back(i);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     // Tear down the old LVGL subtree.
     if (layer_root && match->root == parent) {
         // Layout-layer expansion built directly into `parent` —
@@ -1172,8 +1286,22 @@ bool widget_refs_change(const char *target_id, const char *new_path)
              "%s", new_path);
 
     // Drop the old ref entry (its holder chain is no longer reachable
-    // from any live LVGL object) and stage the rebuild.
-    g_active_refs.erase(g_active_refs.begin() + match_idx);
+    // from any live LVGL object) and stage the rebuild. Also drop any
+    // descendant refs that lived inside the torn-down subtree (Stage 85
+    // fix, collected above) so they stop appearing in
+    // widget_refs_active_path(). Erase highest index first so the lower
+    // indices stay valid.
+    std::vector<size_t> to_erase = descendant_idx;
+    to_erase.push_back(match_idx);
+    std::sort(to_erase.begin(), to_erase.end());
+    to_erase.erase(std::unique(to_erase.begin(), to_erase.end()), to_erase.end());
+    for (auto it = to_erase.rbegin(); it != to_erase.rend(); ++it) {
+        g_active_refs.erase(g_active_refs.begin() + *it);
+    }
+    if (!descendant_idx.empty()) {
+        ESP_LOGD(TAG, "widget_refs_change: also dropped %u nested ref(s) from torn-down subtree",
+                 (unsigned)descendant_idx.size());
+    }
     widget_refs_reset_pending();
 
     if (layer_root) {
@@ -1223,4 +1351,25 @@ bool widget_refs_change(const char *target_id, const char *new_path)
     g_pending_refs.clear();
     g_ref_expansion.clear();
     return true;
+}
+
+size_t widget_refs_rebuild_by_path(const char *path)
+{
+    if (!path || !*path) return 0;
+    // Snapshot the matching addressable ids before mutating, since
+    // widget_refs_change() rewrites g_active_refs. A given path is at
+    // most a single ref target in practice (each OpenDeck key stub and
+    // the chrome `page` body have unique paths), but handle duplicates
+    // defensively.
+    std::vector<std::string> ids;
+    for (const auto &r : g_active_refs) {
+        if (r.parent && r.outer && !r.id.empty() && r.path == path) {
+            ids.push_back(r.id);
+        }
+    }
+    size_t rebuilt = 0;
+    for (const auto &id : ids) {
+        if (widget_refs_change(id.c_str(), path)) rebuilt++;
+    }
+    return rebuilt;
 }

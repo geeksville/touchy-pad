@@ -8,6 +8,7 @@
 
 #include "fs/fs.h"
 #include "host_api.h"
+#include "lv_throttled.h"
 #include "macros.h"
 #include "screens.h"
 #include "widget_builders.h"
@@ -99,6 +100,33 @@ void widget_run_action(const touchy_Action &act,
                 ESP_LOGW(TAG, "change_widget_ref: missing target_id");
                 break;
             }
+            // Stage 86 — IMAGE_BUTTON_RELEASED (3) / IMAGE_BUTTON_PRESSED
+            // (4): repoint an ImageButton's image slot in place by id,
+            // rather than retargeting a WidgetRef by path. Deferred via
+            // lv_throttled_post for the same reason as the ref rebuild
+            // below (the apply touches the LVGL tree; throttling keeps a
+            // burst of repaints from starving the host_api task).
+            if (behavior == 3 || behavior == 4) {
+                if (!dir_or_pth[0]) {
+                    ESP_LOGW(TAG,
+                             "change_widget_ref(IMAGE_BUTTON): empty path");
+                    break;
+                }
+                std::string tid(target_id);
+                std::string tpath(dir_or_pth);
+                bool pressed = (behavior == 4);
+                lv_throttled_post([tid, tpath, pressed]() {
+                    bool ok = widget_image_button_set_slot(
+                        tid.c_str(), pressed, tpath.c_str());
+                    if (!ok) {
+                        ESP_LOGE(TAG,
+                                 "set_slot failed (id='%s' %s path='%s')",
+                                 tid.c_str(), pressed ? "pressed" : "released",
+                                 tpath.c_str());
+                    }
+                });
+                break;
+            }
             if (behavior == 0) {  // BY_PATH
                 if (!dir_or_pth[0]) {
                     ESP_LOGW(TAG, "change_widget_ref(BY_PATH): empty path");
@@ -158,44 +186,43 @@ void widget_run_action(const touchy_Action &act,
                 break;
             }
 
-            // Defer via lv_async_call — `widget_refs_change` deletes
+            // Defer via lv_throttled_post — `widget_refs_change` deletes
             // LVGL objects in the same event chain that is dispatching
-            // this callback, which is unsafe inline.
-            struct ChangeReq {
-                char target_id[32];
-                char path[96];
-            };
-            auto *req = new (std::nothrow) ChangeReq{};
-            if (!req) {
-                ESP_LOGE(TAG, "OOM scheduling change_widget_ref");
-                break;
-            }
-            snprintf(req->target_id, sizeof(req->target_id), "%s", target_id);
-            snprintf(req->path, sizeof(req->path), "%s", target_path.c_str());
-            lv_async_call(
-                [](void *p) {
-                    auto *r = static_cast<ChangeReq *>(p);
-                    bool ok = widget_refs_change(r->target_id, r->path);
-                    if (!ok) {
-                        ESP_LOGW(TAG,
-                                 "change_widget_ref failed "
-                                 "(target_id='%s' path='%s')",
-                                 r->target_id, r->path);
-                    }
-                    delete r;
-                },
-                req);
+            // this callback, which is unsafe inline. Throttled (rather
+            // than a raw lv_async_call) so a burst of change_widget_ref
+            // actions can't drain back-to-back under one continuous LVGL
+            // port-lock hold and starve the host_api task — see
+            // lv_throttled.h. Both call sites of widget_run_action run
+            // under the LVGL port lock (event callback during
+            // lv_timer_handler; widget_run_actions takes it explicitly),
+            // so posting here is safe.
+            std::string tid(target_id);
+            std::string tpath(target_path);
+            lv_throttled_post([tid, tpath]() {
+                bool ok = widget_refs_change(tid.c_str(), tpath.c_str());
+                if (!ok) {
+                    ESP_LOGE(TAG,
+                             "change_widget_ref failed "
+                             "(target_id='%s' path='%s')",
+                             tid.c_str(), tpath.c_str());
+                } else {
+                    ESP_LOGI(TAG,
+                             "change_widget_ref succeeded "
+                             "(target_id='%s' path='%s')",
+                             tid.c_str(), tpath.c_str());
+                }
+            });
             break;
         }
         default:
-            ESP_LOGD(TAG, "widget '%s' has unknown device action %u",
+            ESP_LOGW(TAG, "widget '%s' has unknown device action %u",
                      widget_id, (unsigned)dev.which_kind);
             break;
         }
         break;
     }
     default:
-        ESP_LOGD(TAG, "widget '%s' has unknown action kind %u",
+        ESP_LOGW(TAG, "widget '%s' has unknown action kind %u",
                  widget_id, (unsigned)act.which_kind);
         break;
     }

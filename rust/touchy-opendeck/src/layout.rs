@@ -64,62 +64,92 @@ pub fn device_id_for(serial: &str) -> String {
 	format!("{NAMESPACE}-{serial}")
 }
 
-/// Ramdisk path for cell ``key``'s image asset.
+/// Stable per-key `ImageButton` widget id.
 ///
-/// One shared set of assets — there is a single OpenDeck page. Lives
-/// on ``R:`` (volatile PSRAM ramdisk) because we rewrite it on every
-/// (re)connect and per keypress, and flash wear would be wasteful.
-pub fn asset_path_for(key: u8) -> String {
-	format!("R:host/opendeck/key_{key}.bin")
+/// The OpenDeck plugin builds one `ImageButton` per grid cell with this
+/// id, then repaints it in place via
+/// [`Touchy::set_image_button_slot`][touchy_pad::Touchy::set_image_button_slot]
+/// (`target_id = key_widget_id(k)`). The id also routes touch events:
+/// `ActionHost` reports the clickable widget's own id, so the per-key id
+/// is what carries this key's host code back to the host.
+pub fn key_widget_id(key: u8) -> String {
+	format!("opendeck_key_{key}")
 }
 
-/// Build the OpenDeck page body: a ``cols × rows`` grid of image
-/// buttons, each wired to ``host_code_for(k)`` on both press and
-/// release. Returned as a bare [`Widget`] for upload via
+/// A minimal opaque “blank key” LVGL `.bin`: a 1×1 dark-grey
+/// (`0x101010`) RGB565 pixel, stretched to fill the cell. Seeded into
+/// the image cache at attach so every key has a valid released image
+/// before any artwork arrives, and reused to clear a key. RGB565
+/// (native) so it takes the device's zero-copy mmap fast path.
+///
+/// Layout: 12-byte v9 header (`magic, cf, flags, w, h, stride, rsvd`)
+/// + one little-endian RGB565 word. `rgb565(0x10,0x10,0x10) == 0x1082`.
+pub const BLANK_BIN: &[u8] = &[
+	0x19, 0x12, 0x00, 0x00, // magic, cf=RGB565, flags
+	0x01, 0x00, 0x01, 0x00, // w=1, h=1
+	0x02, 0x00, 0x00, 0x00, // stride=2, reserved
+	0x82, 0x10, // pixel: rgb565(0x10,0x10,0x10) little-endian
+];
+
+/// Build one grid cell: a per-key `ImageButton` whose `released` image
+/// starts at `blank_path` (a cached blank `.bin`). The button carries
+/// this key's host code on both press and release, so it stays
+/// clickable regardless of its current artwork. Repaints swap the
+/// `released` / `pressed` image in place via
+/// [`Touchy::set_image_button_slot`][touchy_pad::Touchy::set_image_button_slot]
+/// — never rebuilding the widget, so a key the user is pressing keeps
+/// its touch state and still emits a release event.
+fn key_button(key: u8, blank_path: &str) -> Widget {
+	let code = host_code_for(key);
+	let act = Action {
+		kind: Some(action::Kind::Host(ActionHost { code })),
+	};
+	let released = Image {
+		path: blank_path.to_string(),
+		align: Some(image::Align::ImageAlignStretch as i32),
+		..Default::default()
+	};
+	Widget {
+		id: key_widget_id(key),
+		// Dark-grey fill shown behind any transparent image regions.
+		styles: vec![Style {
+			bg_color: Some(0x101010),
+			shadow_width: Some(0),
+			..Default::default()
+		}],
+		kind: Some(widget::Kind::ImageButton(ImageButton {
+			released: Some(released),
+			on_press: vec![act.clone()],
+			on_release: vec![act],
+			..Default::default()
+		})),
+		..Default::default()
+	}
+}
+
+/// Build the OpenDeck page body: a `cols × rows` grid where each cell is
+/// a per-key `ImageButton` (see [`key_button`]). Returned as a bare
+/// [`Widget`] for upload via
 /// [`Touchy::user_screen_save`][touchy_pad::Touchy::user_screen_save].
 ///
+/// `blank_path` is the cached blank-image path every key starts at;
+/// painting a key later swaps its image slot in place (no page rewrite).
 /// Keys are numbered left-to-right, top-to-bottom from 0 — matching
 /// StreamDeck convention.
-pub fn build_page(cols: u8, rows: u8) -> Widget {
+pub fn build_page(cols: u8, rows: u8, blank_path: &str) -> Widget {
 	let mut children: Vec<Widget> = Vec::with_capacity(cols as usize * rows as usize);
 	for r in 0..rows {
 		for c in 0..cols {
 			let k = r * cols + c;
-			let code = host_code_for(k);
-			let asset = asset_path_for(k);
-			let img = Image {
-				path: asset,
-				align: Some(image::Align::ImageAlignStretch as i32),
+			let mut cell = key_button(k, blank_path);
+			cell.placement = Some(widget::Placement::Cell(GridCell {
+				col: c as u32,
+				row: r as u32,
 				..Default::default()
-			};
-			let act_press = Action {
-				kind: Some(action::Kind::Host(ActionHost { code })),
-			};
-			let act_release = act_press.clone();
-			children.push(Widget {
-				id: format!("opendeck_key_{k}"),
-				placement: Some(widget::Placement::Cell(GridCell {
-					col: c as u32,
-					row: r as u32,
-					..Default::default()
-				})),
-				grow_x: 1,
-				grow_y: 1,
-				// Dark-grey fill for cells with no image assigned.
-				// When an image is loaded it renders on top and hides this.
-				styles: vec![Style {
-					bg_color: Some(0x101010),
-					shadow_width: Some(0),
-					..Default::default()
-				}],
-				kind: Some(widget::Kind::ImageButton(ImageButton {
-					released: Some(img),
-					on_press: vec![act_press],
-					on_release: vec![act_release],
-					..Default::default()
-				})),
-				..Default::default()
-			});
+			}));
+			cell.grow_x = 1;
+			cell.grow_y = 1;
+			children.push(cell);
 		}
 	}
 	Widget {
@@ -150,15 +180,60 @@ mod tests {
 
 	#[test]
 	fn build_page_has_expected_children() {
-		let page = build_page(5, 3);
+		let page = build_page(5, 3, "R:host/icache/blank.bin");
 		match page.kind.unwrap() {
 			widget::Kind::LayoutGrid(g) => {
 				assert_eq!(g.cols, 5);
 				assert_eq!(g.rows, 3);
-				assert_eq!(g.layout.unwrap().children.len(), 15);
+				let children = g.layout.unwrap().children;
+				assert_eq!(children.len(), 15);
+				// Every cell is a per-key ImageButton carrying its id.
+				assert_eq!(children[0].id, key_widget_id(0));
+				match children[0].kind.as_ref().unwrap() {
+					widget::Kind::ImageButton(ib) => {
+						assert_eq!(ib.released.as_ref().unwrap().path, "R:host/icache/blank.bin");
+					}
+					_ => panic!("expected ImageButton cell"),
+				}
 			}
 			_ => panic!("expected LayoutGrid"),
 		}
+	}
+
+	#[test]
+	fn key_button_carries_host_code_and_blank_path() {
+		let page = build_page(2, 1, "R:host/icache/blank.bin");
+		let children = match page.kind.unwrap() {
+			widget::Kind::LayoutGrid(g) => g.layout.unwrap().children,
+			_ => panic!("expected LayoutGrid"),
+		};
+		let cell = &children[1]; // key 1
+		assert_eq!(cell.id, key_widget_id(1));
+		match cell.kind.as_ref().unwrap() {
+			widget::Kind::ImageButton(ib) => {
+				assert_eq!(ib.released.as_ref().unwrap().path, "R:host/icache/blank.bin");
+				let act = ib.on_press[0].kind.as_ref().unwrap();
+				match act {
+					action::Kind::Host(h) => assert_eq!(h.code, host_code_for(1)),
+					_ => panic!("expected host action"),
+				}
+				// Same host code on release for hold-aware routing.
+				let rel = ib.on_release[0].kind.as_ref().unwrap();
+				match rel {
+					action::Kind::Host(h) => assert_eq!(h.code, host_code_for(1)),
+					_ => panic!("expected host action"),
+				}
+			}
+			_ => panic!("expected ImageButton"),
+		}
+	}
+
+	#[test]
+	fn blank_bin_is_a_valid_lvgl_header() {
+		// magic + at least the 12-byte v9 header.
+		assert!(BLANK_BIN.len() >= 12);
+		assert_eq!(BLANK_BIN[0], 0x19); // LVGL bin magic
+		assert_eq!(BLANK_BIN[1], 0x12); // cf = RGB565
 	}
 
 	#[test]

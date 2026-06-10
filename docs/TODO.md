@@ -1,14 +1,19 @@
 # TODO
 
 ## Alpha 4
+A quick 'hot fix' to make opendeck UI much faster (by caching images on the device).  Also makes initial
+OpenDeck screen build 100% reliable and super fast.
+
+* [x] make opendeck much faster by storing images via hashed names. thus allowing quick button switching by just swapping WidgetRefs
+* [x] rust logs in opendeck are not seeing device log messages
+
+## Alpha 5
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] properly warn user if selected gif/file is too large to use (based on ram size)
-* [ ] rust logs in opendeck are not seeing device log messages
 * [ ] support no-touch devices
 * [ ] add photo of the small board
-* [ ] make opendeck much faster by storing images via hashed names. thus allowing quick button switching by just swapping WidgetRefs
 * [ ] add some of the example JSON to the API docs
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
 * [ ] Support a few more board types

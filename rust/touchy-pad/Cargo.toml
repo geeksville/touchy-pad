@@ -23,6 +23,8 @@ image.workspace = true
 futures.workspace = true
 async-trait.workspace = true
 tokio-serial = { version = "5.4", optional = true }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+base64 = "0.22"
 
 [features]
 # Off by default: pulls in tokio-serial (and its libudev/serialport

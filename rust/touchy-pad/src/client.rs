@@ -31,6 +31,18 @@ pub const FILE_WRITE_CHUNK: usize = 4096;
 #[derive(Clone)]
 pub struct Client {
 	transport: Arc<dyn Transport>,
+	// Serialises whole request/response round-trips. The wire protocol
+	// has no command IDs — every Response is matched to the in-flight
+	// Command purely by FIFO order. `send_command` / `recv_response`
+	// lock the transport *separately*, so without this a concurrent
+	// caller (notably the background event poller's `event_consume`
+	// running alongside a `file_*` write burst) can interleave its
+	// send/recv with another RPC's, causing a Response to be delivered
+	// to the wrong waiter — one side then blocks until its 2 s timeout.
+	// Held across the entire `rpc()` so round-trips never interleave.
+	// Shared via `Arc` so cloned `Client`s (e.g. the poller's) contend
+	// on the same lock.
+	rpc_lock: Arc<Mutex<()>>,
 	// Stage 64.1: `drain_pending()` may surface an `LvEvent` while
 	// draining tunneled log records at connect time; we park it
 	// here so the next `event_consume()` call returns it instead
@@ -45,6 +57,7 @@ impl Client {
 	pub fn new(transport: Arc<dyn Transport>) -> Self {
 		Self {
 			transport,
+			rpc_lock: Arc::new(Mutex::new(())),
 			pending_event: Arc::new(Mutex::new(None)),
 		}
 	}
@@ -55,10 +68,31 @@ impl Client {
 	}
 
 	async fn rpc(&self, cmd: Command) -> Result<Response> {
+		let name = cmd_name(&cmd);
 		let mut buf = Vec::with_capacity(cmd.encoded_len());
 		cmd.encode(&mut buf)?;
+		// Hold the RPC lock across send+recv so this round-trip can't
+		// interleave with another task's (see `rpc_lock`).
+		let _rpc_guard = self.rpc_lock.lock().await;
+		let started = std::time::Instant::now();
+		log::trace!("rpc {name}: send {} bytes", buf.len());
 		self.transport.send_command(&buf).await?;
-		let reply = self.transport.recv_response(DEFAULT_TIMEOUT).await?;
+		let reply = match self.transport.recv_response(DEFAULT_TIMEOUT).await {
+			Ok(r) => r,
+			Err(e) => {
+				log::warn!("rpc {name}: recv failed after {:?}: {e}", started.elapsed());
+				return Err(e);
+			}
+		};
+		let elapsed = started.elapsed();
+		// Surface slow round-trips: the 2 s DEFAULT_TIMEOUT is the
+		// hard limit, so anything close to it is a prime suspect for
+		// the intermittent "operation timed out" failures.
+		if elapsed >= Duration::from_millis(500) {
+			log::warn!("rpc {name}: slow round-trip {elapsed:?}");
+		} else {
+			log::trace!("rpc {name}: ok in {elapsed:?}");
+		}
 		let resp = Response::decode(reply.as_slice())?;
 		Ok(resp)
 	}
@@ -330,5 +364,28 @@ pub fn dispatch_log_record(rec: &LogRecord) {
 			"device dropped {} log record(s) before this one",
 			rec.num_dropped
 		);
+	}
+}
+
+/// Short human-readable name for a [`Command`]'s variant, used in RPC
+/// timing logs. File ops include their path/handle so a slow or timed-out
+/// transaction can be pinned to the exact file.
+fn cmd_name(cmd: &Command) -> String {
+	match &cmd.cmd {
+		Some(command::Cmd::SysBoardInfoGet(_)) => "sys_board_info_get".into(),
+		Some(command::Cmd::SysRebootBootloader(_)) => "sys_reboot_bootloader".into(),
+		Some(command::Cmd::ScreenWake(_)) => "screen_wake".into(),
+		Some(command::Cmd::SetPreferences(_)) => "set_preferences".into(),
+		Some(command::Cmd::FileDelete(c)) => format!("file_delete('{}')", c.path),
+		Some(command::Cmd::FileOpenWrite(c)) => format!("file_open_write('{}')", c.path),
+		Some(command::Cmd::FileWrite(c)) => {
+			format!("file_write(h={}, {}B)", c.handle, c.data.len())
+		}
+		Some(command::Cmd::FileClose(c)) => {
+			format!("file_close(h={}, commit={})", c.handle, c.commit)
+		}
+		Some(command::Cmd::RunActions(_)) => "run_actions".into(),
+		Some(command::Cmd::EventConsume(_)) => "event_consume".into(),
+		_ => "<other>".into(),
 	}
 }

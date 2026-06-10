@@ -25,12 +25,14 @@
 #include "debug.h"
 #include "default_screen_pb.h"
 #include "fs.h"
+#include "lv_throttled.h"
 #include "prefs.h"
 #include "protobuf.h"
 #include "touchy.pb.h"
 #include "widget_builders.h"
 #include "widgets.pb.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
 
@@ -42,6 +44,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -467,6 +470,47 @@ void screens_clear(void)
     ESP_LOGI(TAG, "screen registry cleared");
 }
 
+void screens_notify_path_deleted(const char *path)
+{
+    if (!path || !*path) return;
+
+    // Build an exact key and a directory prefix. A trailing '/' means
+    // the host deleted a directory tree: match every registered screen
+    // whose key starts with it. Otherwise match the file exactly and
+    // also (defensively) anything under "<path>/".
+    std::string exact(path);
+    std::string prefix(path);
+    if (!prefix.empty() && prefix.back() == '/') {
+        exact.pop_back();          // "R:host/icache/" -> exact "R:host/icache"
+    } else {
+        prefix += '/';             // "F:host/s" -> prefix "F:host/s/"
+    }
+
+    std::lock_guard<std::mutex> guard(registry_mutex());
+    auto &reg = registry();
+    size_t removed = 0;
+    for (auto it = reg.begin(); it != reg.end();) {
+        const std::string &k = it->first;
+        bool match = (k == exact) ||
+                     (k.size() >= prefix.size() &&
+                      k.compare(0, prefix.size(), prefix) == 0);
+        if (match) {
+            if (g_default_screen_path == k) g_default_screen_path.clear();
+            it = reg.erase(it);
+            ++removed;
+        } else {
+            ++it;
+        }
+    }
+    if (removed) {
+        ESP_LOGI(TAG, "screens_notify_path_deleted: '%s' dropped %u registered screen(s)",
+                 path, (unsigned)removed);
+    } else {
+        ESP_LOGD(TAG, "screens_notify_path_deleted: '%s' matched no registered screens",
+                 path);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Stage 55 — file-change notification.
 // ---------------------------------------------------------------------------
@@ -557,18 +601,74 @@ void screens_prepare_file_overwrite(const char *path)
 {
     if (!path || !*path) return;
     ESP_LOGD(TAG, "prepare_file_overwrite: '%s' (lock+release gif)", path);
+    // Timed lock take: this runs on the host_api dispatch task and
+    // blocks until the LVGL task releases the port lock. If the LVGL
+    // task is mid-reload, this can stall for the whole rebuild — which
+    // surfaces host-side as a 2 s FileClose RPC timeout. Log when the
+    // wait is long so we can pin the stall on lock contention.
+    int64_t t0 = esp_timer_get_time();
     lvgl_port_lock(0);
+    int64_t waited_us = esp_timer_get_time() - t0;
+    if (waited_us >= 200000) {
+        ESP_LOGW(TAG, "prepare_file_overwrite: '%s' waited %lldms for LVGL lock",
+                 path, waited_us / 1000);
+    }
     widget_image_registry_release_gif(path);
     lvgl_port_unlock();
 }
 
-// The actual notify work. Runs on the LVGL task (scheduled via
-// lv_async_call from screens_notify_file_changed) so the in-place
-// image reload and any full screen rebuild happen on the same thread
-// that drives rendering — never on the host_api dispatch task, which
-// must stay free to answer event_consume polls (and so drain the
-// Stage 64.1 log tunnel). Already runs under the LVGL port lock held
-// by lv_timer_handler; the inner lvgl_port_lock() calls below are
+// Stage 85 — coalesced full-reload request.
+//
+// A burst of file writes that each affect the active screen (e.g. the
+// OpenDeck plugin rewriting N per-key WidgetRef stub files when a
+// profile switches) would otherwise schedule N full screen rebuilds,
+// one per FileClose. Each rebuild is expensive and they pile up on the
+// LVGL task, starving the FileClose handler's screens_prepare_file_overwrite
+// LVGL-lock take and the event_consume poll — which surfaces host-side
+// as 2 s RPC timeouts and "stale transaction" errors mid-burst.
+//
+// Since a reload always rebuilds the *whole* current screen from the
+// latest on-disk bytes, N reloads collapse to one: we only ever need
+// the last one. request_active_reload() sets a pending flag and
+// schedules a single deferred reload; further requests arriving before
+// it runs are absorbed. Both the request and the reload run on the LVGL
+// task (request from notify_file_changed_impl, reload from lv_async_call),
+// so the plain bool needs no locking.
+static bool s_reload_pending = false;
+
+static void run_pending_reload()
+{
+    s_reload_pending = false;
+    if (g_current_path.empty()) return;
+    // Defensive copy because screens_load() may eventually mutate
+    // g_current_path under the lock.
+    std::string p = g_current_path;
+    ESP_LOGI(TAG, "run_pending_reload: rebuilding active screen '%s'", p.c_str());
+    screens_load(p.c_str());
+}
+
+static void request_active_reload(void)
+{
+    if (s_reload_pending) {
+        ESP_LOGD(TAG, "request_active_reload: coalesced into pending reload");
+        return;
+    }
+    s_reload_pending = true;
+    // Defer through the shared throttle so a full reload can't pile onto
+    // the LVGL lock back-to-back with the per-path in-place rebuilds it
+    // shares the queue with (see lv_throttled.h). The s_reload_pending
+    // flag still coalesces multiple requests into this single post.
+    lv_throttled_post(run_pending_reload);
+}
+
+// The actual notify work. Runs on the LVGL task (scheduled via the
+// shared lv_throttled_post queue from screens_notify_file_changed) so
+// the in-place image reload and any full screen rebuild happen on the
+// same thread that drives rendering — never on the host_api dispatch
+// task, which must stay free to answer event_consume polls (and so
+// drain the Stage 64.1 log tunnel). Already runs under the LVGL port
+// lock held by lv_timer_handler; the inner lvgl_port_lock() calls below
+// are
 // harmless recursive takes.
 static void notify_file_changed_impl(const char *path)
 {
@@ -589,6 +689,27 @@ static void notify_file_changed_impl(const char *path)
         if (handled) {
             ESP_LOGI(TAG, "notify_file_changed: '%s' updated in place via image registry",
                      path);
+            return;
+        }
+    }
+
+    // Stage 85 — second fast path: if the overwritten file is the
+    // target of an active WidgetRef (an OpenDeck per-key stub, or the
+    // chrome's `page` body), rebuild *just that ref's* subtree from the
+    // fresh file instead of reloading the whole screen. This is both far
+    // cheaper (one cell, not the entire chrome) and — crucially —
+    // non-destructive: a full screens_load() re-decodes the screen file
+    // from the registry and discards any prior change_widget_ref() page
+    // switch, which would revert the display back to its default body.
+    // Rebuilding the ref in place keeps the current page and repaints
+    // only what changed. Holds the LVGL lock since it mutates the tree.
+    {
+        lvgl_port_lock(0);
+        size_t rebuilt = widget_refs_rebuild_by_path(path);
+        lvgl_port_unlock();
+        if (rebuilt) {
+            ESP_LOGI(TAG, "notify_file_changed: '%s' rebuilt %u widget_ref(s) in place",
+                     path, (unsigned)rebuilt);
             return;
         }
     }
@@ -614,41 +735,69 @@ static void notify_file_changed_impl(const char *path)
     // re-running screens_load() rebuilds the LVGL tree against the
     // now-updated on-disk files (images mmap fresh; widget refs read
     // fresh).
+    //
+    // Stage 85: coalesce. A burst of stub writes each land here; rather
+    // than rebuild once per file, schedule a single deferred reload
+    // that picks up the final on-disk state. This keeps the LVGL task
+    // from starving the FileClose handler / event_consume poll during a
+    // profile switch's flurry of set_image calls.
     if (g_current_path.empty()) return;
-    // Defensive copy because screens_load() may eventually mutate
-    // g_current_path under the lock.
-    std::string p = g_current_path;
-    screens_load(p.c_str());
+    request_active_reload();
+}
+
+// Stage 85 — de-duplicated in-place rebuild queue.
+//
+// Every FileClose that overwrites an asset / WidgetRef stub schedules
+// an in-place update on the LVGL task. A profile switch rewrites dozens
+// of files back-to-back (e.g. 18 OpenDeck per-key stubs plus their
+// image bins). The throttling that keeps such a burst from monopolising
+// the LVGL port lock lives in the shared lv_throttled_post() utility
+// (see lv_throttled.h) — it drains a few items per timer slice so the
+// FileClose handler's screens_prepare_file_overwrite lock take always
+// gets a window. Here we add the screens-specific concern on top: a
+// per-path de-dup so repeated writes to the same file collapse into a
+// single rebuild that reads the final on-disk bytes (which also removes
+// the ordering race that previously lost a late stub write). The set is
+// touched only on the LVGL task / under the port lock, so it needs no
+// separate mutex.
+static std::set<std::string> s_queued_paths;
+
+static void enqueue_changed_path(std::string path)
+{
+    if (path.empty()) return;
+    // De-dup: a path already queued will rebuild from the latest on-disk
+    // bytes when its slice runs, so a second write before then is a
+    // no-op.
+    if (!s_queued_paths.insert(path).second) return;
+    lv_throttled_post([path]() {
+        // Erase BEFORE running so a write arriving during this rebuild
+        // re-queues and rebuilds again (rather than being dropped).
+        s_queued_paths.erase(path);
+        int64_t t0 = esp_timer_get_time();
+        notify_file_changed_impl(path.c_str());
+        int64_t dt_us = esp_timer_get_time() - t0;
+        if (dt_us >= 100000) {
+            ESP_LOGW(TAG, "notify_file_changed: '%s' rebuild took %lldms",
+                     path.c_str(), dt_us / 1000);
+        }
+    });
 }
 
 void screens_notify_file_changed(const char *path)
 {
     if (!path || !*path) return;
 
-    // Defer the actual work onto the LVGL task via lv_async_call. The
-    // caller is the host_api dispatch task (inside the FileClose
-    // handler); doing the reload here inline would (a) block that task
-    // for the duration of a full screen rebuild — during which it can't
-    // service event_consume, so every ESP_LOGD the rebuild emits piles
-    // up undelivered in the Stage 64.1 log queue and is lost if the
-    // device reboots mid-rebuild — and (b) mutate the LVGL widget tree
-    // from a non-LVGL task. Running on the LVGL task fixes both. The
-    // FileClose handler returns RESULT_OK immediately; the visual
-    // update lands a frame later. lv_async_call dispatches in FIFO
-    // order, so back-to-back uploads still reload in upload order.
-    char *path_copy = strdup(path);
-    if (!path_copy) {
-        ESP_LOGE(TAG, "notify_file_changed: OOM duplicating '%s'", path);
-        return;
-    }
-    if (lv_async_call(
-            [](void *p) {
-                char *pp = static_cast<char *>(p);
-                notify_file_changed_impl(pp);
-                free(pp);
-            },
-            path_copy) != LV_RESULT_OK) {
-        ESP_LOGE(TAG, "notify_file_changed: lv_async_call failed for '%s'", path);
-        free(path_copy);
-    }
+    // Hop onto the LVGL task's serialization domain: the caller is the
+    // host_api dispatch task (inside the FileClose handler). We take the
+    // LVGL port lock only to enqueue (a cheap set-insert + maybe arming
+    // the throttle timer); the actual widget-tree mutation runs later,
+    // throttled, on the LVGL task via lv_throttled_post. This keeps the
+    // FileClose handler from (a) blocking on a full rebuild — so it
+    // stays free to service event_consume and drain the Stage 64.1 log
+    // tunnel — and (b) mutating the LVGL tree from a non-LVGL task. The
+    // brief lock take is safe from contention because the throttle
+    // guarantees the LVGL task never holds the lock for long.
+    lvgl_port_lock(0);
+    enqueue_changed_path(path);
+    lvgl_port_unlock();
 }
