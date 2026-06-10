@@ -5,6 +5,4 @@
 [submodule "tools/OpenDeck"]
 	path = tools/OpenDeck
 	url = https://github.com/nekename/OpenDeck.git
-[submodule "tools/reference/opendeck-akp153"]
-	path = tools/reference/opendeck-akp153
-	url = https://github.com/4ndv/opendeck-akp153.git
+
