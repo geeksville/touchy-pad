@@ -1,12 +1,5 @@
 # TODO
 
-## Alpha 4
-A quick 'hot fix' to make opendeck UI much faster (by caching images on the device).  Also makes initial
-OpenDeck screen build 100% reliable and super fast.
-
-* [x] make opendeck much faster by storing images via hashed names. thus allowing quick button switching by just swapping WidgetRefs
-* [x] rust logs in opendeck are not seeing device log messages
-
 ## Alpha 5
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
@@ -14,12 +7,11 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] properly warn user if selected gif/file is too large to use (based on ram size)
 * [ ] support no-touch devices
 * [ ] add photo of the small board
+* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
+* [ ] home assistant?
+* [ ] make a registry of user uploaded uscr widgets.  allow mix/match even on same screen.  let user pair python handler code with device GUI.  Make a few examples (steam? perfmon?).   
 * [ ] add some of the example JSON to the API docs
-* [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
-* [ ] Support a few more board types
 * [ ] Give user friendly error msg if firmware or py code is too old
-* [ ] support eink displays in my test devices drawer
-* [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/
 * [x] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
 * [ ] use gestures for left/right screen switching instead of buttons at top.
@@ -30,12 +22,13 @@ Main new features? Much easier scripting than through StreamController - allow a
 
 # Alpha n
 
-* [ ] home assistant?
-* [ ] make a registry of uploaded uscr files.  
-* [ ] Extend those uscrs with triggers of "show when app X is in foreground".  Adopt that as the standard 'better than streamdeck' replacement.  so people can make screens with guis that do interesting things for any foreground app.
 * [ ] make a 'builder' to help users with making new uscrs - walk them through running apps, icon selection etc...
+* [ ] Extend those uscrs with triggers of "show when app X is in foreground".  Adopt that as the standard 'better than streamdeck' replacement.  so people can make screens with guis that do interesting things for any foreground app.
+* [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
+* [ ] Support a few more board types
+* [ ] support eink displays in my test devices drawer
+* [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/
 * [ ] Stylus support for 'paintbrush mode'
-* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] expose device API via wifi/tcp (for arbitary smart signage applications).   Find a good esp32 lib for wifi settings/management/firmware update?
 * [ ] Haptics (figure out best way to mount haptics for best effect)
 * [ ] tactile precut sticker/3d printable case for screen overlay?
@@ -119,6 +112,13 @@ I'm going to be out of town for a couple of weeks so I wanted to push out a new 
 * [x] Allow setting a persistent device pref for 'min-log-level' logs with lower pri than this will not be queued for the host, just drop em.  default threshold is ERROR. Update python cli to add a "set-log-level FOO" cmd.  Also add a "boot-delay" param, to cause a sleep early on - to allow time for debug logging connection establishment. (Stage 82: `touchy pref log-level` / `pref boot-delay`.)
 * [x] add an animation to demo/test.pb https://lvgl.io/docs/open/9.5/main-modules/animation.html 
 * [x] Increase CPU, FLASH and RAM speeds to the max.  Currently the firmware picks slow/safe defaults
+
+## Alpha 4
+A quick 'hot fix' to make opendeck UI much faster (by caching images on the device).  Also makes initial
+OpenDeck screen build 100% reliable and super fast.
+
+* [x] make opendeck much faster by storing images via hashed names. thus allowing quick button switching by just swapping WidgetRefs
+* [x] rust logs in opendeck are not seeing device log messages
 
 # Rejected ideas
 
