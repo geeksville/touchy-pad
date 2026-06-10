@@ -313,7 +313,7 @@ pub enum PollItem {
 pub fn dispatch_log_record(rec: &LogRecord) {
 	let level = match LogPriority::try_from(rec.priority).unwrap_or(LogPriority::Trace) {
 		LogPriority::Trace => log::Level::Trace,
-		LogPriority::Debug => log::Level::Debug,
+		LogPriority::Debug => log::Level::Info, // We show device Debug logs at INFO level to make for easier logging
 		LogPriority::Info => log::Level::Info,
 		LogPriority::Warn => log::Level::Warn,
 		LogPriority::Error => log::Level::Error,

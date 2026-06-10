@@ -690,6 +690,8 @@ opendeck-run: opendeck-build-debug
         _name=$(basename "$_d")
         [ -e "/dev/$_name" ] || sudo ln -sf "$_d" "/dev/$_name" 2>/dev/null || true
     done
+    # We want verbose logging from our plugin
+    # export TOUCHY_LOG=debug
     exec dbus-run-session -- deno task tauri dev
 
 # Configure opendeck to use my 'live' dev build of the
