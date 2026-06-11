@@ -9,8 +9,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] add photo of the small board
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] home assistant?
-* [ ] make a registry of user uploaded uscr widgets.  allow mix/match even on same screen.  let user pair python handler code with device GUI.  Make a few examples (steam? perfmon?).   
-* [ ] add some of the example JSON to the API docs
+* [ ] [user widgets](user-widgets.md)
 * [ ] Give user friendly error msg if firmware or py code is too old
 * [x] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
@@ -23,7 +22,6 @@ Main new features? Much easier scripting than through StreamController - allow a
 # Alpha n
 
 * [ ] make a 'builder' to help users with making new uscrs - walk them through running apps, icon selection etc...
-* [ ] Extend those uscrs with triggers of "show when app X is in foreground".  Adopt that as the standard 'better than streamdeck' replacement.  so people can make screens with guis that do interesting things for any foreground app.
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
 * [ ] Support a few more board types
 * [ ] support eink displays in my test devices drawer
