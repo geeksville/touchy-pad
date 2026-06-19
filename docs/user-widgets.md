@@ -16,8 +16,8 @@ Adopt that as the standard 'better than streamdeck' replacement.  so people can 
 ## ai copypasta
 
 ### ksystemstats vs plasmoid
-hmm... musings here... probaby no plasmoids at first - ksystemstats dbus queries instead
-https://gemini.google.com/share/c4d0849a6b4c
+hmm... musings here... probaby no plasmoids at first - ksystemstats dbus queries instead. QQuickRenderControl looks awesome to allow a qt6 api for writing to touchies. see here
+https://gemini.google.com/share/091d654412c4 
 
 possibly render kde plasmoids https://store.kde.org/browse?cat=705&tag=plasmoid
 https://userbase.kde.org/Plasma/Plasmoids 
