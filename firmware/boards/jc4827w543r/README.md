@@ -52,6 +52,5 @@ Add a new board target `jc4827w543r` that reuses the existing NV3041A QSPI displ
 
 ### Notes for the reviewer:
 
-- `display.cpp`, `nv3041a.c`, and `nv3041a.h` are **identical copies** from `jc4827w543`. You may prefer to share them via symlink or a common path rather than duplicating.
 - `touch_init()` uses `swap_xy=0`, `mirror_x=0`, `mirror_y=0`. These were **not calibrated** — they may need tuning depending on orientation.
 - `board_get_i2c_bus()` returns `nullptr` since there is no I2C bus on this variant.
