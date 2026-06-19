@@ -85,6 +85,7 @@ jobs:
       matrix:
         board:
           - jc4827w543
+          - jc4827w543r
           - waveshare_s3_lcd_7b
           - esp32_2432s028rv3
           - elecrow_p4_lcd_7

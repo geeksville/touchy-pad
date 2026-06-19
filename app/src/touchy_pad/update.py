@@ -53,6 +53,7 @@ ESP_BOOTLOADER_PID = 0x1001
 # adding a new board.
 SUPPORTED_BOARDS: tuple[str, ...] = (
     "jc4827w543",
+    "jc4827w543r",
     "waveshare_s3_lcd_7b",
 )
 

@@ -145,6 +145,7 @@ However, in some of my other open-source projects, I've seen the current hell PR
 
 ## Credits/Thanks
 
+* [@chmouel](https://github.com/chmouel) added support for the resistive touchscreen variant of the jc4827w543 board.
 * [@ckirmse](https://github.com/ckirmse) added support for elecrow_p4_lcd_7 (ESP32-P4, MIPI-DSI 1024x600) and elecrow_s3_lcd_7 / elecrow_s3_lcd_7_adv (ESP32-S3 7", 800x480 RGB) devices.  Chris also added support for the SQUiXL by Unexpected Maker.
 * ESP-IDF LVGL didn't have an NV3041A driver, so I (with the help of my AI buddy) cribbed a lot from [Arduino_GFX](https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_NV3041A.cpp) - huge thanks to [@moononournation](https://github.com/moononournation)(?) for writing it.
 * Thank you to [Shyo Holguin Campos](mailto:shyo.holguin.campos@gmail.com) who made [the](https://www.figma.com/community/file/1508554010771921982) [CCBY04](https://creativecommons.org/licenses/by/4.0/) licensed [icon](https://www.figma.com/design/xVSEw1CnaRCy6pqe41ghYD/135-Free-Cute-Colored-Icons--Community-?node-id=2002-339&t=jaNuJU0GHwZkVNAI-4) we repurposed as the [touchy-icon](docs/images/touchy-300.png).

@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Board-specific deps for JC4827W543R 4.3-inch ESP32-S3 board.
+dependencies:
+  # XPT2046 resistive touch driver.
+  atanisoft/esp_lcd_touch_xpt2046: "^1.0.6"
