@@ -13,6 +13,8 @@ Adopt that as the standard 'better than streamdeck' replacement.  so people can 
 * Extend those uscrs with triggers of "show when app X is in foreground".  
 * add some of the example JSON to the API docs
 
+* Possibly esphome yaml https://esphome.io/components/lvgl/
+
 ## ai copypasta
 
 ### ksystemstats vs plasmoid

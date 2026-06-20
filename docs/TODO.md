@@ -19,6 +19,16 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] Implement multitouch HID to support multitouch native apps
 * [ ] explain plans w.r.t. 3d printing and knobs on the screen
 
+* write a hackster.io article for buzz.  Reference old Meshtastic article.
+* Post here https://www.reddit.com/r/esp32/s/iZCxTSsmLl
+
+* work with eink https://community.home-assistant.io/t/tesserae-open-source-self-hosted-dashboard-companion-for-e-ink-panels/1013540?fbclid=IwdGRjcAScseZjbGNrBJyxrWV4dG4DYWVtAjExAHNydGMGYXBwX2lkDDM1MDY4NTUzMTcyOAABHpakuwZfLZ2RwRC5fJk_xDqFcN2nU98BQOvznjnu5C55IZdUJ5a1OdIt7CkG_aem_-4f8uimClvcVhU0N7MeGvA 
+https://github.com/dmellok/tesserae 
+probaby via BYOS protocol https://help.trmnl.com/en/articles/9510536-private-plugins
+
+Great thread https://www.reddit.com/r/homeassistant/s/wl02ow67MK
+https://www.reddit.com/r/RockchipNPU/comments/1g3cetq/fast_and_accurate_speechtotext_on_rk3588_with/?share_id=5YA3sA8R8K1hXxF8YJaFh 
+
 # Alpha n
 
 * [ ] make a 'builder' to help users with making new uscrs - walk them through running apps, icon selection etc...

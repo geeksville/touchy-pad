@@ -11,8 +11,8 @@ top-to-bottom) is a Touchy ``image_button`` widget with id
 action slots both carry the host-code ``layout.HOST_CODE_BASE + k``.
 The two edges are distinguished on the host by ``LvEvent.code``:
 
-* ``1`` (``LV_EVENT_PRESSED``)  → key pressed,  ``state = True``
-* ``8`` (``LV_EVENT_RELEASED``) → key released, ``state = False``
+* ``LV_EVENT_PRESSED`` (1)   → key pressed,  ``state = True``
+* ``LV_EVENT_RELEASED`` (11) → key released, ``state = False``
 
 The base ``StreamDeck`` class polls :meth:`_read_control_states` from
 a daemon thread (~20 Hz by default) and diffs the returned per-key
@@ -52,21 +52,16 @@ else:
 if TYPE_CHECKING:
     from ..client import TouchyClient
 
+from .._proto import LvEventCode as _LvEventCode
 from ..usb_ids import PID as _TOUCHY_PID
 from ..usb_ids import VID as _TOUCHY_VID
 from . import layout as _layout
 
 _LOG = logging.getLogger(__name__)
 
-# LVGL event codes that flag press / release edges. Must stay in sync
-# with the firmware's `widget_attach_actions(..., LV_EVENT_PRESSED ...)`
-# / `LV_EVENT_RELEASED` / `LV_EVENT_PRESS_LOST` registrations in
-# `firmware/main/widget_builders.cpp`. Values come from the LVGL 9.x
-# `lv_event_code_t` enum in `lvgl/src/misc/lv_event.h` — keep aligned
-# with the firmware's actual emission, not with older LVGL 8 docs.
-_LV_EVENT_PRESSED = 1
-_LV_EVENT_PRESS_LOST = 3
-_LV_EVENT_RELEASED = 11
+_LV_EVENT_PRESSED = _LvEventCode.LV_EVENT_PRESSED
+_LV_EVENT_PRESS_LOST = _LvEventCode.LV_EVENT_PRESS_LOST
+_LV_EVENT_RELEASED = _LvEventCode.LV_EVENT_RELEASED
 
 
 class _FakeTransportDevice:

@@ -21,6 +21,11 @@ https://github.com/AaronLiddiment/LEDText/wiki
 https://docs.soldered.com/ws2812b/how-it-works/ 
 https://github.com/fastled/fastled#-documentation--support
 
+What about if I use this device over USB instead of esp32s3?  Can I hook it to my rpi and still take advantage of the built in vad?
+Possibly this version reSpeaker USB 4-Mic Array XVF3000 v3.0 | Seeed Studio Wiki https://share.google/SmlZbrjco82vemvfg
+Best mic module https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/ has esp32s3 
+Orangepi info https://www.reddit.com/r/SBCs/s/LBz8vA3nx5
+
 ## lightbar
 
 * Update: ESP32-P4 is an even better processor choice
