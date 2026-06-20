@@ -2,7 +2,7 @@
 
 Open-source multitouch USB touchpad / button matrix with a built-in
 customisable LCD (ESP32-S3 and ESP32-P4; boards: jc4827w543, waveshare_s3_lcd_7b,
-elecrow_s3_lcd_7, elecrow_s3_lcd_7_adv, elecrow_p4_lcd_7, squixl).
+elecrow_s3_lcd_7, elecrow_s3_lcd_7_adv, elecrow_p4_lcd_7, squixl, matouch_43).
 The host-side companion is a Python package (`touchy-pad`) that ships a
 CLI (`touchy`), a high-level API, a Tkinter/PySide6 device simulator, and
 a StreamDeck-compatibility shim (`TouchyDeck`).
@@ -261,7 +261,7 @@ touches `usb.core.find()` must guard against `NoBackendError`
 ## Hardware
 - Display + touch panel ride a shared I²C-ish interface (board-specific);
   see `firmware/boards/<board>/`. GT911 multitouch on jc4827w543 /
-  waveshare / elecrow / squixl. The squixl board uses an LCA9555 16-bit IO expander
+  waveshare / elecrow / squixl / matouch_43. The squixl board uses an LCA9555 16-bit IO expander
   (I2C 0x20) for LCD reset, backlight enable, GT911 touch reset, and a
   bit-banged 9-bit SPI init bus for the ST7701S panel controller; the
   expander driver lives in `firmware/boards/squixl/board/lca9555.{h,cpp}`. The CYD boards (`esp32_2432s028rv3` 2.8" ST7789,

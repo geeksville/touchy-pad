@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Board-specific deps for MakerFabs MaTouch 4.3".
+dependencies:
+  # GT911 capacitive multi-touch driver (esp_lcd_touch wrapper).
+  espressif/esp_lcd_touch_gt911: "^1.2.0"

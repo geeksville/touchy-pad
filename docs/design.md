@@ -45,7 +45,7 @@ Create a python app based on the following:
 * create in "app" directory, call the pypi package "touchy-pad", call the executable wrapper "touchy"
 * poetry build system, using best practices for directory layout, test harness, ready to be published to pypi etc...
 * update .devcontainer with required tools for building/running python/poetry/pip
-* include github ci actions to build the python app 
+* include github ci actions to build the python app
 * use a popular python library for python wrappers to talk using our touchy.proto to the USB device
 * structure the app where most of the functionality is available as an API library, the command line "touchy" app just just uses that API library to do its work
 * Implement "touchy getversion" - have it send a get version protobuf to the device and print the response.  I'll have you reuse most of this code in the future to implement other commands.
@@ -489,8 +489,8 @@ I'd like you to come up with a fairly general/protobuf driven abstraction so tha
 Add a few widgets to the protobufs so that users can optionally include the following widgets in their layouts:
 * FPS - just shows the current display update FPS (for profiling)
 
-Make new subtype of Action: "ActionDevice" is analogous to the ActionHost actions, but it is for special code we want run on the device itself when that action occurs.  
-The first subtype of ActionDevice is ActionSwitchScreen - it has a nested enum for Behavior (BY_NAME=0 NEXT, PREVIOUS).  Since BY_NAME is the default value, also have a name string field which will be used as the base filename (relative to /from_host/screens/NAME.pb). 
+Make new subtype of Action: "ActionDevice" is analogous to the ActionHost actions, but it is for special code we want run on the device itself when that action occurs.
+The first subtype of ActionDevice is ActionSwitchScreen - it has a nested enum for Behavior (BY_NAME=0 NEXT, PREVIOUS).  Since BY_NAME is the default value, also have a name string field which will be used as the base filename (relative to /from_host/screens/NAME.pb).
 
 My attaching an ActionSwitchScreen to a button (with text labels like "Next" and "Previous") the demo can be enhanced.
 
@@ -502,7 +502,7 @@ My attaching an ActionSwitchScreen to a button (with text labels like "Next" and
 ## Stage 24.1: add layers (DONE)
 
 * Add the concepts of Layers to the protobuf and code.  per https://lvgl.io/docs/open/main-modules/display/screen_layers (AI, you should read this page to learn)
-* In particular: 
+* In particular:
   * Move layout and widgets from Screen into this new message Layer
   * The Screen protobuf should now contain four separate Layers: Active, Top, System, Bottom.  The default layer for code usage is "Active".  Change existing code that is populating widgets/setting layouts to use that layer
 
@@ -624,7 +624,7 @@ The API described by that package is fairly [simple](https://python-elgato-strea
 
 ## Stage 50.1 Reverse engineer a real StreamDeck device using the existing library
 
-Make a new mini project in a new "reverse-engineering" sub directory.  It should contain a minimal poetry build based on the examples https://python-elgato-streamdeck.readthedocs.io/en/stable/examples/deckinfo.html and https://python-elgato-streamdeck.readthedocs.io/en/stable/examples/basic.html.  
+Make a new mini project in a new "reverse-engineering" sub directory.  It should contain a minimal poetry build based on the examples https://python-elgato-streamdeck.readthedocs.io/en/stable/examples/deckinfo.html and https://python-elgato-streamdeck.readthedocs.io/en/stable/examples/basic.html.
 
 This project should do a whole series of operations as documented in that API, but focus on outputting logging data that you will later refer to when implementing the version for our device.  In particular our device will be quite similar to this: https://python-elgato-streamdeck.readthedocs.io/en/stable/modules/devices.html#module-StreamDeck.Devices.StreamDeckOriginal
 
@@ -894,10 +894,10 @@ after upgrade, exactly as for prior wire-format bumps.
 
 ## Stage 57: Change ActionSwitchScreen to ActionChangeWidgetRef (DONE)
 
-Now that we have WidgetRefs we can be smarter about the idea of Screens and sublayouts.  
+Now that we have WidgetRefs we can be smarter about the idea of Screens and sublayouts.
 
-* Change ActionSwitchScreen into ActionChangeWidgetRef.  It should also have a "target_id" which is the id of the WidgetRef it is going to change.  The path inside this action will always be used.  
-If by_name we it should be a full path to a widget pb file.  
+* Change ActionSwitchScreen into ActionChangeWidgetRef.  It should also have a "target_id" which is the id of the WidgetRef it is going to change.  The path inside this action will always be used.
+If by_name we it should be a full path to a widget pb file.
 If next/prev it should be the DIRECTORY name where we look for the next/previous widget file (vs the current value of the targeted widget ref).  If the current widget ref value is not found in that directory just pick the first file in that dir.  Otherwise print a warning to the console
 * Changes made to WidgetRefs by this feature DO NOT GET SAVED BACK TO FS - just change the in-ram state as needed
 
@@ -1008,8 +1008,8 @@ I'm a complete noob at Rust, please be extra clear in the plan so that we can di
 * Make a new Rust API library (for eventual use in our rust based 'opendeck' plugin device in stage 62).
 * Refer to docs/python-api for inspiration but use idiomatic rust styles/documentation standards/directory paths.  Feel free to change API as needed to make it more 'rust like'.  In particular the threading/notification model for reading host-event messages from the device may be different.
 * Note: the python api library included a 'dsl' for building screens etc and the ability to pass in JSON for screen/widget files.  I don't think either of those were a great idea.  Instead have the API be smaller with the user passing in built up protobufs (using a standard rust protobuf library)
-* Use the 'standard'/conventional rust build steps to generate protobuf glue based on our /proto files.  
-* Also note: the protobuf files include the PID/VID you need for your USB device enumeration for your 'find touchpads' operation. 
+* Use the 'standard'/conventional rust build steps to generate protobuf glue based on our /proto files.
+* Also note: the protobuf files include the PID/VID you need for your USB device enumeration for your 'find touchpads' operation.
 * Implement standard rust documentation generation for the library
 * Configure the build for the rust API so that it can eventually go on standard rust library repo servers (whatever those are?)
 * Include test cases (kinda analogous to the Touchydeck )
@@ -1950,7 +1950,7 @@ Though we still want to include support (for some boards) for using our custom U
 * Use the same 'wire encoding' we used in stage 63 for our TCP based simulator protocol link.  Try to share code.  i.e. on the python/rust side a new sibling class to TCPTransport (which shares much of the code via a common baseclass)
 * If the python CLI tool doesn't already have a --port /dev/foo/blah option add one.  If that option is set that tells the API library to use the 'serial' transport via the specified 'uart like' device.  No need to do any other hw probing in this case.
 * Add a build kconfig flag to our ESP-IDF firmware TOUCHY_PROTO_OVER_SERIAL.
-If set, include appropriate device side code to do this. 
+If set, include appropriate device side code to do this.
 * To facilitate testing this on the jc4827w543 board (and only that board) set this new flag and CONFIG_TINYUSB_CDC_ENABLED (so that we can temporarily use that board for testing the feature - I'll turn these flag off later)
 
 ### Plan (subject to revision)
@@ -2213,7 +2213,7 @@ See [here](hardware.md) for specs.  Somethings to note about this board:
 * Initially, run the app debug output on that UART but once we've debugged the basics, I'm going to ask you to move our prioritary protobuf based protocol to be on that port instead (same wire encoding as we used for our TCP link to the simulator)
 * The touchscreen is resistive and has no multitouch.  To support this (and anticipate boards of the future):
   * make a platform.h/.cpp class in the main code.   Boards will instantiate their own correct subclass which callers can access by platform_get().
-  * Add a is_multitouch() method or property to that class.  The prior boards will return true, this ESP32-2432S028R board will return false.  Have our sim trackpad class check for that property and only try to do multitouch (or anything needing more than 'left' press/drag) on the older boards. 
+  * Add a is_multitouch() method or property to that class.  The prior boards will return true, this ESP32-2432S028R board will return false.  Have our sim trackpad class check for that property and only try to do multitouch (or anything needing more than 'left' press/drag) on the older boards.
   * Add a has_usb() method that indicates that this board has direct USB port access to the host.  The old boards do, this CYD2USB does not.
 
 ### Plan (subject to revision)
@@ -4332,14 +4332,52 @@ concurrency/perf bugs once the gross failures above were cleared:
    one-upload-per-distinct-image guarantee *and* preserves the press
    state machine — fixing both the lost-keyUp and the missing-key bugs.
 
+## Stage 87: MakerFabs MaTouch 4.3" board support ✅
+
+**Goal.** Add a `matouch_43` board target for the MakerFabs MaTouch 4.3"
+(ESP32-S3-WROOM-1-N16R8, 800×480 RGB-16-bit parallel display, GT911
+multitouch). The board has native USB (GPIO19/20 are free), 16 MB flash,
+8 MB octal PSRAM.
+
+### Files added
+
+* `firmware/boards/matouch_43/target` — `esp32s3`
+* `firmware/boards/matouch_43/sdkconfig.defaults` — 16 MB flash, 8 MB
+  octal PSRAM; no `CONFIG_TOUCHY_PROTO_OVER_SERIAL` (native USB available)
+* `firmware/boards/matouch_43/board/board_pins.h` — all pin and timing
+  constants (PCLK=GPIO42, HSYNC=39, VSYNC=41, DE=NC, 16 data GPIOs,
+  backlight=GPIO44, I2C SDA=17/SCL=18, touch RST=GPIO38)
+* `firmware/boards/matouch_43/board/board.cpp` — configures GPIO44
+  backlight, initialises I2C_NUM_1 for GT911; `platform_get()` returns
+  `{is_multitouch=true, has_usb=true}`
+* `firmware/boards/matouch_43/board/display.cpp` — RGB panel via
+  `esp_lcd_new_rgb_panel`; no colour inversion; LVGL via
+  `lvgl_port_add_disp_rgb` with `bb_mode=true`
+* `firmware/boards/matouch_43/board/touch.cpp` — GT911 via I2C + LVGL;
+  passes `rst_gpio_num=GPIO38` directly to the driver (no IO expander)
+* `firmware/boards/matouch_43/board/CMakeLists.txt` + `idf_component.yml`
+  (`espressif/esp_lcd_touch_gt911: "^1.2.0"`)
+
+### Key design notes
+
+* Simpler than `elecrow_s3_lcd_7`: no IO expander, no variant detection,
+  no LEDC. Backlight is a plain `gpio_set_level` on GPIO44.
+* GT911 RST (GPIO38) is passed to the `esp_lcd_touch` driver directly,
+  which handles the reset pulse internally — no separate reset sequence
+  in `board_init()`.
+* Display timing: PCLK 16 MHz; HBP=8, HFP=8, HPW=4; VBP=8, VFP=8,
+  VPW=4; `pclk_active_neg=0` (rising edge). DE pin not connected.
+* `idf_component.yml` pins `esp_lcd_touch_gt911` to `^1.2.0` (the
+  version in the project's managed-components cache at time of writing).
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:
 
 FreeTouchDeck - code seems a bit yucky and limited to just a button array, possibly not reuse...
-* Does the button portion already?  semi abandoned?  https://github.com/DustinWatts/FreeTouchDeck https://hackaday.io/project/175827/instructions 
-* Newer platformio version of that project: https://github.com/dejavu1987/FreeTouchDeck 
-* This old abandoned helper app: https://github.com/DustinWatts/FreeTouchDeck-Helper 
+* Does the button portion already?  semi abandoned?  https://github.com/DustinWatts/FreeTouchDeck https://hackaday.io/project/175827/instructions
+* Newer platformio version of that project: https://github.com/dejavu1987/FreeTouchDeck
+* This old abandoned helper app: https://github.com/DustinWatts/FreeTouchDeck-Helper
 
 BLE mouse platform IO lib
 https://registry.platformio.org/libraries/hijelhub/HijelHID_BLEMouse
