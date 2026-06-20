@@ -100,6 +100,11 @@ RUN curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/deve
 RUN usermod -a -G dialout ${USERNAME}
 RUN usermod -a -G plugdev ${USERNAME}
 
+## Install yq (YAML/JSON processor) from GitHub releases
+RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+      -o /usr/local/bin/yq \
+ && chmod +x /usr/local/bin/yq
+
 ARG FEDORA_COMPAT=0
 ### Set up compatibility with Fedora host (if needed)
 ### Since Fedora uses `18` as the group for dialout, we need to add it to the container
