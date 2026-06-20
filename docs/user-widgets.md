@@ -13,11 +13,13 @@ Adopt that as the standard 'better than streamdeck' replacement.  so people can 
 * Extend those uscrs with triggers of "show when app X is in foreground".  
 * add some of the example JSON to the API docs
 
-* Possibly esphome yaml https://esphome.io/components/lvgl/
+* Possibly esphome yaml https://esphome.io/components/lvgl/ and https://esphome.io/components/image/#display-image 
 
 ## ai copypasta
+misc notes on ideas...
 
 ### ksystemstats vs plasmoid
+
 hmm... musings here... probaby no plasmoids at first - ksystemstats dbus queries instead. QQuickRenderControl looks awesome to allow a qt6 api for writing to touchies. see here
 https://gemini.google.com/share/091d654412c4 
 

@@ -767,14 +767,19 @@ def screens_demo(ctx: click.Context, as_json: bool) -> None:
     from .paths import DEFAULT_SCREEN_PATH
 
     if as_json:
+        import tempfile
+
         from google.protobuf import json_format
 
+        tmpdir = Path(tempfile.mkdtemp(prefix="touchy-screens-"))
         screen_msg = build_default_screen()
-        click.echo(f"// screen: {screen_msg.name}")
-        click.echo(json_format.MessageToJson(screen_msg.to_proto(), indent=2))
+        p = tmpdir / f"{screen_msg.name}.json"
+        p.write_text(json_format.MessageToJson(screen_msg.to_proto(), indent=2))
+        click.echo(str(p))
         for name, w in build_user_pages():
-            click.echo(f"// page: {name}")
-            click.echo(json_format.MessageToJson(w, indent=2))
+            p = tmpdir / f"{name}.json"
+            p.write_text(json_format.MessageToJson(w, indent=2))
+            click.echo(str(p))
         return
 
     smiley = make_smiley_png()
