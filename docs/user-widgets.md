@@ -2,7 +2,6 @@
 
 Adopt that as the standard 'better than streamdeck' replacement.  so people can make screens with guis that do interesting things for any foreground app. 
 
-* toml/json?
 * app triggers - skip in layout when indicated app is not foreground
 * allow multiple per uscr.  allow multiple uscrs
 * python callbacks for behaviors / datasources
@@ -14,6 +13,53 @@ Adopt that as the standard 'better than streamdeck' replacement.  so people can 
 * add some of the example JSON to the API docs
 
 * Possibly esphome yaml https://esphome.io/components/lvgl/ and https://esphome.io/components/image/#display-image 
+
+## dynamic rendering
+
+* extend device platform info to include a temp_is_flash bool.  Most devices should have that as false.  But on devices without PSRAM they should set that flag true.
+* make the image() and image_button() functions so that "asset" paramter can be a PIL Image object instead of just a string.
+* put the file in T:images/N.bin. Where N is a unique number starting at 1 for each new run of the API client.  Device/simulator should usually map T: ('temp') to a ramdisk or (for devices that only have tiny ramdisks) F:tmp/FOO.
+* fixme: somehow have it also accept a generator that can be used to make new images either periodically or on demand.  What is a clean pythonic api for this?  Ideally the 'on demand' api would be used (by adding a timer instance) to implement the 'peroidic updated' api.
+* if we generate a new image rewrite the file on device, which will implicitly force a redraw of that component
+
+### example of how existing usage works
+```python
+        image_button(
+            "smile",
+            asset="F:host/images/smiley.png",
+            on_click=host_action(on_event=lambda e: logger.info("[smile]  widget=%r", e.user_data)),
+        )
+```
+
+### example of using pillow for rendering text strings with rounded rect:
+```python
+from PIL import Image, ImageDraw
+
+img = Image.new('RGB', (200, 100), color='black')
+draw = ImageDraw.Draw(img)
+
+# A one-liner, as the coding gods intended.
+draw.rounded_rectangle([10, 10, 190, 90], radius=15, fill='blue')
+draw.text((65, 45), "hello world", fill='white')
+
+# img.show() or img.save() to prove it happened
+```
+
+### example of using weasyprint to render HTML as a pixel buf
+Someday we might want to support this
+
+```python
+from weasyprint import HTML
+import io
+from PIL import Image
+
+# Render HTML string directly to PNG bytes in memory
+png_bytes = HTML(string="<h1>Hello <span style='color:blue;'>World</span></h1>").write_png()
+
+# Load those bytes into a Pillow image
+img = Image.open(io.BytesIO(png_bytes))
+img.show()
+```
 
 ## ai copypasta
 misc notes on ideas...
