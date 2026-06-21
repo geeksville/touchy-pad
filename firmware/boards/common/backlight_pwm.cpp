@@ -14,7 +14,7 @@
 // ---- Defaults (overridable per board in board_pins.h) ---------------------
 
 #ifndef BACKLIGHT_MIN_PWM
-#define BACKLIGHT_MIN_PWM 64
+#define BACKLIGHT_MIN_PWM 16
 #endif
 #ifndef BACKLIGHT_PWM_BITS
 #define BACKLIGHT_PWM_BITS 12

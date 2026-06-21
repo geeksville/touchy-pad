@@ -40,7 +40,7 @@
 #define BOARD_BL_GPIO          BOARD_BK_PWM_GPIO
 #define BACKLIGHT_PWM_BITS     11
 #define BACKLIGHT_PWM_FREQ     BOARD_BK_PWM_FREQ
-#define BACKLIGHT_MIN_PWM      16
+#define BACKLIGHT_MIN_PWM      8
 #define BACKLIGHT_LEDC_CLK     LEDC_USE_PLL_DIV_CLK
 
 // ----- ESP32-C6 WiFi companion -----
