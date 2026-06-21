@@ -8,14 +8,10 @@ import pytest
 
 from touchy_pad import _proto
 from touchy_pad.api import (
-    ANIM_PATH_EASE_IN_OUT,
-    ANIM_PATH_LINEAR,
-    PART_KNOB,
-    PROP_BG_COLOR,
-    PROP_IMAGE_RECOLOR_OPA,
-    PROP_TRANSFORM_WIDTH,
-    STATE_PRESSED,
+    AnimPath,
+    LvState,
     Screen,
+    StyleProp,
     arc,
     build_default_screen,
     build_demo,
@@ -152,12 +148,12 @@ def test_style_for_state_round_trip():
     s = Screen("x")
     s += button(
         "go",
-        style=style(bg_color=0x1E90FF, for_state=STATE_PRESSED),
+        style=style(bg_color=0x1E90FF, for_state=LvState.LV_STATE_PRESSED),
     )
     decoded = _proto.Screen.FromString(s.to_bytes())
-    assert _children(decoded.active)[0].styles[0].for_state == STATE_PRESSED
+    assert _children(decoded.active)[0].styles[0].for_state == LvState.LV_STATE_PRESSED
     # OR'ing state + part composes a valid selector.
-    selector = STATE_PRESSED | PART_KNOB
+    selector = LvState.LV_STATE_PRESSED | LvState.LV_PART_KNOB
     s2 = Screen("y")
     s2 += button("g2", style=style(bg_color=1, for_state=selector))
     decoded2 = _proto.Screen.FromString(s2.to_bytes())
@@ -171,7 +167,7 @@ def test_style_list_round_trip():
         "go",
         style=[
             style(bg_color=0x101010),
-            style(bg_color=0x1E90FF, for_state=STATE_PRESSED),
+            style(bg_color=0x1E90FF, for_state=LvState.LV_STATE_PRESSED),
         ],
     )
     decoded = _proto.Screen.FromString(s.to_bytes())
@@ -180,7 +176,7 @@ def test_style_list_round_trip():
     assert styles_[0].bg_color == 0x101010
     assert styles_[0].for_state == 0
     assert styles_[1].bg_color == 0x1E90FF
-    assert styles_[1].for_state == STATE_PRESSED
+    assert styles_[1].for_state == LvState.LV_STATE_PRESSED
 
 
 def test_default_screen_only_has_active_layer():
@@ -265,7 +261,7 @@ def test_style_recolor_and_transform_width_round_trip():
             recolor=0x123456,
             recolor_opa=76,
             transform_width=20,
-            for_state=STATE_PRESSED,
+            for_state=LvState.LV_STATE_PRESSED,
         ),
     )
     decoded = _proto.Screen.FromString(s.to_bytes())
@@ -273,7 +269,7 @@ def test_style_recolor_and_transform_width_round_trip():
     assert st.recolor == 0x123456
     assert st.recolor_opa == 76
     assert st.transform_width == 20
-    assert st.for_state == STATE_PRESSED
+    assert st.for_state == LvState.LV_STATE_PRESSED
 
 
 def test_style_recolor_opa_range_checked():
@@ -286,8 +282,8 @@ def test_style_recolor_opa_range_checked():
 def test_transition_round_trip():
     """Transition props/path/durations survive a serialize round-trip."""
     tr = transition(
-        props=[PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA],
-        path=ANIM_PATH_EASE_IN_OUT,
+        props=[StyleProp.STYLE_PROP_TRANSFORM_WIDTH, StyleProp.STYLE_PROP_IMAGE_RECOLOR_OPA],
+        path=AnimPath.ANIM_PATH_EASE_IN_OUT,
         duration_ms=250,
         delay_ms=50,
     )
@@ -296,8 +292,11 @@ def test_transition_round_trip():
     decoded = _proto.Screen.FromString(s.to_bytes())
     st = _children(decoded.active)[0].styles[0]
     assert st.HasField("transition")
-    assert list(st.transition.props) == [PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA]
-    assert st.transition.path == ANIM_PATH_EASE_IN_OUT
+    assert list(st.transition.props) == [
+        StyleProp.STYLE_PROP_TRANSFORM_WIDTH,
+        StyleProp.STYLE_PROP_IMAGE_RECOLOR_OPA,
+    ]
+    assert st.transition.path == AnimPath.ANIM_PATH_EASE_IN_OUT
     assert st.transition.duration_ms == 250
     assert st.transition.delay_ms == 50
 
@@ -308,8 +307,8 @@ def test_transition_requires_props():
 
 
 def test_transition_defaults_are_linear_200ms():
-    tr = transition(props=[PROP_TRANSFORM_WIDTH])
-    assert tr.path == ANIM_PATH_LINEAR
+    tr = transition(props=[StyleProp.STYLE_PROP_TRANSFORM_WIDTH])
+    assert tr.path == AnimPath.ANIM_PATH_LINEAR
     assert tr.duration_ms == 200
     assert tr.delay_ms == 0
 
@@ -335,13 +334,13 @@ def test_demo_smile_uses_transition_pattern():
     assert not default_style.HasField("bg_color")
     assert default_style.HasField("transition")
     assert list(default_style.transition.props) == [
-        PROP_TRANSFORM_WIDTH,
-        PROP_IMAGE_RECOLOR_OPA,
-        PROP_BG_COLOR,
+        StyleProp.STYLE_PROP_TRANSFORM_WIDTH,
+        StyleProp.STYLE_PROP_IMAGE_RECOLOR_OPA,
+        StyleProp.STYLE_PROP_BG_COLOR,
     ]
     assert default_style.transition.duration_ms == 300
     # Pressed style grows + tints the button (cranked up for visual debug).
-    assert pressed_style.for_state == STATE_PRESSED
+    assert pressed_style.for_state == LvState.LV_STATE_PRESSED
     assert pressed_style.transform_width == 80
     assert pressed_style.recolor == 0xFF0000
     assert pressed_style.recolor_opa == 255
@@ -512,7 +511,7 @@ def test_ripple_animation_defaults():
     assert r.start_opa == 200
     assert r.max_radius == 40
     assert r.duration_ms == 350
-    assert r.path == ANIM_PATH_LINEAR
+    assert r.path == AnimPath.ANIM_PATH_LINEAR
     assert r.border_width == 0
 
 
@@ -521,7 +520,7 @@ def test_ripple_animation_kwargs_roundtrip():
         start_opa=128,
         max_radius=70,
         duration_ms=500,
-        path=ANIM_PATH_EASE_IN_OUT,
+        path=AnimPath.ANIM_PATH_EASE_IN_OUT,
         border_width=4,
     )
     # Round-trip through the parent message to exercise the wire format.
@@ -533,7 +532,7 @@ def test_ripple_animation_kwargs_roundtrip():
     assert tp.tap_ripple.start_opa == 128
     assert tp.tap_ripple.max_radius == 70
     assert tp.tap_ripple.duration_ms == 500
-    assert tp.tap_ripple.path == ANIM_PATH_EASE_IN_OUT
+    assert tp.tap_ripple.path == AnimPath.ANIM_PATH_EASE_IN_OUT
     assert tp.tap_ripple.border_width == 4
 
 
