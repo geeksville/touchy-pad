@@ -513,6 +513,7 @@ def board_info() -> None:
     table.add_row("free RAM", _fmt_bytes(v.free_heap_bytes))
     table.add_row("free PSRAM", _fmt_bytes(v.free_psram_bytes))
     table.add_row("flash FS", f"{_fmt_bytes(v.fs_used_bytes)} / {_fmt_bytes(v.fs_total_bytes)}")
+    table.add_row("temp drive", "flash" if v.temp_is_flash else "psram")
     Console().print(table)
 
 

@@ -297,6 +297,9 @@ class SimDevice:
                 free_psram_bytes=4_000_000,
                 fs_total_bytes=1_048_576,
                 fs_used_bytes=65_536,
+                # Stage 87 — the sim reports PSRAM present, so the T:
+                # transient drive is ramdisk-backed (not flash scratch).
+                temp_is_flash=False,
             ),
         )
 
@@ -404,7 +407,11 @@ class SimDevice:
             return _result(_proto.RESULT_IO_ERROR)
         # Notify image updates so SimWindow can reload affected pixmaps
         # without destroying widgets (which would break mouse tracking).
-        if "host/images/" in path and self._on_image_update is not None:
+        # Mirrors the firmware's redraw-on-rewrite: any image-asset write
+        # invalidates it. Covers static assets (host/images/), the Stage 87
+        # T: transient drive (dynamic re-renders, icache) and any .bin.
+        is_image_write = "host/images/" in path or path.startswith("T:") or path.endswith(".bin")
+        if is_image_write and self._on_image_update is not None:
             _log.debug("sim: image asset updated %r", path)
             try:
                 self._on_image_update(path)

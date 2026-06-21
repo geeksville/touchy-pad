@@ -414,6 +414,11 @@ static void fill_board_info(touchy_Response *resp)
         v->fs_total_bytes = fs_total;
         v->fs_used_bytes  = fs_used;
     }
+
+    // Stage 87: advisory hint — is the transient 'T:' drive flash-backed
+    // (no-PSRAM board) rather than a PSRAM ramdisk? Host writers of
+    // throwaway assets use this to throttle high-frequency refreshes.
+    v->temp_is_flash = temp_is_flash();
 }
 
 static void dispatch(const touchy_Command *cmd, touchy_Response *resp)

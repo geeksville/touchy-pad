@@ -244,7 +244,10 @@ message SysBoardInfoResponse {
                  //           free_psram_bytes, fs_total_bytes, fs_used_bytes
         V9 = 9;  // stage 82: SetPreferencesCmd replaces ScreenSleepTimeoutCmd
                  //           + ScreenLoadCmd; PreferencesFile fields optional
-        CURRENT = 9;  // alias: always equals the latest defined version
+        V10 = 10; // stage 87: SysBoardInfoResponse gains temp_is_flash (the
+                  //           'T:' transient drive is backed by flash, not
+                  //           PSRAM, on this board) — additive scalar field
+        CURRENT = 10;  // alias: always equals the latest defined version
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
@@ -280,6 +283,13 @@ message SysBoardInfoResponse {
     uint64 free_psram_bytes = 11;  // free PSRAM (MALLOC_CAP_SPIRAM); 0 if none
     uint64 fs_total_bytes   = 12;  // LittleFS (F:) capacity in bytes
     uint64 fs_used_bytes    = 13;  // LittleFS (F:) bytes currently in use
+    // Stage 87 — the 'T:' ("temp") transient drive resolves to a flash
+    // scratch area on this board instead of a PSRAM ramdisk. True on
+    // no-PSRAM boards (e.g. classic-ESP32 CYD). Host-side writers of
+    // transient assets (dynamic images, the image cache) use this only
+    // as an advisory hint to throttle high-frequency refreshes and warn
+    // about flash wear — the drive letter (`T:`) is the same either way.
+    bool temp_is_flash = 14;
 }
 
 // Reply to FileOpenWriteCmd. Carries the handle the host must echo

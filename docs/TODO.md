@@ -8,8 +8,10 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] support no-touch devices
 * [ ] add photo of the small board
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
+* [ ] publish the opendeck plugin
 * [ ] home assistant?
 * [ ] [user widgets](user-widgets.md)
+* [ ] cleanup screens.py constants
 * [ ] Give user friendly error msg if firmware or py code is too old
 * [x] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...

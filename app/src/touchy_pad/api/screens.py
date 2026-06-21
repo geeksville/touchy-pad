@@ -32,6 +32,7 @@ from pathlib import Path
 
 from .. import _proto
 from . import _events
+from .images_dynamic import ImageSource
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ __all__ = [
     "checkbox",
     "image",
     "image_button",
+    "ImageSource",
     "arc",
     "spacer",
     "widget_ref",
@@ -845,14 +847,20 @@ def checkbox(
 
 def image(
     id: str,
-    asset: str,
+    asset: str | ImageSource | bytes,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
     scale: int | float | None = None,
     rotation: int | float | None = None,
 ) -> _proto.Widget:
-    """Display a previously-uploaded image asset (``/from_host/<asset>``).
+    """Display an image asset.
+
+    *asset* is either a path ``str`` to a previously-uploaded asset, or a
+    dynamic source — an :class:`ImageSource`, or a bare ``PIL.Image`` /
+    ``bytes`` (auto-wrapped). A dynamic source owns a stable on-device
+    path and is uploaded when the screen is saved; later
+    :meth:`ImageSource.update` calls repaint the widget in place.
 
     ``scale`` is a multiplier (``1.0`` / ``1`` / ``256`` all mean 100%):
     floats are interpreted as a multiplier (``0.5`` = 50%, ``2.0`` =
@@ -867,8 +875,8 @@ def image(
 
 def image_button(
     id: str,
-    asset: str,
-    pressed_asset: str | None = None,
+    asset: str | ImageSource | bytes,
+    pressed_asset: str | ImageSource | bytes | None = None,
     on_click=None,
     on_press=None,
     on_release=None,
@@ -916,18 +924,30 @@ def image_button(
 
 def _fill_image(
     msg: _proto.Image,
-    asset: str,
+    asset: object,
     scale: int | float | None,
     rotation: int | float | None,
 ) -> None:
-    """Populate a ``touchy.Image`` submessage from DSL kwargs."""
-    # Match the host-side conversion done by ``TouchyClient.file_save``:
-    # any BMP/PNG/JPEG/GIF/WebP gets converted to LVGL ``.bin`` and
-    # renamed accordingly, so the asset path stored in the screen has
-    # to track that rename or LVGL won't find the file on flash.
-    from .lvgl_image import rewrite_to_bin_path
+    """Populate a ``touchy.Image`` submessage from DSL kwargs.
 
-    msg.path = rewrite_to_bin_path(asset)
+    *asset* may be a path ``str`` (a previously-uploaded asset), or a
+    dynamic source: an :class:`~touchy_pad.api.images_dynamic.ImageSource`,
+    or a bare ``PIL.Image`` / ``bytes`` (auto-wrapped in a single-use
+    ``ImageSource``). Dynamic sources contribute their own stable
+    ``T:dyn/<n>.bin`` path and are uploaded when the screen is saved.
+    """
+    if isinstance(asset, str):
+        # Match the host-side conversion done by ``TouchyClient.file_save``:
+        # any BMP/PNG/JPEG/GIF/WebP gets converted to LVGL ``.bin`` and
+        # renamed accordingly, so the asset path stored in the screen has
+        # to track that rename or LVGL won't find the file on flash.
+        from .lvgl_image import rewrite_to_bin_path
+
+        msg.path = rewrite_to_bin_path(asset)
+    else:
+        from .images_dynamic import coerce_image_source
+
+        msg.path = coerce_image_source(asset).path
     if scale is not None:
         msg.scale = _encode_scale(scale)
     if rotation is not None:

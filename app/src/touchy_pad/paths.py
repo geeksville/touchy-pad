@@ -30,6 +30,18 @@ USER_SCREENS_DIR = "F:host/uscr/"
 WIDGETS_DIR = "F:host/w/"
 IMAGES_DIR = "F:host/images/"
 
+# Stage 87 — the logical "T:" ("temp") transient drive. The device
+# resolves it to a PSRAM ramdisk where available, else a flash scratch
+# area (see ``SysBoardInfoResponse.temp_is_flash``). Host writers of
+# throwaway assets address it as ``T:...`` and never branch on the board.
+TEMP_DRIVE = "T:"
+#: Per-``ImageSource`` dynamic image assets (rewritten in place to
+#: repaint a live widget). See :class:`touchy_pad.api.images_dynamic`.
+DYNAMIC_IMAGE_DIR = "T:dyn/"
+#: Host image cache (content-addressed). Mirrors the Rust
+#: ``ImageCache``'s ``IMAGE_CACHE_ROOT``.
+IMAGE_CACHE_DIR = "T:host/icache/"
+
 # Filename of the boot/default chrome screen inside SCREENS_DIR.
 DEFAULT_SCREEN_FILE = "default.pb"
 DEFAULT_SCREEN_PATH = SCREENS_DIR + DEFAULT_SCREEN_FILE
@@ -50,14 +62,29 @@ def widget_path(name: str) -> str:
     return f"{WIDGETS_DIR}{name}.pb"
 
 
+def dynamic_image_path(n: int) -> str:
+    """Drive-prefixed path of a dynamic image asset, e.g. ``T:dyn/1.bin``.
+
+    *n* is a process-global monotonic counter allocated per
+    :class:`~touchy_pad.api.images_dynamic.ImageSource`; the path is
+    stable for the life of the source so a rewrite repaints the widget
+    in place.
+    """
+    return f"{DYNAMIC_IMAGE_DIR}{n}.bin"
+
+
 __all__ = [
     "SCREENS_DIR",
     "USER_SCREENS_DIR",
     "WIDGETS_DIR",
     "IMAGES_DIR",
+    "TEMP_DRIVE",
+    "DYNAMIC_IMAGE_DIR",
+    "IMAGE_CACHE_DIR",
     "DEFAULT_SCREEN_FILE",
     "DEFAULT_SCREEN_PATH",
     "screen_path",
     "user_screen_path",
     "widget_path",
+    "dynamic_image_path",
 ]

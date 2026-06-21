@@ -253,7 +253,7 @@ impl Touchy {
 	/// its touch state and still emits its release event.
 	///
 	/// `path` is a drive-prefixed image asset (e.g. a cached
-	/// `R:host/icache/<hash>.bin` from
+	/// `T:host/icache/<hash>.bin` from
 	/// [`ImageCache`][crate::image_cache::ImageCache]). The change is
 	/// visible at once only if that slot is the one currently displayed;
 	/// otherwise the bytes are staged for the next press/release edge.

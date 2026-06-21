@@ -26,8 +26,8 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, and 86 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 9`,
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, and 87 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
 `PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:
 
@@ -178,14 +178,35 @@ Highlights worth remembering:
 - **Stage 85 (Rust only, image cache).** `rust/touchy-pad/src/image_cache.rs`
   → `ImageCache::new(Arc<Touchy>)`; `set_cached_image(&[u8]) -> path`
   uploads each *distinct* image once, keyed by an xxh3-128 content hash
-  (url-safe base64, no pad), to `R:host/icache/<HASH><suffix>` on the
-  volatile `R:` ramdisk (`IMAGE_CACHE_ROOT`). LRU eviction at
-  `MAX_IMAGE_CACHE` (128); the first call wipes `IMAGE_CACHE_ROOT`.
-  Bytes are normalised via the shared `images::normalize_for_device`
-  (extracted from `file_save`) so a cached asset is byte-identical to a
-  direct `file_save`; `pad.rs` gained `file_write_raw` (chunked, no
-  conversion) + `widget_save`. `ImageCache::with_max_dim` downscales to
-  a fixed widget size (the OpenDeck plugin caps at the key px).
+  (url-safe base64, no pad), to `T:host/icache/<HASH><suffix>` on the
+  transient `T:` drive (`IMAGE_CACHE_ROOT`; moved from `R:` in Stage 87).
+  LRU eviction at `MAX_IMAGE_CACHE` (128); the first call wipes
+  `IMAGE_CACHE_ROOT`. Bytes are normalised via the shared
+  `images::normalize_for_device` (extracted from `file_save`) so a cached
+  asset is byte-identical to a direct `file_save`; `pad.rs` gained
+  `file_write_raw` (chunked, no conversion) + `widget_save`.
+  `ImageCache::with_max_dim` downscales to a fixed widget size (the
+  OpenDeck plugin caps at the key px).
+
+- **Stage 87 (dynamic images + `T:` transient drive).** A new *logical*
+  `T:` drive: host code writes `T:...` for throwaway assets and the
+  device resolves it to a PSRAM ramdisk (`heap_caps_get_total_size(
+  MALLOC_CAP_SPIRAM) > 0`) else a flash scratch area —
+  `firmware/main/fs/temp_fs.{h,cpp}` (`fs_for_drive('T')` + a buffered
+  read-only LVGL `T` driver). Advisory `bool temp_is_flash`
+  (`SysBoardInfoResponse`, `ProtocolVersion.V10`) lets the host throttle
+  refreshes; `R:` stays explicit. Python `ImageSource`
+  (`app/src/touchy_pad/api/images_dynamic.py`) owns a stable
+  `T:dyn/<n>.bin` path (process-global monotonic `<n>`), accepted by
+  `image()`/`image_button()` (also bare `PIL.Image`/`bytes`). It's
+  harvested + bound on `screen_save`/`widget_save`/`user_screen_save`
+  (one-shot `T:dyn/` wipe per connection); `.update(new=None)` re-renders,
+  content-hash dedups, and rewrites the file — the **rewrite is the
+  repaint** via the Stage 60 image registry, no `ActionChangeWidgetRef`.
+  `every=` + `start()`/`stop()` is sugar over `.update()`. Rust
+  `ImageCache` moved to `T:` (above). Sim mirrors all of it (`sim/fs.py`
+  `T:` drive, `temp_is_flash=False`, broadened image-update gate).
+
 
 - **Stage 86 (in-place ImageButton repaint).** Supersedes Stage 85's
   stub-rewrite repaint, which deleted the held button (lost keyUp) and
