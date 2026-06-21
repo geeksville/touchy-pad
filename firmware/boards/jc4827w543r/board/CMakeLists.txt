@@ -4,15 +4,17 @@
 
 idf_component_register(
     SRCS
-        "../../jc4827w543/board/board.cpp"
+        "board.cpp"
         "../../jc4827w543/board/display.cpp"
         "../../jc4827w543/board/nv3041a.c"
         "touch.cpp"
+        "../../common/backlight_pwm.cpp"
     INCLUDE_DIRS "../../../main"   # exports board.h / display.h / touch.h
-    PRIV_INCLUDE_DIRS "."
+    PRIV_INCLUDE_DIRS "." "../../common"
     REQUIRES
         driver
         esp_driver_spi
+        esp_driver_ledc
         esp_lcd
         esp_lvgl_port
         esp_psram

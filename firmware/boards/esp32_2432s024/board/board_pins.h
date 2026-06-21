@@ -38,7 +38,9 @@
 // some revisions use GPIO27. Flip here if the screen stays dark. Active-high.
 #define BOARD_LCD_GPIO_BACKLIGHT        GPIO_NUM_27
 
-// ILI9341 colour quirks. CYD ILI9341 panels are wired BGR; unlike the ST7789
+// Stage 94 — shared LEDC-PWM backlight driver (boards/common/backlight_pwm).
+#define BOARD_BL_GPIO                   BOARD_LCD_GPIO_BACKLIGHT
+
 // they are typically NOT colour-inverted (an ST7789-specific quirk). Flip
 // these if reds/blues are swapped or the image looks like a photo-negative.
 #define BOARD_LCD_BGR_ORDER             0

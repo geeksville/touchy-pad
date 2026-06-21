@@ -133,6 +133,22 @@ def test_set_boot_delay_passed(make_client):
     assert seen == {"delay": 3}
 
 
+def test_set_backlight_level_passed(make_client):
+    seen = {}
+
+    def server(cmd, _t):
+        assert cmd.WhichOneof("cmd") == "set_preferences"
+        prefs = cmd.set_preferences.prefs
+        seen["level"] = prefs.backlight_level
+        seen["has_timeout"] = prefs.HasField("screen_timeout_ms")
+        seen["has_boot"] = prefs.HasField("boot_delay_s")
+        return _proto.Response(code=_proto.RESULT_OK)
+
+    with make_client(server) as c:
+        c.set_backlight_level(50)
+    assert seen == {"level": 50, "has_timeout": False, "has_boot": False}
+
+
 @pytest.mark.parametrize(
     ("count", "expected"),
     [

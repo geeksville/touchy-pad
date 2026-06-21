@@ -52,11 +52,13 @@ static void ch422_set_pin(uint8_t pin, bool level)
     ESP_ERROR_CHECK(ch422_write(s_ch422_wrio, s_wr_io_shadow));
 }
 
-// Toggle the backlight via the CH422G IO expander. Must be called from a
-// task context (not an ISR) because ch422_write() blocks on I2C.
-extern "C" void board_backlight_set(bool on)
+// Set the backlight via the CH422G IO expander. The backlight is behind an
+// I2C expander pin that can only do on/off, so the Stage 94 0-100 level is
+// quantised: any non-zero level turns it on. Must be called from a task
+// context (not an ISR) because ch422_write() blocks on I2C.
+extern "C" void backlight_set(uint8_t level)
 {
-    ch422_set_pin(BOARD_CH422G_IO_BACKLIGHT, on);
+    ch422_set_pin(BOARD_CH422G_IO_BACKLIGHT, level > 0);
 }
 
 extern "C" void board_init(void)

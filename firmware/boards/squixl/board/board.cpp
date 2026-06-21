@@ -2,6 +2,7 @@
 
 #include "board.h"
 #include "board_pins.h"
+#include "backlight_pwm.h"   // shared LEDC backlight driver (Stage 94)
 
 #include "esp_log.h"
 #include "driver/i2c_master.h"
@@ -18,15 +19,6 @@ static Lca9555                 s_ioex;
 Lca9555 *board_get_ioex(void) { return &s_ioex; }
 
 i2c_master_bus_handle_t board_get_i2c_bus(void) { return s_i2c_bus; }
-
-extern "C" void board_backlight_set(bool on)
-{
-    // BL_EN is enabled once in display_init() after the ST7701S is ready.
-    // Brightness is controlled via LEDC duty on BOARD_BL_GPIO.
-    uint32_t duty = on ? 4095 : 0;  // 12-bit resolution
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-}
 
 extern "C" void board_init(void)
 {
@@ -62,23 +54,9 @@ extern "C" void board_init(void)
     s_ioex.write(BOARD_IOEX_TP_RST, true);
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    // Set up LEDC for backlight PWM (kept at 0 duty until display_init()).
-    ledc_timer_config_t ledc_timer = {};
-    ledc_timer.duty_resolution = LEDC_TIMER_12_BIT;
-    ledc_timer.freq_hz         = 6000;
-    ledc_timer.speed_mode      = LEDC_LOW_SPEED_MODE;
-    ledc_timer.timer_num       = LEDC_TIMER_0;
-    ledc_timer.clk_cfg         = LEDC_AUTO_CLK;
-    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
-
-    ledc_channel_config_t ledc_ch = {};
-    ledc_ch.channel    = LEDC_CHANNEL_0;
-    ledc_ch.duty       = 0;
-    ledc_ch.hpoint     = 0;
-    ledc_ch.gpio_num   = BOARD_BL_GPIO;
-    ledc_ch.speed_mode = LEDC_LOW_SPEED_MODE;
-    ledc_ch.timer_sel  = LEDC_TIMER_0;
-    ESP_ERROR_CHECK(ledc_channel_config(&ledc_ch));
+    // Set up the LEDC PWM backlight (duty left off until display_init()
+    // enables BL_EN power; switched on by backlight_init()).
+    backlight_pwm_init();
 
     ESP_LOGI(TAG, "Board init done");
 }

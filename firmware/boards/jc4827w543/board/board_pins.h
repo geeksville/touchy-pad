@@ -33,6 +33,9 @@
 #define BOARD_LCD_GPIO_RST              GPIO_NUM_NC      // tied to system reset
 #define BOARD_LCD_GPIO_BACKLIGHT        GPIO_NUM_1
 
+// Stage 94 — shared LEDC-PWM backlight driver (boards/common/backlight_pwm).
+#define BOARD_BL_GPIO                   BOARD_LCD_GPIO_BACKLIGHT
+
 // ---------- Shared I2C bus (touch only on this board) ----------
 #define BOARD_I2C_PORT                  I2C_NUM_0
 #define BOARD_I2C_SCL                   GPIO_NUM_4

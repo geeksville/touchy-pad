@@ -9,6 +9,7 @@
 #include "tc_tag.h"
 #include "board_pins.h"      // private pin map
 #include "platform.h"        // capability descriptor
+#include "backlight_pwm.h"   // shared LEDC backlight driver (Stage 94)
 
 #include "esp_log.h"
 #include "driver/i2c_master.h"
@@ -22,17 +23,12 @@ i2c_master_bus_handle_t board_get_i2c_bus(void)
     return s_i2c_bus;
 }
 
-// The backlight GPIO is configured as an output by display_init(). Toggling
-// it here is safe from any task; gpio_set_level() is not ISR-only.
-extern "C" void board_backlight_set(bool on)
-{
-    if (BOARD_LCD_GPIO_BACKLIGHT != GPIO_NUM_NC) {
-        gpio_set_level(BOARD_LCD_GPIO_BACKLIGHT, on ? 1 : 0);
-    }
-}
-
 extern "C" void board_init(void)
 {
+    // Stage 94 — set up the LEDC PWM backlight (left off; backlight_init()
+    // turns it on at the persisted brightness).
+    backlight_pwm_init();
+
     ESP_LOGI(TAG, "Initialising shared I2C bus (SCL=%d SDA=%d)",
              BOARD_I2C_SCL, BOARD_I2C_SDA);
 

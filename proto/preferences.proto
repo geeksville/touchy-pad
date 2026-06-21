@@ -29,7 +29,8 @@ message PreferencesFile {
                       //           drive-letter path (e.g. "F:host/s/home.pb")
         V4 = 4;       // Stage 82: fields optional; + min_log_level,
                       //           boot_delay_s
-        CURRENT = 4;  // alias: always equals the latest defined version
+        V5 = 5;       // Stage 94: + backlight_level
+        CURRENT = 5;  // alias: always equals the latest defined version
     }
 
     // Written on every save so forward migrations can detect old files.
@@ -63,4 +64,10 @@ message PreferencesFile {
     // the UI, to give a host debug-log connection time to attach so the
     // earliest log lines are not missed. 0 (default) disables the delay.
     optional uint32 boot_delay_s = 5;
+
+    // Stage 94 — display backlight brightness as a percentage, 0 = off …
+    // 100 = max. The device maps this into its panel-specific PWM duty
+    // (each board may define a minimum-visible duty). Default (when unset
+    // / first boot) is 100. Set via SetPreferencesCmd from the host.
+    optional uint32 backlight_level = 6;
 }

@@ -187,6 +187,17 @@ impl Client {
 		.await
 	}
 
+	/// Set the persistent display brightness (Stage 94; 0 = off … 100 = max).
+	/// The device maps the level onto its panel-specific PWM duty (or
+	/// quantises to on/off on expander-driven backlights) and persists it.
+	pub async fn set_backlight_level(&self, level: u32) -> Result<()> {
+		self.set_preferences(PreferencesFile {
+			backlight_level: Some(level),
+			..Default::default()
+		})
+		.await
+	}
+
 	/// Delete a file or directory subtree.
 	pub async fn file_delete(&self, path: &str) -> Result<()> {
 		Self::check(

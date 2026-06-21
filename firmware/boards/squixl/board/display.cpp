@@ -191,7 +191,7 @@ extern "C" lv_disp_t *display_init(void)
     }
 
     // Enable backlight power now that the panel is initialised. The LEDC duty
-    // was already set by backlight_init() → board_backlight_set() between
+    // was already set by backlight_init() → backlight_set() between
     // board_init() and display_init().
     ioex->write(BOARD_IOEX_BL_EN, true);
     ESP_LOGI(TAG, "Display init done, backlight enabled");

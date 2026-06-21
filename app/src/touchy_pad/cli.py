@@ -672,6 +672,14 @@ def pref_boot_delay(seconds: int) -> None:
         c.set_boot_delay(seconds)
 
 
+@pref.command("backlight-level")
+@click.argument("level", type=click.IntRange(0, 100))
+def pref_backlight_level(level: int) -> None:
+    """Set the display brightness (0 = off … 100 = max). Persists."""
+    with _client() as c:
+        c.set_backlight_level(level)
+
+
 # ---------------------------------------------------------------------------
 # Screen — backlight control, layout management, and screen authoring
 # ---------------------------------------------------------------------------

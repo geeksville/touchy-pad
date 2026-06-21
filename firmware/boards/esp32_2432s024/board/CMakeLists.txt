@@ -15,11 +15,13 @@ idf_component_register(
         "../../cyd_common/board.cpp"
         "../../cyd_common/display.cpp"
         "../../cyd_common/touch.cpp"
+        "../../common/backlight_pwm.cpp"
     INCLUDE_DIRS "../../../main"   # exports board.h / display.h / touch.h / platform.h
-    PRIV_INCLUDE_DIRS "."
+    PRIV_INCLUDE_DIRS "." "../../common"
     REQUIRES
         driver
         esp_driver_spi
+        esp_driver_ledc
         esp_lcd
         esp_lvgl_port
         lvgl__lvgl

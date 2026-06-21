@@ -4,6 +4,7 @@
 #include "board_pins.h"
 #include "platform.h"
 #include "tc_tag.h"
+#include "backlight_pwm.h"   // shared LEDC backlight driver (Stage 94)
 
 #include "esp_log.h"
 #include "esp_err.h"
@@ -16,20 +17,12 @@ static i2c_master_bus_handle_t s_i2c_bus = nullptr;
 
 i2c_master_bus_handle_t board_get_i2c_bus(void) { return s_i2c_bus; }
 
-extern "C" void board_backlight_set(bool on)
-{
-    gpio_set_level(BOARD_BACKLIGHT_GPIO, on ? 1 : 0);
-}
-
 extern "C" void board_init(void)
 {
-    // Backlight: simple GPIO, HIGH = on.
-    gpio_config_t bl_cfg = {};
-    bl_cfg.pin_bit_mask = 1ULL << BOARD_BACKLIGHT_GPIO;
-    bl_cfg.mode         = GPIO_MODE_OUTPUT;
-    ESP_ERROR_CHECK(gpio_config(&bl_cfg));
-    board_backlight_set(true);
-    ESP_LOGI(TAG, "Backlight on (GPIO%d)", (int)BOARD_BACKLIGHT_GPIO);
+    // Stage 94 — backlight on a LEDC PWM channel (left off; backlight_init()
+    // turns it on at the persisted brightness).
+    backlight_pwm_init();
+    ESP_LOGI(TAG, "Backlight PWM ready (GPIO%d)", (int)BOARD_BACKLIGHT_GPIO);
 
     // I2C bus for GT911 touch controller.
     i2c_master_bus_config_t bus_cfg = {};

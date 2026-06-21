@@ -321,6 +321,8 @@ class SimDevice:
             self._prefs.min_log_level = p.min_log_level
         if p.HasField("boot_delay_s"):
             self._prefs.boot_delay_s = p.boot_delay_s
+        if p.HasField("backlight_level"):
+            self._prefs.backlight_level = p.backlight_level  # brightness: no-op in sim
         if p.HasField("current_screen"):
             self._prefs.current_screen = p.current_screen
             try:

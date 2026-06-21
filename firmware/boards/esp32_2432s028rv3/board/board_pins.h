@@ -37,7 +37,9 @@
 // dark. Active-high.
 #define BOARD_LCD_GPIO_BACKLIGHT        GPIO_NUM_27
 
-// ST7789 v3 colour quirks. The 2432S028 v3 panel wants BGR colour order and
+// Stage 94 — shared LEDC-PWM backlight driver (boards/common/backlight_pwm).
+#define BOARD_BL_GPIO                   BOARD_LCD_GPIO_BACKLIGHT
+
 // inverted pixels; older v2 boards want neither. Flip these two if reds/blues
 // are swapped or the image is photo-negative.
 #define BOARD_LCD_BGR_ORDER             1

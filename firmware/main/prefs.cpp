@@ -56,11 +56,12 @@ bool Prefs::begin()
         if (pf->has_current_screen) m_current_screen = pf->current_screen;
         if (pf->has_min_log_level) m_min_log_level = pf->min_log_level;
         if (pf->has_boot_delay_s) m_boot_delay_s = pf->boot_delay_s;
+        if (pf->has_backlight_level) m_backlight_level = (uint8_t)pf->backlight_level;
         ESP_LOGI(TAG, "Loaded prefs: screen_timeout_ms=%" PRIu32
                       " current_screen='%s' min_log_level=%" PRIu32
-                      " boot_delay_s=%" PRIu32,
+                      " boot_delay_s=%" PRIu32 " backlight_level=%u",
                  m_timeout_ms, m_current_screen.c_str(), m_min_log_level,
-                 m_boot_delay_s);
+                 m_boot_delay_s, (unsigned)m_backlight_level);
     } else {
         ESP_LOGW(TAG, "Prefs file corrupt — using defaults");
     }
@@ -77,6 +78,13 @@ void Prefs::set_current_screen(const std::string &path)
 void Prefs::set_screen_timeout_ms(uint32_t ms)
 {
     m_timeout_ms = ms;
+    save();
+}
+
+void Prefs::set_backlight_level(uint8_t level)
+{
+    if (level > 100) level = 100;
+    m_backlight_level = level;
     save();
 }
 
@@ -97,6 +105,10 @@ bool Prefs::apply_partial(const touchy_PreferencesFile &p)
     }
     if (p.has_boot_delay_s) {
         m_boot_delay_s = p.boot_delay_s;  // applied at next boot only
+    }
+    if (p.has_backlight_level) {
+        m_backlight_level = (uint8_t)p.backlight_level;
+        backlight_set_level(m_backlight_level);  // applies + persists
     }
     if (p.has_current_screen) {
         // screens_load() updates g_current_path and calls back into
@@ -125,6 +137,8 @@ void Prefs::save()
     pf->min_log_level = m_min_log_level;
     pf->has_boot_delay_s = true;
     pf->boot_delay_s = m_boot_delay_s;
+    pf->has_backlight_level = true;
+    pf->backlight_level = m_backlight_level;
     // current_screen is a fixed-size char[N] in the generated struct;
     // snprintf truncates safely if the source ever exceeds the bound
     // (which it shouldn't — the bound matches FileOpenWriteCmd.path).

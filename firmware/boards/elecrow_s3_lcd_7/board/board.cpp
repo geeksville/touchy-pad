@@ -201,15 +201,22 @@ const ElecrowBoardConfig *board_get_config(void) { return &s_config; }
 
 i2c_master_bus_handle_t board_get_i2c_bus(void) { return s_i2c_bus; }
 
-extern "C" void board_backlight_set(bool on)
+// Stage 94 backlight entry point. The regular v3 variant has a real LEDC PWM
+// pin so it honours the 0-100 brightness level; the "advance" variants drive
+// the backlight through an MCU/IO-expander that can only do on/off, so any
+// non-zero level is quantised to fully on.
+extern "C" void backlight_set(uint8_t level)
 {
+    if (level > 100) level = 100;
     if (!s_config.is_advance) {
-        // Regular v3: backlight on GPIO2 via LEDC (output_invert=1: duty 0=bright, 255=off).
-        uint32_t duty = on ? 0 : 255;
+        // Regular v3: backlight on GPIO2 via LEDC (output_invert=1: duty 0=bright,
+        // 255=off). Scale the 0-100 level across the 8-bit duty range.
+        uint32_t duty = (level == 0) ? 255 : (255 - (255u * level) / 100);
         ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
         return;
     }
+    bool on = level > 0;
     if (s_config.is_advance_1_2) {
         // Advance v1.2: STC8H1K28. 0x10 = on/max; off = 0x10 then 0x05.
         if (s_stc_dev == nullptr) return;
@@ -310,8 +317,10 @@ extern "C" void board_init(void)
         ledc_ch.flags.output_invert = 1;
         ESP_ERROR_CHECK(ledc_channel_config(&ledc_ch));
 
-        board_backlight_set(true);
-        ESP_LOGI(TAG, "Board init done; regular backlight on (GPIO2 LEDC)");
+        // Leave it off; backlight_init() switches it on at the persisted
+        // brightness (the inverted LEDC idles bright at duty 0).
+        backlight_set(0);
+        ESP_LOGI(TAG, "Board init done; regular backlight ready (GPIO2 LEDC)");
     }
 }
 

@@ -5,8 +5,8 @@
 //
 // These boards have no I2C-attached peripherals on the touch path (the XPT2046
 // touch panel rides its own SPI bus, set up in touch.cpp), so board_init()
-// only quiesces the active-low RGB status LED. The display backlight is a
-// plain GPIO configured by display.cpp; board_backlight_set() toggles it.
+// only quiesces the active-low RGB status LED and brings up the shared LEDC
+// PWM backlight (boards/common/backlight_pwm) on BOARD_BL_GPIO.
 //
 // All board-specific values (pins, controller, orientation) live in each
 // board's private board_pins.h, so this single translation unit serves every
@@ -16,6 +16,7 @@
 #include "tc_tag.h"
 #include "board_pins.h"      // private pin map (per-board)
 #include "platform.h"        // capability descriptor
+#include "backlight_pwm.h"   // shared LEDC backlight driver (Stage 94)
 
 #include "esp_log.h"
 #include "driver/gpio.h"
@@ -28,15 +29,12 @@ i2c_master_bus_handle_t board_get_i2c_bus(void)
     return nullptr;
 }
 
-extern "C" void board_backlight_set(bool on)
-{
-    if (BOARD_LCD_GPIO_BACKLIGHT != GPIO_NUM_NC) {
-        gpio_set_level(BOARD_LCD_GPIO_BACKLIGHT, on ? 1 : 0);
-    }
-}
-
 extern "C" void board_init(void)
 {
+    // Stage 94 — set up the LEDC PWM backlight (left off; backlight_init()
+    // turns it on at the persisted brightness).
+    backlight_pwm_init();
+
     // The RGB LED is common-anode (active-low). Drive all three high so it
     // starts off rather than glowing a random colour at boot.
     const gpio_num_t led_pins[] = {

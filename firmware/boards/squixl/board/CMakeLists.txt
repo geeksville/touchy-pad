@@ -10,8 +10,9 @@ idf_component_register(
         "display.cpp"
         "touch.cpp"
         "lca9555.cpp"
+        "../../common/backlight_pwm.cpp"
     INCLUDE_DIRS "../../../main"   # exports board.h / display.h / touch.h to deps
-    PRIV_INCLUDE_DIRS "."         # local board_pins.h, lca9555.h
+    PRIV_INCLUDE_DIRS "." "../../common"   # local board_pins.h, lca9555.h
     REQUIRES
         driver
         esp_driver_ledc

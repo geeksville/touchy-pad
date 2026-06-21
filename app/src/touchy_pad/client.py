@@ -196,6 +196,15 @@ class TouchyClient:
         """
         self.set_preferences(_proto.PreferencesFile(boot_delay_s=seconds))
 
+    def set_backlight_level(self, level: int) -> None:
+        """Set the persistent display brightness (0 = off … 100 = max).
+
+        Stage 94 — the device maps the level onto its panel-specific PWM
+        duty (or quantises to on/off on expander-driven backlights) and
+        persists it so the brightness survives a reboot.
+        """
+        self.set_preferences(_proto.PreferencesFile(backlight_level=level))
+
     def run_actions(self, actions: Iterable[_proto.Action]) -> None:
         """Run a list of Actions device-side as if a local widget fired them.
 

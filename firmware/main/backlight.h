@@ -4,8 +4,9 @@
 //
 // Provides a board-agnostic API for turning the display backlight on/off
 // and scheduling an auto-sleep timeout. The actual GPIO/I2C toggle is
-// delegated to `board_backlight_set()` (declared in `board.h`), which each
-// board implements in its own `board.cpp`.
+// delegated to `backlight_set(uint8_t level)` (declared in `board.h`), which
+// each board implements in its own `board.cpp` (or, for PWM-capable boards,
+// the shared boards/common/backlight_pwm.cpp).
 //
 // Call order:
 //   1. board_init()  — initialises the backlight hardware (GPIO/expander).
@@ -38,6 +39,13 @@ void backlight_touch_activity(void);
 // the backlight on. Persists to Prefs; call site is the ScreenSleepTimeout
 // host command handler.
 void backlight_set_timeout(uint32_t ms);
+
+// Stage 94 — set the remembered display brightness (0 = off … 100 = max).
+// Applied immediately if the display is awake (otherwise on the next wake),
+// and persisted to Prefs so it survives a reboot. The auto-sleep on/off
+// transitions restore this remembered level on wake. Call site is the
+// backlight_level field of a SetPreferencesCmd.
+void backlight_set_level(uint8_t level);
 
 #ifdef __cplusplus
 }

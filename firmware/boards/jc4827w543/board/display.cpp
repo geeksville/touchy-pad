@@ -61,18 +61,8 @@ static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
 
 extern "C" lv_display_t *display_init(void)
 {
-    // Backlight high.
-    if (BOARD_LCD_GPIO_BACKLIGHT != GPIO_NUM_NC) {
-        gpio_config_t bl = {
-            .pin_bit_mask = 1ULL << BOARD_LCD_GPIO_BACKLIGHT,
-            .mode         = GPIO_MODE_OUTPUT,
-            .pull_up_en   = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type    = GPIO_INTR_DISABLE,
-        };
-        gpio_config(&bl);
-        gpio_set_level(BOARD_LCD_GPIO_BACKLIGHT, 1);
-    }
+    // Backlight is owned by the shared LEDC PWM driver (configured in
+    // board_init() via backlight_pwm_init(); switched on by backlight_init()).
 
     ESP_LOGI(TAG, "Configuring NV3041A QSPI panel %dx%d @ %d MHz",
              BOARD_LCD_H_RES, BOARD_LCD_V_RES,

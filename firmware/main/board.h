@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "driver/i2c_master.h"
 
 #ifdef __cplusplus
@@ -21,10 +23,12 @@ void board_init(void);
 // boards that do not expose I2C to the touch controller.
 i2c_master_bus_handle_t board_get_i2c_bus(void);
 
-// Set the display backlight on (true) or off (false). The backlight GPIO /
-// IO-expander pin must already be configured by board_init(). Safe to call
-// from any task.
-void board_backlight_set(bool on);
+// Set the display backlight brightness as a percentage: 0 = off, 100 =
+// max (values are clamped to 0..100). The backlight hardware (LEDC PWM
+// channel or IO-expander pin) must already be configured by board_init().
+// PWM-capable boards dim smoothly; on/off-only boards quantise to off (0)
+// vs. on (>0). Safe to call from any task.
+void backlight_set(uint8_t level);
 
 #ifdef __cplusplus
 }

@@ -36,6 +36,13 @@ public:
     // to give a host debug-log connection time to attach.
     uint32_t boot_delay_s() const { return m_boot_delay_s; }
 
+    // Stage 94 — display backlight brightness as a percentage (0 = off …
+    // 100 = max). Default 100. Applied on boot by backlight_init().
+    uint8_t backlight_level() const { return m_backlight_level; }
+
+    // Update the backlight brightness and persist it immediately to flash.
+    void set_backlight_level(uint8_t level);
+
     // Stage 82 — apply a partial PreferencesFile from a SetPreferencesCmd.
     // Only fields with explicit presence (has_*) are merged; the host's
     // file_version (if any) is ignored. Each applied field fires its side
@@ -76,4 +83,7 @@ private:
     // host log tunnel is quiet unless explicitly turned up.
     uint32_t    m_min_log_level  = touchy_LogPriority_ERROR;
     uint32_t    m_boot_delay_s   = 0;
+
+    // Stage 94 — backlight brightness percent (0..100). Default full.
+    uint8_t     m_backlight_level = 100;
 };

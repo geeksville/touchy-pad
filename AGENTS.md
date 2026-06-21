@@ -26,10 +26,10 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, and 93 are **done**. Latest active wire-format:
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, and 94 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 24`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
-`PreferencesFile.Version.CURRENT == 4`.
+`PreferencesFile.Version.CURRENT == 5`.
 Highlights worth remembering:
 
 - **Boards span two chips (Stage 65).** ESP32-S3 boards (`jc4827w543`,
@@ -329,6 +329,34 @@ Highlights worth remembering:
   `pages/trackpad.py` binds CW→Volume Up / CCW→Volume Down as the worked
   example, and each fire `ESP_LOGI`s `twist <cw|ccw> deg=..` for hardware
   validation. `Widget.Version` 23→24.
+
+- **Stage 94 (unified PWM backlight + brightness preference).** The
+  per-board on/off `board_backlight_set(bool on)` primitive was replaced
+  by a single `backlight_set(uint8_t level)` (0 = off … 100 = max,
+  declared in `firmware/main/board.h`). PWM-capable boards (jc4827w543[r],
+  the CYD family, matouch_43, elecrow_p4, squixl) share one LEDC driver,
+  `firmware/boards/common/backlight_pwm.{h,cpp}` (modelled on the old
+  squixl code): each board's `board.cpp` calls `backlight_pwm_init()` in
+  `board_init()` (leaving the panel **off** — `backlight_init()` switches
+  it on at the persisted brightness) and pulls the shared cpp via
+  `SRCS "../../common/backlight_pwm.cpp"` + `PRIV_INCLUDE_DIRS "../../common"`
+  + `REQUIRES esp_driver_ledc`. The driver is tuned per board through
+  `board_pins.h` knobs: `BOARD_BL_GPIO` (required), `BACKLIGHT_MIN_PWM`
+  (default 256 — the lowest non-zero duty), `BACKLIGHT_PWM_BITS` (12),
+  `BACKLIGHT_PWM_FREQ` (6000), `BACKLIGHT_PWM_INVERT` (0),
+  `BACKLIGHT_LEDC_TIMER`/`_CHANNEL`/`_CLK`. elecrow_p4 overrides these
+  (`BACKLIGHT_PWM_BITS=11`, `BACKLIGHT_LEDC_CLK=LEDC_USE_PLL_DIV_CLK`,
+  `BACKLIGHT_MIN_PWM=32`). Boards whose backlight is behind an I2C
+  expander/MCU keep a board-local `backlight_set` that **quantises**:
+  waveshare (CH422G) and the elecrow_s3 advance variants map any
+  level > 0 → on, while the elecrow_s3 regular-v3 path scales its inverted
+  8-bit LEDC duty. New persistent pref `optional uint32 backlight_level`
+  on `PreferencesFile` (`Version.CURRENT == 5`); `Prefs::apply_partial`
+  merges it and calls `backlight_set_level()` (clamps, persists, applies
+  if awake). Host surface: `TouchyClient.set_backlight_level(level)` +
+  CLI `touchy pref backlight-level <0-100>`; Rust
+  `Touchy::set_backlight_level(u32)`. Auto-sleep still uses the same
+  manager (`backlight_set(0)` to sleep, `backlight_set(s_level)` to wake).
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

@@ -34,6 +34,9 @@
 #define BOARD_LCD_GPIO_RST              GPIO_NUM_NC      // tied to system reset
 #define BOARD_LCD_GPIO_BACKLIGHT        GPIO_NUM_1
 
+// Stage 94 — shared LEDC-PWM backlight driver (boards/common/backlight_pwm).
+#define BOARD_BL_GPIO                   BOARD_LCD_GPIO_BACKLIGHT
+
 // ---------- XPT2046 resistive touch (separate SPI bus) ----------
 #define BOARD_TOUCH_SPI_HOST            SPI3_HOST
 #define BOARD_TOUCH_PIXEL_CLOCK_HZ      (2 * 1000 * 1000)

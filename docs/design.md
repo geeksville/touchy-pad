@@ -5124,6 +5124,177 @@ Bump **`Widget.Version.CURRENT` 23 → 24** (additive, but it's a Trackpad
    Usage Page `0x0C`, not the keyboard page; it also unlocks mute /
    play-pause / track-next etc. for any future binding.
 
+## Stage 94: unified PWM backlight + brightness preference
+
+**Status: DONE.** Today every board carries its own
+`board_backlight_set(bool on)` in its `board.cpp`, and most of them do
+nothing more than a dumb `gpio_set_level()` on/off toggle. Only the
+SQUiXL board does the *right* thing — it drives the backlight GPIO from an
+**LEDC PWM channel**, so it can do smooth variable brightness. Stage 94
+promotes that approach to a shared implementation so every PWM-capable
+board gets variable brightness "for free", replaces the on/off primitive
+with a 0–100 **level**, and adds a persistent `backlight_level`
+preference (set from the CLI like the other Stage 82 prefs).
+
+### Goals
+
+1. **One shared LEDC backlight driver** instead of a per-board copy, based
+   on SQUiXL's `ledc_*` implementation.
+2. The board primitive changes from `void board_backlight_set(bool on)` to
+   **`void backlight_set(uint8_t level)`** where `level` is a percentage:
+   `0` = fully off, `100` = max brightness (values are clamped to 0–100).
+3. Per-board minimum-visible duty: each board's private `board_pins.h` may
+   `#define BACKLIGHT_MIN_PWM <duty>`; if unset it **defaults to 256**. A
+   non-zero `level` maps into `[BACKLIGHT_MIN_PWM, full]` so low
+   percentages stay visible; `level == 0` always means truly off (duty 0).
+4. Add **`optional uint32 backlight_level`** to `PreferencesFile`, merged
+   by `Prefs::apply_partial`, persisted, and applied on boot.
+5. Extend the CLI with **`touchy pref backlight-level <0-100>`**.
+
+### Firmware: the shared driver
+
+The current split is: `firmware/main/backlight.cpp` is the
+**board-agnostic auto-sleep manager** (timer, wake, `set_timeout`) and it
+calls the **board-supplied hardware primitive** `board_backlight_set()`.
+Stage 94 keeps that split but moves the *hardware* half into a shared
+board helper and changes its signature:
+
+* **New shared file `firmware/boards/common/backlight_pwm.cpp` (+ `.h`).**
+  A single LEDC implementation, modelled on
+  `firmware/boards/squixl/board/board.cpp`. It provides:
+  * `void backlight_pwm_init(void)` — configures one `LEDC_TIMER` +
+    `LEDC_CHANNEL` on `BOARD_BL_GPIO` (called from each board's
+    `board_init()`, replacing the per-board `ledc_*` setup).
+  * `void backlight_set(uint8_t level)` — clamps to 0–100 and writes the
+    LEDC duty: `level == 0` → duty `0` (or the inverted equivalent);
+    otherwise duty = `BACKLIGHT_MIN_PWM + (full - BACKLIGHT_MIN_PWM) *
+    level / 100`, with `full = (1 << BACKLIGHT_PWM_BITS) - 1`. Honours an
+    optional `BACKLIGHT_PWM_INVERT` flag (Elecrow regular v3 wires the
+    backlight active-low).
+  * Compile-time knobs read from the board's `board_pins.h` (all with
+    sensible defaults so most boards only need `BOARD_BL_GPIO`):
+    `BOARD_BL_GPIO` (required), `BACKLIGHT_MIN_PWM` (default **256**),
+    `BACKLIGHT_PWM_BITS` (default **12** → max duty 4095),
+    `BACKLIGHT_PWM_FREQ` (default **6000** Hz), `BACKLIGHT_PWM_INVERT`
+    (default 0), `BACKLIGHT_LEDC_TIMER` / `BACKLIGHT_LEDC_CHANNEL`
+    (defaults `LEDC_TIMER_0` / `LEDC_CHANNEL_0`).
+  * Boards adopting it list `../../common/backlight_pwm.cpp` in their
+    `board/CMakeLists.txt` (same pattern `cyd_common` uses) and delete
+    their own `board_backlight_set` + LEDC boilerplate.
+
+* **`firmware/main/board.h`** — replace the decl
+  `void board_backlight_set(bool on)` with `void backlight_set(uint8_t
+  level)`.
+
+* **`firmware/main/backlight.cpp` (auto-sleep manager)** — now tracks a
+  **remembered user level** (the brightness to restore on wake, seeded
+  from `Prefs::backlight_level()`, default 100). The on/off transitions
+  become `backlight_set(level)` / `backlight_set(0)`:
+  * `sleep_timer_cb` → `backlight_set(0)`.
+  * `backlight_wake` / `set_timeout` "turn on" paths →
+    `backlight_set(remembered_level)`.
+  * **New `backlight_set_level(uint8_t level)`** — public API that stores
+    the remembered level, applies it immediately (if not currently
+    auto-slept), and persists via `Prefs::set_backlight_level()`. This is
+    the side-effect target for the new pref.
+
+* **`firmware/main/main.cpp`** — `backlight_init()` already runs after
+  `board_init()`; it now also pushes the persisted `backlight_level` into
+  the manager's remembered level.
+
+### Per-board migration
+
+Not every board *can* PWM its backlight — some drive it through an I²C IO
+expander or a companion MCU that only exposes on/off. The migration is
+therefore in two buckets:
+
+* **PWM-capable (adopt the shared driver, get real brightness):**
+  `jc4827w543`, `jc4827w543r`, `matouch_43`, `cyd_common`
+  (esp32_2432s028rv3 / esp32_2432s024), `elecrow_p4_lcd_7`, and `squixl`
+  itself (which becomes the reference; its bespoke `ledc_*` code is
+  deleted and it keeps only the IO-expander `BL_EN` power-enable in
+  `display.cpp`). The simple-GPIO boards (`jc4827w543*`, `matouch_43`,
+  `cyd_common`) move their backlight pin from a plain `gpio_config`
+  output to the LEDC channel — the `gpio_set_level` in `display.cpp` /
+  `board.cpp` is removed in favour of `backlight_pwm_init()`.
+
+* **On/off only (keep a thin board-specific `backlight_set`):** boards
+  whose backlight is behind an I²C expander / MCU that can't PWM keep
+  their own `backlight_set(uint8_t level)` that maps `level == 0` → off,
+  `level > 0` → on:
+  * `waveshare_s3_lcd_7b` — backlight is a CH422G expander pin.
+  * `elecrow_s3_lcd_7` / `elecrow_s3_lcd_7_adv` — one `board.cpp` serves
+    three variants at runtime: the **regular v3** path *can* PWM (LEDC on
+    GPIO2, active-low) so it scales duty from `level`; the **advance
+    v1.0** (PCA9557) and **advance v1.2** (STC8H1K28) paths are digital
+    on/off. This board therefore keeps its own `backlight_set` that
+    branches on the detected variant rather than using the shared helper.
+
+  These boards still gain the new `level` *signature* and the
+  `backlight_level` preference plumbing; they just quantise to on/off.
+
+### Proto + prefs
+
+* **`proto/preferences.proto`** — add `optional uint32 backlight_level =
+  6;` to `PreferencesFile` (0–100). Bump the `Version` enum: add `V5 = 5`
+  with a comment ("Stage 94: + backlight_level") and move
+  `CURRENT = 5`. No `.options` change needed (scalar). Regenerate via
+  `just build-proto`.
+* **`firmware/main/prefs.{h,cpp}`** — add `uint8_t backlight_level()` /
+  `set_backlight_level(uint8_t)` (default **100**), serialise it in
+  `save()` (set the `has_backlight_level` flag), load it in `begin()`,
+  and in `apply_partial` handle `p.has_backlight_level` by calling
+  `backlight_set_level(p.backlight_level)` (the manager persists + applies).
+
+### Host: client + CLI
+
+* **`app/src/touchy_pad/client.py`** — add `set_backlight_level(self,
+  level: int)` → `set_preferences(PreferencesFile(backlight_level=level))`
+  (mirror `set_min_log_level`). Mirror the same in the Rust client
+  (`rust/touchy-pad/src/pad.rs`) for parity.
+* **`app/src/touchy_pad/cli.py`** — add under the `pref` group:
+  ```python
+  @pref.command("backlight-level")
+  @click.argument("level", type=click.IntRange(0, 100))
+  def pref_backlight_level(level: int) -> None:
+      """Set the display brightness (0 = off … 100 = max). Persists."""
+      with _client() as c:
+          c.set_backlight_level(level)
+  ```
+
+### Tests & validation
+
+* Host: a prefs/client round-trip test asserting
+  `set_backlight_level(50)` emits a `SetPreferencesCmd` whose
+  `prefs.backlight_level == 50` and no other fields set (mirror the
+  existing Stage 82 pref tests). `just app-test`, `just app-lint`.
+* Firmware: `just firmware-build` for at least one PWM board (e.g.
+  `squixl` reference + one simple-GPIO board like `jc4827w543` that
+  changes hardware path) and one on/off board (`waveshare_s3_lcd_7b`).
+  Brightness itself is validated on hardware (`pref backlight-level 10`
+  vs `100` visibly dims), since firmware has no unit tests.
+* `cargo build` for the Rust client mirror.
+
+### Decisions
+
+1. **Level is 0–100 percent**, not raw duty — keeps the host API
+   board-independent. The board's `BACKLIGHT_MIN_PWM` + `BACKLIGHT_PWM_BITS`
+   absorb the hardware specifics.
+2. **`BACKLIGHT_MIN_PWM` default 256** (per the request) assumes the
+   default 12-bit resolution; boards using fewer bits (Elecrow regular
+   8-bit, P4 11-bit) override both `BACKLIGHT_PWM_BITS` and a fitting
+   `BACKLIGHT_MIN_PWM`.
+3. **Auto-sleep stays on/off** — sleep drives `backlight_set(0)`; wake
+   restores the remembered level. The two concerns (timeout vs.
+   brightness) are independent prefs.
+4. **Expander/MCU boards keep a board-local `backlight_set`** — "one
+   common implementation" is honoured for every PWM-on-a-GPIO board, but
+   hardware that physically can't PWM degrades gracefully to on/off behind
+   the same new signature.
+5. **`Version` bump to V5** because a new persisted field is added; older
+   files (no `backlight_level`) load fine and fall back to the 100
+   default.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

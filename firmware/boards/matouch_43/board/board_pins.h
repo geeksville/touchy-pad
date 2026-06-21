@@ -60,6 +60,9 @@
 
 #define BOARD_BACKLIGHT_GPIO  GPIO_NUM_44   // HIGH = on
 
+// Stage 94 — shared LEDC-PWM backlight driver (boards/common/backlight_pwm).
+#define BOARD_BL_GPIO         BOARD_BACKLIGHT_GPIO
+
 // ---------- I2C bus (GT911 touch) ----------
 
 #define BOARD_I2C_PORT    I2C_NUM_1
