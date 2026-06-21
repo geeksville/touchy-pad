@@ -167,8 +167,8 @@
                       ],
                       "twistInitialAngle": 15,
                       "twistInitialTime": 300,
-                      "twistConsecutiveAngle": 10,
-                      "twistConsecutiveTime": 200,
+                      "twistConsecutiveAngle": 5,
+                      "twistConsecutiveTime": 100,
                       "onCwTwist": [
                         {
                           "macro": {
