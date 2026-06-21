@@ -1013,6 +1013,12 @@ def trackpad(
     zoom_consecutive_time: int | None = None,
     on_zoom_in=None,
     on_zoom_out=None,
+    twist_initial_angle: int | None = None,
+    twist_initial_time: int | None = None,
+    twist_consecutive_angle: int | None = None,
+    twist_consecutive_time: int | None = None,
+    on_cw_twist=None,
+    on_ccw_twist=None,
 ) -> _proto.Widget:
     """Multitouch trackpad surface (device-side HID mouse).
 
@@ -1080,6 +1086,21 @@ def trackpad(
     for one event per touch. The signed zoom magnitude is reported in
     Relative X, so a :func:`~touchy_pad.api.macros.zoom_move` step (or any
     ``Move`` step with unset ``dx``) inside the action picks it up.
+
+    Stage 93 — two-finger **twist** (rotate) gestures. Gated on
+    ``twist_initial_angle`` exactly like zoom: leave it ``None`` and twist
+    detection is off (the default). Set it (degrees) to enable twists; a
+    twist is recognised when the angle of the line *between the two
+    fingers* rotates by that much within ``twist_initial_time`` (ms).
+    Rotating clockwise runs ``on_cw_twist``; counter-clockwise runs
+    ``on_ccw_twist`` (each a single ``Action`` / host-code ``int`` or an
+    iterable; **empty / unset = no-op**, no default bindings). Set
+    ``twist_consecutive_angle`` / ``twist_consecutive_time`` to repeat
+    while the rotation continues; leave ``twist_consecutive_angle``
+    ``None`` for one event per touch. The signed rotation in degrees is
+    reported in Relative X, so a ``Move`` step with unset ``dx`` inside the
+    action picks it up. Pair with
+    :func:`~touchy_pad.api.macros.consumer_key` to bind e.g. volume keys.
     """
     w = _widget(id, rect=rect, style=style, animations=animations)
     tp = w.trackpad
@@ -1142,6 +1163,19 @@ def trackpad(
         tp.zoom_consecutive_time = zoom_consecutive_time
     tp.on_zoom_in.extend(_normalise_actions(on_zoom_in))
     tp.on_zoom_out.extend(_normalise_actions(on_zoom_out))
+
+    # Stage 93 — twist tuning + bindings. Opt-in: writing
+    # `twist_initial_angle` enables the device-side engine.
+    if twist_initial_angle is not None:
+        tp.twist_initial_angle = twist_initial_angle
+    if twist_initial_time is not None:
+        tp.twist_initial_time = twist_initial_time
+    if twist_consecutive_angle is not None:
+        tp.twist_consecutive_angle = twist_consecutive_angle
+    if twist_consecutive_time is not None:
+        tp.twist_consecutive_time = twist_consecutive_time
+    tp.on_cw_twist.extend(_normalise_actions(on_cw_twist))
+    tp.on_ccw_twist.extend(_normalise_actions(on_ccw_twist))
     return w
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .. import _proto
 from ..api import hid_keys
-from ..api.macros import key_tap
+from ..api.macros import VOLUME_DOWN, VOLUME_UP, consumer_key, key_tap
 from ..api.screens import (
     AnimPath,
     Layer,
@@ -115,6 +115,18 @@ def build(background_image: str | None = None) -> tuple[str, _proto.Widget]:
             zoom_consecutive_time=200,
             on_zoom_in=macro_action([key_tap(hid_keys.KEY_EQUAL, hid_keys.CTRL)]),
             on_zoom_out=macro_action([key_tap(hid_keys.KEY_MINUS, hid_keys.CTRL)]),
+            # Stage 93 — enable two-finger twist (rotate) detection. A
+            # rotation of ~15° within 300 ms fires, then repeats every ~10°
+            # while the fingers keep turning. Bound to the media volume
+            # keys (Consumer-Control): clockwise → volume up, counter-
+            # clockwise → volume down. The device also logs each recognised
+            # twist via ESP_LOGI for hardware validation.
+            twist_initial_angle=15,
+            twist_initial_time=300,
+            twist_consecutive_angle=5,
+            twist_consecutive_time=100,
+            on_cw_twist=macro_action([consumer_key(VOLUME_UP)]),
+            on_ccw_twist=macro_action([consumer_key(VOLUME_DOWN)]),
         ),
         col=0,
         row=0,

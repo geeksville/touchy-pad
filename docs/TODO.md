@@ -16,7 +16,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [x] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
 * [ ] use gestures for left/right screen switching instead of buttons at top.
-* [ ] support turn, back, forward, up gestures natively.  be careful to not confuse with drags.  add various slope/min-dist/max-time thresholds.
+* [x] support turn, back, forward, up gestures natively.  be careful to not confuse with drags.  add various slope/min-dist/max-time thresholds.
 * [ ] allow setting brightness by putting that GPIO on a hw PWM output
 * [ ] Implement multitouch HID to support multitouch native apps
 * [ ] explain plans w.r.t. 3d printing and knobs on the screen

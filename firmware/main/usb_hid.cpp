@@ -26,17 +26,20 @@ static const char *TAG = TOUCHY_TAG("usb_hid");
 enum {
     REPORT_ID_MOUSE    = 1,
     REPORT_ID_KEYBOARD = 2,
+    REPORT_ID_CONSUMER = 3,
 };
 
 // ----- HID report descriptor -----
-// Composite mouse + keyboard on a single HID interface, distinguished by
-// report ID:
+// Composite mouse + keyboard + consumer-control on a single HID interface,
+// distinguished by report ID:
 //   * 1 = boot-protocol mouse (5-byte payload)
 //   * 2 = boot-protocol keyboard (8-byte payload)
+//   * 3 = consumer control (16-bit usage; media/volume keys, Stage 93)
 // Single-interface saves an endpoint and is the common TinyUSB pattern.
 static const uint8_t s_hid_report_descriptor[] = {
     TUD_HID_REPORT_DESC_MOUSE   (HID_REPORT_ID(REPORT_ID_MOUSE)),
     TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(REPORT_ID_KEYBOARD)),
+    TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(REPORT_ID_CONSUMER)),
 };
 
 // Required by tinyusb for HID descriptor queries.
@@ -310,4 +313,19 @@ extern "C" void usb_hid_keyboard_report(uint8_t modifiers, const uint8_t keycode
     uint8_t kc[6] = {0};
     if (keycodes) memcpy(kc, keycodes, 6);
     tud_hid_keyboard_report(REPORT_ID_KEYBOARD, modifiers, kc);
+}
+
+// Stage 93 — send a Consumer-Control usage (Usage Page 0x0C) as a
+// press-then-release pair: one report carrying the 16-bit usage, then a
+// zero report. Used for media / volume keys, which are not on the
+// keyboard page.
+extern "C" void usb_hid_consumer_control(uint16_t usage)
+{
+    if (!wait_ready()) return;
+    uint16_t key = usage;
+    tud_hid_report(REPORT_ID_CONSUMER, &key, sizeof(key));
+    vTaskDelay(pdMS_TO_TICKS(20));
+    if (!wait_ready()) return;
+    key = 0;
+    tud_hid_report(REPORT_ID_CONSUMER, &key, sizeof(key));
 }

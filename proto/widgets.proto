@@ -388,6 +388,12 @@ message MacroStep {
         // change. Device HID mapping: Ctrl held + vertical scroll by `dx`
         // (the de-facto desktop zoom gesture).
         Move      zoom_move         = 11;
+        // Stage 93 — a USB HID Consumer-Control usage code (Usage Page
+        // 0x0C); the runner emits a press+release. E.g. 0x00E9 = Volume
+        // Up, 0x00EA = Volume Down, 0x00E2 = Mute, 0x00CD = Play/Pause.
+        // Carries no `Move` — the twist magnitude (degrees) already rides
+        // in Relative X for any `Move` step that wants it.
+        uint32    consumer_key      = 12;
     }
 }
 
@@ -802,6 +808,35 @@ message Trackpad {
     optional uint32 zoom_consecutive_time     = 27;  // ms; unset → default
     repeated Action on_zoom_in      = 28;  // fingers spreading (positive)
     repeated Action on_zoom_out     = 29;  // fingers pinching (negative)
+
+    // Stage 93 — two-finger *twist* (rotate) gestures.
+    //
+    // Gated on `twist_initial_angle` exactly like zoom: unset → twist
+    // detection is off (zero per-frame cost). When set, a twist is
+    // recognised when the *angle of the line between the two touch
+    // points* changes by at least `twist_initial_angle` degrees within
+    // `twist_initial_time` ms. The sign of the angle change picks the
+    // direction — clockwise (positive) runs `on_cw_twist`,
+    // counter-clockwise (negative) runs `on_ccw_twist` — via the same
+    // inline runner as `on_scroll`. The magnitude (in degrees) is
+    // reported in Relative X (`dx`), so a `Move` step with unset `dx`
+    // picks up the signed twist amount. The finger pair is treated as an
+    // undirected line (angle mod 180°) so a touch-controller slot swap
+    // never injects a spurious 180° jump.
+    //
+    // If `twist_consecutive_angle` is set the gesture repeats: after the
+    // initial recognition the engine re-anchors at the recognition angle,
+    // locks the direction, and keeps emitting the same twist each time the
+    // angle clears `twist_consecutive_angle` degrees within
+    // `twist_consecutive_time` ms. Switching direction (cw↔ccw) requires
+    // the angle to re-clear the full `twist_initial_angle` the other way.
+    // Unset → exactly one event per touch.
+    optional uint32 twist_initial_angle     = 30;  // deg — master switch
+    optional uint32 twist_initial_time      = 31;  // ms; unset → default
+    optional uint32 twist_consecutive_angle = 32;  // deg; unset → single
+    optional uint32 twist_consecutive_time  = 33;  // ms; unset → default
+    repeated Action on_cw_twist     = 34;  // clockwise (positive)
+    repeated Action on_ccw_twist    = 35;  // counter-clockwise (negative)
 }
 
 // Reusable touch-feedback ripple. Animates a circle from radius 0 →
@@ -900,7 +935,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 23;
+        CURRENT         = 24;
     }
     Version version = 6;
 

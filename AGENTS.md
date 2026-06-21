@@ -26,8 +26,8 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, and 92 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 23`,
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, and 93 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 24`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
 `PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:
@@ -300,6 +300,35 @@ Highlights worth remembering:
   auto-seeded; `pages/trackpad.py` binds Ctrl+= / Ctrl+- as the worked
   example, and each fire `ESP_LOGI`s `zoom <in|out> d=..` for hardware
   validation. `Widget.Version` 22→23.
+
+- **Stage 93 (two-finger twist/rotate gestures).** `Trackpad` gained two
+  `repeated Action` lists — `on_cw_twist` (clockwise, positive) /
+  `on_ccw_twist` (counter-clockwise, negative) — plus four
+  `optional uint32` knobs: `twist_initial_angle` (deg; the **master
+  switch** — twist recognition is entirely off unless set, zero per-frame
+  cost when absent), `twist_initial_time` (ms window for the first
+  rotation; unset → 300), `twist_consecutive_angle`/`twist_consecutive_time`
+  (set the angle to enable repeat-fire while the rotation keeps turning
+  the locked direction; unset → single-shot). The measured quantity is the
+  **angle of the line between the two touches** (`atan2`), treated as an
+  **undirected line**: angle deltas are wrapped to (−90°,+90°] via
+  `_wrap_pm90`, so a GT911 slot swap (vector flips 180°) wraps to 0° and
+  is immune. There is **no distance/span test** (zoom's job) — only the
+  sign of the wrapped angle change picks CW vs. CCW. Detection is
+  **additive** to `on_scroll`/`on_zoom` (two-finger drag/pinch still
+  work) and both lists default empty, so behaviour is unchanged unless
+  opted in. Firmware engine is `firmware/main/widgets/trackpad_widget.{h,cpp}`
+  (`_twist_process` / `_emit_twist`, re-anchoring each frame), reusing the
+  Stage 90 `widget_run_actions_inline` + `MacroMoveCtx{dx=Δdeg, dy=0}` so
+  the signed degrees ride in Relative X (a `Move` step with unset `dx`
+  picks it up). Stage 93 also added a **USB HID Consumer-Control report**
+  (`REPORT_ID_CONSUMER = 3`, `TUD_HID_REPORT_DESC_CONSUMER`) +
+  `usb_hid_consumer_control(uint16_t)` and a new `MacroStep.consumer_key`
+  (uint32, tag 12) → host helper `macros.consumer_key()` with constants
+  `VOLUME_UP`/`VOLUME_DOWN`/`MUTE`/`PLAY_PAUSE` (Usage Page 0x0C).
+  `pages/trackpad.py` binds CW→Volume Up / CCW→Volume Down as the worked
+  example, and each fire `ESP_LOGI`s `twist <cw|ccw> deg=..` for hardware
+  validation. `Widget.Version` 23→24.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

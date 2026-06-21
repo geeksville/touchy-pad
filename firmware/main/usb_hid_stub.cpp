@@ -68,3 +68,8 @@ extern "C" void usb_hid_keyboard_report(uint8_t /*modifiers*/,
 {
     warn_no_usb_once();
 }
+
+extern "C" void usb_hid_consumer_control(uint16_t /*usage*/)
+{
+    warn_no_usb_once();
+}

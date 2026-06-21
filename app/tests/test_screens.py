@@ -704,6 +704,45 @@ def test_trackpad_zoom_config_round_trip():
     assert tp.on_zoom_out[0].macro.steps[0].WhichOneof("step") == "zoom_move"
 
 
+def test_trackpad_twist_disabled_by_default():
+    """Stage 93: a bare trackpad leaves the twist engine off (no fields,
+    no twist action lists)."""
+    s = Screen("t")
+    s += trackpad("pad")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert not tp.HasField("twist_initial_angle")
+    assert not tp.HasField("twist_initial_time")
+    assert not tp.HasField("twist_consecutive_angle")
+    assert not tp.HasField("twist_consecutive_time")
+    assert len(tp.on_cw_twist) == 0
+    assert len(tp.on_ccw_twist) == 0
+
+
+def test_trackpad_twist_config_round_trip():
+    """Setting the twist knobs + bindings round-trips through the wire."""
+    s = Screen("t")
+    s += trackpad(
+        "pad",
+        twist_initial_angle=15,
+        twist_initial_time=300,
+        twist_consecutive_angle=10,
+        twist_consecutive_time=200,
+        on_cw_twist=macro_action([macros.consumer_key(macros.VOLUME_UP)]),
+        on_ccw_twist=22,
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert tp.twist_initial_angle == 15
+    assert tp.twist_initial_time == 300
+    assert tp.twist_consecutive_angle == 10
+    assert tp.twist_consecutive_time == 200
+    step = tp.on_cw_twist[0].macro.steps[0]
+    assert step.WhichOneof("step") == "consumer_key"
+    assert step.consumer_key == macros.VOLUME_UP
+    assert tp.on_ccw_twist[0].host.code == 22
+
+
 def test_build_demo_screen_trackpad_has_ripples():
     """Demo widget page ships ripple eye-candy so users see the feature."""
     _, widgets = build_demo()

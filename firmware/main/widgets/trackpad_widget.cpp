@@ -224,6 +224,27 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
         _on_zoom_out_n = cfg.on_zoom_out_count;
     }
 
+    // Stage 93 — twist (rotate) engine. Master switch is the presence of
+    // `twist_initial_angle`; everything else has a sensible default.
+    _twist_enabled = cfg.has_twist_initial_angle;
+    if (_twist_enabled) {
+        _twist_initial_angle = cfg.twist_initial_angle;
+        _twist_initial_time =
+            cfg.has_twist_initial_time ? cfg.twist_initial_time
+                                       : DEFAULT_TWIST_INITIAL_TIME;
+        _twist_has_consecutive = cfg.has_twist_consecutive_angle;
+        _twist_consecutive_angle =
+            cfg.has_twist_consecutive_angle ? cfg.twist_consecutive_angle
+                                            : 0;
+        _twist_consecutive_time =
+            cfg.has_twist_consecutive_time ? cfg.twist_consecutive_time
+                                           : _twist_initial_time;
+        _on_cw_twist    = cfg.on_cw_twist;
+        _on_cw_twist_n  = cfg.on_cw_twist_count;
+        _on_ccw_twist   = cfg.on_ccw_twist;
+        _on_ccw_twist_n = cfg.on_ccw_twist_count;
+    }
+
     // The widget *is* the LVGL container; caller sizes/styles it via the
     // host DSL's Rect / Style. The container is transparent so sibling
     // widgets drawn earlier in the same grid cell (background fill, hint
@@ -356,6 +377,20 @@ void TrackpadWidget::_process()
         _zoom_done        = false;
         _zoom_locked      = false;
         _zoom_dir_sign    = 0;
+    }
+
+    // ── Stage 93: seed the twist anchor when two fingers become present ─
+    // The inter-touch angle is taken mod 180° (undirected line), so a
+    // GT911 slot swap that flips p0/p1 is harmless. Re-seeding on 3→2
+    // restarts twist for the new pair.
+    if (_twist_enabled && count == 2 && _prev_count != 2) {
+        float tdx = static_cast<float>(pts[0].x) - pts[1].x;
+        float tdy = static_cast<float>(pts[0].y) - pts[1].y;
+        _twist_anchor_deg = atan2f(tdy, tdx) * (180.0f / 3.14159265f);
+        _twist_anchor_ms  = now;
+        _twist_done       = false;
+        _twist_locked     = false;
+        _twist_dir_sign   = 0;
     }
 
     // ── Recolor all live touch ripples when the finger count changes ─
@@ -557,6 +592,16 @@ void TrackpadWidget::_process()
             _zoom_process(sqrtf(zdx * zdx + zdy * zdy), now);
         }
 
+        // Stage 93 — twist detection runs in parallel with scroll + zoom
+        // (additive). The inter-touch angle is taken mod 180° inside
+        // `_twist_process`, so the p0/p1 order is irrelevant. No-op unless
+        // enabled.
+        if (_twist_enabled) {
+            float tdx = static_cast<float>(pts[0].x) - pts[1].x;
+            float tdy = static_cast<float>(pts[0].y) - pts[1].y;
+            _twist_process(atan2f(tdy, tdx) * (180.0f / 3.14159265f), now);
+        }
+
         _fingers[0].last_x = static_cast<int16_t>(pts[0].x);
         _fingers[0].last_y = static_cast<int16_t>(pts[0].y);
         _fingers[1].last_x = static_cast<int16_t>(pts[1].x);
@@ -639,6 +684,10 @@ void TrackpadWidget::_process()
         _zoom_done     = false;
         _zoom_locked   = false;
         _zoom_dir_sign = 0;
+        // Stage 93 — reset the per-touch twist window.
+        _twist_done     = false;
+        _twist_locked   = false;
+        _twist_dir_sign = 0;
         for (int i = 0; i < MAX_FINGERS; i++) _fingers[i] = FingerState{};
         // Take down the scrollbar (if it was up). Animation is a quick
         // fade-out; the bar deletes itself when the opacity anim ends.
@@ -854,6 +903,101 @@ void TrackpadWidget::_zoom_process(float span, uint32_t now)
     _emit_zoom(delta);
     _zoom_anchor_span = span;
     _zoom_anchor_ms   = now;
+}
+
+void TrackpadWidget::_emit_twist(int32_t delta)
+{
+    const touchy_Action *actions = nullptr;
+    pb_size_t            n        = 0;
+    const char         *name     = "?";
+    if (delta > 0) { actions = _on_cw_twist;  n = _on_cw_twist_n;  name = "cw";  }
+    else           { actions = _on_ccw_twist; n = _on_ccw_twist_n; name = "ccw"; }
+    // Report the signed angle change (degrees) as the ambient Move delta in
+    // Relative X (dx), run inline (same path as on_scroll). A Move step with
+    // unset dx picks it up. Empty list → no-op, but we still log for
+    // hardware validation.
+    int8_t cx = delta > 127 ? 127 : delta < -127 ? -127 : (int8_t)delta;
+    MacroMoveCtx ctx{cx, 0};
+    widget_run_actions_inline(actions, n, &ctx);
+    log_line_post("twist %s %+d", name, (int)delta);
+    ESP_LOGI(TAG, "twist %s deg=%d", name, (int)delta);
+}
+
+// Wrap a signed angle difference (degrees) into (-90, +90]. Treating the
+// finger pair as an undirected line makes the engine immune to a touch
+// controller swapping the two slots (which flips the inter-touch vector by
+// exactly 180°, wrapping to 0°).
+static float _wrap_pm90(float d)
+{
+    while (d >  90.0f) d -= 180.0f;
+    while (d <= -90.0f) d += 180.0f;
+    return d;
+}
+
+void TrackpadWidget::_twist_process(float angle, uint32_t now)
+{
+    if (!_twist_enabled || _twist_done) return;
+
+    int32_t delta    = (int32_t)lroundf(_wrap_pm90(angle - _twist_anchor_deg));
+    int32_t adelta   = delta < 0 ? -delta : delta;
+    uint32_t t       = now - _twist_anchor_ms;
+    int32_t need     = (int32_t)_twist_initial_angle;
+
+    if (!_twist_locked) {
+        // ── Initial recognition ──────────────────────────────────────
+        if (adelta < need) return;  // angle-change threshold not met yet
+        if (t > _twist_initial_time) {
+            // Threshold reached but too slow → roll the window forward so
+            // a later quick rotation can still register (a slow drift never
+            // latches a twist).
+            _twist_anchor_deg = angle;
+            _twist_anchor_ms  = now;
+            return;
+        }
+        int8_t sign = delta > 0 ? 1 : -1;
+        _emit_twist(delta);
+        if (_twist_has_consecutive) {
+            _twist_locked   = true;
+            _twist_dir_sign = sign;
+            _twist_anchor_deg = angle;
+            _twist_anchor_ms  = now;
+        } else {
+            _twist_done = true;  // single event per touch
+        }
+        return;
+    }
+
+    // ── Consecutive mode: rotation along the locked direction ────────
+    int32_t along = delta * _twist_dir_sign;  // + = continuing same way
+    if (along < (int32_t)_twist_consecutive_angle) {
+        // Direction switch: the angle must re-clear the *initial* angle in
+        // the opposite direction before cw↔ccw can flip.
+        if (-along >= need) {
+            int8_t sign = (int8_t)(-_twist_dir_sign);
+            _emit_twist(delta);
+            _twist_dir_sign   = sign;
+            _twist_anchor_deg = angle;
+            _twist_anchor_ms  = now;
+            return;
+        }
+        // Not far enough yet. Roll the anchor forward in time if the
+        // consecutive window expired (keeps a paused-then-resumed rotation
+        // alive without firing).
+        if (t > _twist_consecutive_time) {
+            _twist_anchor_deg = angle;
+            _twist_anchor_ms  = now;
+        }
+        return;
+    }
+    if (t > _twist_consecutive_time) {
+        // Cleared the angle but too slowly → re-anchor, no event.
+        _twist_anchor_deg = angle;
+        _twist_anchor_ms  = now;
+        return;
+    }
+    _emit_twist(delta);
+    _twist_anchor_deg = angle;
+    _twist_anchor_ms  = now;
 }
 
 uint32_t TrackpadWidget::_color_for_count(uint8_t n) const

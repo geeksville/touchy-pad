@@ -58,12 +58,14 @@ The touchpad has an ever growing list of features:
 * Works as a USB HID Mouse (with full x/y scroll wheel emulation for double touch)
 * Fully customizable layout (you can mix and match/overlay/blend with other device widgets)
 * Fully customizable acceleration/speed options
-* Gesture support 
+* Full gesture support (all guestures can be bound to any action/macro)
   * one finger tap == left click
   * two finger tap == right click
   * three finger tap == middle click
   * two finger drag is x/y scrollwheel movement
-  * Others coming 'soonish' (next couple o months)
+  * two finger pinch to zoom in/out
+  * swipe left/right/up/down
+  * two finger twist for ccw/cw 'knob' actions
 
 The default layout supports custom graphics for the touchpad.  For instance:
 

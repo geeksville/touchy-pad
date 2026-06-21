@@ -164,6 +164,32 @@
                             ]
                           }
                         }
+                      ],
+                      "twistInitialAngle": 15,
+                      "twistInitialTime": 300,
+                      "twistConsecutiveAngle": 10,
+                      "twistConsecutiveTime": 200,
+                      "onCwTwist": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "consumerKey": 233
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "onCcwTwist": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "consumerKey": 234
+                              }
+                            ]
+                          }
+                        }
                       ]
                     }
                   }

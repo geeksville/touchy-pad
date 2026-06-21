@@ -122,6 +122,27 @@ def zoom_move(dx: int | None = None) -> _proto.MacroStep:
     return _proto.MacroStep(zoom_move=move)
 
 
+# --- Consumer-Control (media) keys (Stage 93) --------------------------------
+# USB HID Consumer Device usage codes (Usage Page 0x0C). These are *not* on
+# the keyboard page, so they need the dedicated `consumer_key` step.
+VOLUME_UP = 0x00E9
+VOLUME_DOWN = 0x00EA
+MUTE = 0x00E2
+PLAY_PAUSE = 0x00CD
+
+
+def consumer_key(usage: int) -> _proto.MacroStep:
+    """Send a USB HID Consumer-Control key (Usage Page 0x0C).
+
+    ``usage`` is a 16-bit consumer usage code; the device emits it as a
+    press+release. Handy constants live alongside this helper:
+    :data:`VOLUME_UP`, :data:`VOLUME_DOWN`, :data:`MUTE`,
+    :data:`PLAY_PAUSE`. Used e.g. by the trackpad twist gesture to bind
+    media volume up/down.
+    """
+    return _proto.MacroStep(consumer_key=usage)
+
+
 def set_delay(ms: int) -> _proto.MacroStep:
     """Set the sticky inter-step delay (ms) for every subsequent step."""
     if ms < 0:

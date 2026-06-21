@@ -126,6 +126,11 @@ uint32_t run_step(const touchy_MacroStep &step, uint32_t sticky_delay_ms,
         }
         break;
     }
+    case touchy_MacroStep_consumer_key_tag:
+        // Stage 93: a USB HID Consumer-Control usage (Usage Page 0x0C),
+        // e.g. Volume Up/Down. Emitted as a press+release.
+        usb_hid_consumer_control((uint16_t)step.step.consumer_key);
+        break;
     case touchy_MacroStep_set_delay_ms_tag:
         // Update the sticky delay for subsequent steps. No HID I/O.
         return step.step.set_delay_ms;

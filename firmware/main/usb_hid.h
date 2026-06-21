@@ -41,6 +41,12 @@ void usb_hid_mouse_buttons(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel);
 // RSHIFT = 0x20, RALT = 0x40, RGUI = 0x80).
 void usb_hid_keyboard_report(uint8_t modifiers, const uint8_t keycodes[6]);
 
+// Stage 93 — send a USB HID Consumer-Control usage (Usage Page 0x0C) as a
+// press-then-release pair. E.g. 0x00E9 = Volume Up, 0x00EA = Volume Down,
+// 0x00E2 = Mute, 0x00CD = Play/Pause. Used for media keys, which are not
+// on the keyboard page.
+void usb_hid_consumer_control(uint16_t usage);
+
 #ifdef __cplusplus
 }
 #endif

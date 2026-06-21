@@ -4882,6 +4882,248 @@ Bump **`Widget.Version.CURRENT` 22 → 23** (additive, but it's a Trackpad
    no auto-seeded `zoom_move()`. The `pages/trackpad.py` page binds
    `ctrl`+`plus` / `ctrl`+`minus` keystroke macros as the worked example.
 
+## Stage 93: trackpad twist (rotate) gestures
+
+**Status: DONE.** Two-finger *twist* (rotate) gestures: rotating the
+two fingers clockwise reports **CW** (positive), rotating
+counter-clockwise reports **CCW** (negative), bound to Action lists
+exactly like the Stage 90/91/92 gestures. A twist is recognised when the
+**angle of the line between the two touches** changes by more than a
+threshold, then keeps firing as the rotation continues. Behaviour is
+opt-in: the twist Action lists default to **empty**, so existing
+trackpads are unchanged until a host binds one.
+
+This is the rotational analogue of the Stage 92 two-finger zoom: the
+recognition model, the master-switch gating, the optional consecutive
+repeat, the inline runner + `MacroMoveCtx` reporting, and the
+direction-switch rule are all reused. The key differences: the measured
+quantity is the **inter-touch angle** (not the inter-touch span), the
+threshold/anchor knob is an **angle** (`twist_initial_angle`, degrees)
+rather than a distance, direction is **CW vs. CCW** (not expand vs.
+contract), and the worked example binds **Consumer-Control media keys**
+(volume up/down), which requires a small **new HID report** (below).
+
+### Recognition model
+
+A twist is evaluated **per two-finger touch** (`count == 2`), in parallel
+with the existing two-finger scroll → `on_scroll` **and** the Stage 92
+zoom → `on_zoom_*`. The whole twist engine is **gated on
+`twist_initial_angle` being set**: if the proto leaves it unset the
+trackpad skips twist detection entirely (no state tracking, no per-frame
+work), so twists are strictly opt-in and the default trackpad pays
+nothing.
+
+When `count` goes to `2`, anchor the **initial angle** `a0` of the
+inter-touch vector `p1 - p0` at time `s_ms`. On each subsequent frame
+compute the current angle `a` and the signed change `Δ = a - a0`
+(positive = clockwise; negative = counter-clockwise). A twist is
+recognised when:
+
+1. **Angle** — `|Δ| >= twist_initial_angle` (degrees).
+2. **Time** — that change was reached within `t <= twist_initial_time`
+   (ms). If `|Δ|` crosses the threshold only *after* the time window
+   expired (a slow drift), re-anchor `(a0, s_ms)` to the current angle so
+   a later quick twist can still register (rolling window), exactly like
+   the Stage 92 zoom slow-drift guard.
+
+The sign of `Δ` picks the gesture: `Δ > 0` → `on_cw_twist`, `Δ < 0` →
+`on_ccw_twist`. (Screen Y is down, so a mathematically-positive `atan2`
+delta reads as clockwise on the panel; the firmware `ESP_LOGI` and the
+worked-example binding confirm the sense, and the host can swap the two
+lists if a particular panel orientation feels reversed.)
+
+**Slot-swap immunity (the key subtlety).** Unlike Stage 92's span
+`|p1 − p0|`, the *angle* of `p1 − p0` is **not** order-invariant: a GT911
+slot swap (which can reorder the two touch points frame-to-frame) flips
+the vector by exactly 180°, which would inject a spurious ±180° jump.
+The engine sidesteps this by treating the finger pair as an **undirected
+line** — i.e. working **mod 180°**: each per-frame delta `a − a_prev`
+(and the recognition delta `a − a0`) is **wrapped into `(−90°, +90°]`**
+before use. A 180° slot swap wraps to 0°, so it contributes nothing; only
+genuine rotation accumulates. (A real twist almost never exceeds 90° in a
+single frame, so the wrap never clips a legitimate motion.)
+
+On recognition we fire the matching list — `on_cw_twist` /
+`on_ccw_twist` — through the **Stage 90 inline runner**
+(`widget_run_actions_inline`) with `MacroMoveCtx{dx = Δ°, dy = 0}`, so the
+twist magnitude (in **degrees**) is reported in **Relative X** (signed:
+positive = CW, negative = CCW) — exactly the `MacroMoveCtx.dx` convention
+the Move steps already consume. The twist Action lists themselves default
+**empty** (like the Stage 91/92 lists); nothing is seeded automatically.
+An `ESP_LOGI` line is emitted per fired twist.
+
+**Consecutive twists (optional).** If `twist_consecutive_angle` is set,
+then after the initial recognition the engine re-anchors `(a0, s_ms)` to
+the recognition angle, **locks the direction** (CW or CCW), and swaps the
+thresholds to `twist_consecutive_angle` / `twist_consecutive_time`. While
+the rotation keeps changing in the locked direction, it keeps emitting the
+*same* twist event each time `|Δ|` clears the consecutive angle within the
+consecutive time — a continuous stream for one rotation (e.g. a smooth
+volume ramp). If `twist_consecutive_angle` is unset, exactly one event
+fires per two-finger touch.
+
+**Direction switching.** Switching from CW to CCW (or vice versa) requires
+the **initial** conditions to be met in the opposite direction before the
+switch can occur: while locked into one direction the engine only tests
+the locked direction's consecutive threshold; to flip, the angle must
+reverse far enough to clear the full `twist_initial_angle` the other way,
+which re-runs recognition and re-locks. This naturally gates **twist ↔
+scroll ↔ zoom** alternation: a two-finger drag that translates (no angle
+change) or pinches (span change, no angle change) never clears
+`twist_initial_angle`, so it stays a scroll/zoom until a genuine rotation
+crosses the initial threshold.
+
+### New HID surface — Consumer Control (Usage Page 0x0C)
+
+The worked example binds **media volume up/down**, which live on the USB
+HID **Consumer Device** page (`0x0C`), *not* the keyboard page — so the
+firmware currently can't emit them (it ships only boot mouse + boot
+keyboard reports). Stage 93 adds a third HID report:
+
+* **`firmware/main/usb_hid.{h,cpp}`.** Add `REPORT_ID_CONSUMER = 3` and
+  `TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(REPORT_ID_CONSUMER))` to
+  `s_hid_report_descriptor`. Add `void usb_hid_consumer_control(uint16_t
+  usage)` that sends a 2-byte report carrying `usage`, then a `0` report
+  (press + release). Mirror a no-op in `usb_hid_stub.cpp`.
+  Volume usages: **Volume Up `0x00E9`**, **Volume Down `0x00EA`** (Mute
+  `0x00E2`, Play/Pause `0x00CD`, etc. are now reachable too).
+* **`MacroStep` gains `uint32 consumer_key = 12;`** — a Consumer-Control
+  usage code (Usage Page `0x0C`); the runner emits a press+release via
+  `usb_hid_consumer_control`. This is the generic mechanism; volume is
+  just the first user.
+
+### Proto (`proto/widgets.proto` + `widgets.options`)
+
+Extend `message Trackpad` (next free tag is 30):
+
+* `optional uint32 twist_initial_angle     = 30;` — degrees. **Presence is
+  the master switch:** unset → twist detection is disabled entirely;
+  set → twists are active and this is the angle-change threshold.
+* `optional uint32 twist_initial_time      = 31;` — ms; unset → default
+  (~300).
+* `optional uint32 twist_consecutive_angle = 32;` — degrees; **unset =
+  single event per touch** (no repeat).
+* `optional uint32 twist_consecutive_time  = 33;` — ms; unset → default.
+* `repeated Action on_cw_twist  = 34;` — clockwise (positive).
+* `repeated Action on_ccw_twist = 35;` — counter-clockwise (negative).
+
+Extend `message MacroStep` (next free tag is 12):
+
+* `uint32 consumer_key = 12;` — Consumer-Control usage code (see HID
+  surface above). Unlike the `*_move` steps it carries no `Move` /
+  ambient delta — twist magnitude already rides in `MacroMoveCtx.dx` for
+  any `Move` step that wants it, and the common binding (volume) is a
+  discrete key per recognised twist.
+
+`widgets.options`: cap the two new `repeated Action` fields with
+`type:FT_POINTER` (mirroring the Stage 90/91/92 `on_*` entries).
+`consumer_key` is a scalar (no options entry needed).
+
+Bump **`Widget.Version.CURRENT` 23 → 24** (additive, but it's a Trackpad
++ MacroStep wire change).
+
+### Firmware (`trackpad_widget.{h,cpp}`)
+
+* **Config + tuning.** In the constructor, set `_twist_enabled =
+  cfg.has_twist_initial_angle`. When false the engine short-circuits on
+  the first check; when true, copy the four scalars (defaulting time knobs
+  to `DEFAULT_TWIST_INITIAL_TIME` / `_twist_initial_time`) and borrow the
+  `on_cw_twist` / `on_ccw_twist` pointers + counts (valid for the widget's
+  lifetime, like the Stage 90/92 arrays).
+* **Twist state.** Add per-touch members reset on all-fingers-up:
+  `_twist_anchor_deg` (the `a0` baseline), `_twist_anchor_ms`,
+  `_twist_done` (single-shot latch), `_twist_locked` + `_twist_dir_sign`
+  (consecutive mode), alongside the existing two-finger scroll/zoom
+  bookkeeping. Seed the anchor on the `count == 2 && _prev_count != 2`
+  edge (next to the Stage 92 zoom anchor seed).
+* **Engine (`_twist_process` / `_emit_twist`).** Inside the existing
+  `count == 2` branch (after the scroll + Stage 92 zoom handling), bail
+  immediately when `!_twist_enabled || _twist_done`; otherwise compute the
+  current angle, wrap `Δ` into `(−90, +90]`, and run the same
+  recognise → (re-anchor + lock | latch done) state machine as
+  `_zoom_process`, emitting via `widget_run_actions_inline` +
+  `MacroMoveCtx{Δ°, 0}` and `ESP_LOGI(TAG, "twist %s deg=%d", …)`.
+* **Angle math.** `a = atan2f(p1.y − p0.y, p1.x − p0.x)` (radians), kept
+  in degrees for the threshold compares. Unlike the Stage 91 swipe (which
+  deliberately avoided per-frame trig), `atan2f` here runs **only on
+  two-finger frames**, which are rare — same rationale Stage 92 used to
+  call `sqrtf` directly. No fixed-point table needed.
+* **`consumer_key` HID step (`macros.cpp`).** Add a `consumer_key` case to
+  the inline/async macro runner → `usb_hid_consumer_control(usage)`. The
+  twist lists run through the inline runner like the other gesture lists.
+* **Coexistence.** Twist detection is **additive** — it does not suppress
+  `on_scroll` or `on_zoom`. Since the twist lists default to empty, the
+  default trackpad is unaffected.
+
+### Host (Python — `api/screens.py`, `api/macros.py`, `pages/trackpad.py`)
+
+* **`api/macros.py`.** Add `consumer_key(usage)` → `MacroStep(consumer_key
+  =usage)`, plus the volume constants `VOLUME_UP = 0x00E9` /
+  `VOLUME_DOWN = 0x00EA` (and a couple of friends — `MUTE = 0x00E2`,
+  `PLAY_PAUSE = 0x00CD`). Export `consumer_key` from `api/__init__`.
+  *(No `twist_move` helper — the degrees ride in `MacroMoveCtx.dx` for any
+  existing `Move` step, and twist has no canonical proportional-HID
+  target the way zoom maps to Ctrl+scroll.)*
+* **`api/screens.py` `trackpad()`** gains keyword args
+  `twist_initial_angle`, `twist_initial_time`, `twist_consecutive_angle`,
+  `twist_consecutive_time`, `on_cw_twist`, `on_ccw_twist`. The two lists
+  default **empty** (no `_USE_DEFAULT` seeding) so adding twist is purely
+  opt-in; each scalar is written only when not `None`.
+* **`pages/trackpad.py`.** Enable twist (set `twist_initial_angle` +
+  consecutive knobs) and bind
+  `on_cw_twist=macro_action([macros.consumer_key(macros.VOLUME_UP)])`,
+  `on_ccw_twist=macro_action([macros.consumer_key(macros.VOLUME_DOWN)])`
+  as the worked example — so a clockwise twist raises the volume, CCW
+  lowers it, validated on hardware via the `twist cw/ccw deg=…` logs.
+
+### Rust
+
+* prost regenerates the new fields + `consumer_key` from the symlinked
+  proto. No functional Rust change is required for the firmware/Python
+  feature; optionally add a `trackpad`-builder pass-through + a
+  `consumer_key` macro helper if/when a Rust caller needs them.
+
+### Default screen / docs
+
+* No change to `proto/default_screen.json`. As with Stage 91/92, twist is
+  enabled on `pages/trackpad.py` (the provisioned page) for hardware
+  validation, not in the embedded fallback.
+* Add a Python round-trip test (the two lists + four tuning scalars) and a
+  "disabled by default" assertion, mirroring the Stage 92 tests, plus a
+  `consumer_key` macro round-trip test.
+
+### Decisions (for review)
+
+1. **Twist is additive to `on_scroll` *and* `on_zoom`** (does not suppress
+   either); empty defaults keep current behaviour. All three two-finger
+   gestures are evaluated in parallel and gated by their own thresholds,
+   so a given motion naturally activates whichever one it actually is.
+2. **Two distinct lists (`on_cw_twist` / `on_ccw_twist`)** rather than one
+   signed `on_twist`, matching the Stage 92 zoom shape; the signed degrees
+   are still available to each via Relative X.
+3. **Undirected-line angle (mod 180°, deltas wrapped to `(−90, +90]`)** to
+   be immune to GT911 slot swaps — the rotational counterpart to Stage
+   92's order-invariant span. *(Alternative: track stable per-finger
+   identity across frames — rejected as more state for no benefit, since
+   the mod-180° trick is exact.)*
+4. **`atan2f` per two-finger frame** (no fixed-point angle table). Two-
+   finger frames are rare, same rationale as Stage 92's direct `sqrtf`.
+5. **Direction switch requires re-clearing `twist_initial_angle` the
+   opposite way**, which also gates twist ↔ scroll ↔ zoom alternation for
+   free.
+6. **Reuse the Stage 90 inline runner + `MacroMoveCtx`**, reporting the
+   signed twist **degrees** in Relative X (`dx`, `dy = 0`). **No dedicated
+   `twist_move` step** — there is no canonical proportional-HID twist
+   target, and the common binding is a discrete consumer key.
+7. **Master switch = `twist_initial_angle` presence** (zero per-frame cost
+   when unset), mirroring Stage 91/92.
+8. **Twist lists default empty** (opt-in); `pages/trackpad.py` binds
+   media **volume up/down** as the worked example.
+9. **New Consumer-Control HID report + `MacroStep.consumer_key`** — the
+   first non-mouse/keyboard HID usage. Needed because volume keys are on
+   Usage Page `0x0C`, not the keyboard page; it also unlocks mute /
+   play-pause / track-next etc. for any future binding.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

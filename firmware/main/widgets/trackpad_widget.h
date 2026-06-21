@@ -58,6 +58,11 @@ public:
     // enable, see `_zoom_enabled`).
     static constexpr uint32_t DEFAULT_ZOOM_INITIAL_TIME = 300;  // ms
 
+    // Stage 93 — twist-gesture tuning default for the secondary time knob;
+    // `twist_initial_angle` has no default (its presence is the master
+    // enable, see `_twist_enabled`).
+    static constexpr uint32_t DEFAULT_TWIST_INITIAL_TIME = 300;  // ms
+
     // Construct the widget as a child of `parent`. The caller is
     // expected to size/style it via the usual `apply_rect` /
     // `apply_style` pass after construction.
@@ -220,6 +225,41 @@ private:
     // Fire the zoom action list + log given the signed span change
     // `delta` (Relative X; + = zoom in, - = zoom out).
     void _emit_zoom(int32_t delta);
+
+    // Stage 93 — two-finger twist (rotate) gesture engine. Gated on
+    // `_twist_enabled` (set iff the proto carries `twist_initial_angle`);
+    // when false none of the state below is touched and the per-frame
+    // check bails immediately. The measured quantity is the *angle* of the
+    // line between the two touch points, treated as an undirected line
+    // (mod 180°) so a touch-controller slot swap never injects a 180° jump.
+    bool                _twist_enabled           = false;
+    uint32_t            _twist_initial_angle     = 0;
+    uint32_t            _twist_initial_time      = DEFAULT_TWIST_INITIAL_TIME;
+    bool                _twist_has_consecutive   = false;
+    uint32_t            _twist_consecutive_angle = 0;
+    uint32_t            _twist_consecutive_time  = DEFAULT_TWIST_INITIAL_TIME;
+    const touchy_Action *_on_cw_twist   = nullptr;
+    pb_size_t            _on_cw_twist_n  = 0;
+    const touchy_Action *_on_ccw_twist  = nullptr;
+    pb_size_t            _on_ccw_twist_n = 0;
+
+    // Per-touch twist state (reset on all-fingers-up). The anchor is the
+    // angle/time the current twist evaluation window started from; it rolls
+    // forward on a too-slow rotation and re-anchors after each recognised
+    // (consecutive) twist.
+    float    _twist_anchor_deg = 0.0f;
+    uint32_t _twist_anchor_ms  = 0;
+    bool     _twist_done       = false;  // single-shot guard (no consecutive)
+    bool     _twist_locked     = false;  // consecutive mode: direction fixed
+    int8_t   _twist_dir_sign   = 0;      // locked direction: +1 cw / -1 ccw
+
+    // Run the twist engine for the current two-finger inter-touch `angle`
+    // (degrees, the orientation of `p1 - p0`) at time `now`. No-op unless
+    // `_twist_enabled`.
+    void _twist_process(float angle, uint32_t now);
+    // Fire the twist action list + log given the signed angle change
+    // `delta` in degrees (Relative X; + = clockwise, - = counter-clockwise).
+    void _emit_twist(int32_t delta);
 
     // Per-instance tap-vs-drag hold threshold in ms, sourced from
     // `Trackpad.tap_max_ms` (or `DEFAULT_TAP_MAX_MS` if unset).
