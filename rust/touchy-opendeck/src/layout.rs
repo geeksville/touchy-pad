@@ -106,7 +106,7 @@ fn key_button(key: u8, blank_path: &str) -> Widget {
 	};
 	let released = Image {
 		path: blank_path.to_string(),
-		align: Some(image::Align::ImageAlignStretch as i32),
+		align: Some(image::Align::Stretch as i32),
 		..Default::default()
 	};
 	Widget {

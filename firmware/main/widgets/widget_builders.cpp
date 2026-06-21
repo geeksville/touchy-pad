@@ -206,7 +206,7 @@ lv_obj_t *build_label(lv_obj_t *parent, const touchy_Widget &w)
     // Ensure text is fully opaque regardless of theme defaults.
     lv_obj_set_style_text_opa(lbl, LV_OPA_COVER, 0);
     // Text alignment within the label's bounding box.
-    if (w.kind.label.text_align != touchy_TextAlign_TEXT_ALIGN_AUTO) {
+    if (w.kind.label.text_align != touchy_TextAlign_AUTO) {
         static const lv_text_align_t map[] = {
             LV_TEXT_ALIGN_AUTO,
             LV_TEXT_ALIGN_LEFT,

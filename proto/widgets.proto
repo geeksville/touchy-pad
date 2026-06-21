@@ -45,89 +45,89 @@ message Rect {
 // LVGL version.
 enum LvEventCode {
     // Catch-all sentinel — never forwarded as a real event.
-    LV_EVENT_ALL = 0;
+    ALL = 0;
 
     // ---- Input device events ----
-    LV_EVENT_PRESSED             =  1;  // touch/click starts
-    LV_EVENT_PRESSING            =  2;  // held (sent continuously)
-    LV_EVENT_PRESS_LOST          =  3;  // pressed but finger slid off
-    LV_EVENT_SHORT_CLICKED       =  4;  // short tap, not scrolled
-    LV_EVENT_SINGLE_CLICKED      =  5;
-    LV_EVENT_DOUBLE_CLICKED      =  6;
-    LV_EVENT_TRIPLE_CLICKED      =  7;
-    LV_EVENT_LONG_PRESSED        =  8;  // held ≥ long_press_time
-    LV_EVENT_LONG_PRESSED_REPEAT =  9;
-    LV_EVENT_CLICKED             = 10;  // released after non-scroll press
-    LV_EVENT_RELEASED            = 11;  // always sent on release
+    PRESSED             =  1;  // touch/click starts
+    PRESSING            =  2;  // held (sent continuously)
+    PRESS_LOST          =  3;  // pressed but finger slid off
+    SHORT_CLICKED       =  4;  // short tap, not scrolled
+    SINGLE_CLICKED      =  5;
+    DOUBLE_CLICKED      =  6;
+    TRIPLE_CLICKED      =  7;
+    LONG_PRESSED        =  8;  // held ≥ long_press_time
+    LONG_PRESSED_REPEAT =  9;
+    CLICKED             = 10;  // released after non-scroll press
+    RELEASED            = 11;  // always sent on release
 
     // ---- Scroll / gesture ----
-    LV_EVENT_SCROLL_BEGIN        = 12;
-    LV_EVENT_SCROLL_THROW_BEGIN  = 13;
-    LV_EVENT_SCROLL_END          = 14;
-    LV_EVENT_SCROLL              = 15;
-    LV_EVENT_GESTURE             = 16;
-    LV_EVENT_KEY                 = 17;
-    LV_EVENT_ROTARY              = 18;
+    SCROLL_BEGIN        = 12;
+    SCROLL_THROW_BEGIN  = 13;
+    SCROLL_END          = 14;
+    SCROLL              = 15;
+    GESTURE             = 16;
+    KEY                 = 17;
+    ROTARY              = 18;
 
     // ---- Focus ----
-    LV_EVENT_FOCUSED             = 19;
-    LV_EVENT_DEFOCUSED           = 20;
-    LV_EVENT_LEAVE               = 21;
-    LV_EVENT_HIT_TEST            = 22;
-    LV_EVENT_INDEV_RESET         = 23;
-    LV_EVENT_HOVER_OVER          = 24;
-    LV_EVENT_HOVER_LEAVE         = 25;
+    FOCUSED             = 19;
+    DEFOCUSED           = 20;
+    LEAVE               = 21;
+    HIT_TEST            = 22;
+    INDEV_RESET         = 23;
+    HOVER_OVER          = 24;
+    HOVER_LEAVE         = 25;
 
     // ---- Drawing (not forwarded to host in normal operation) ----
-    LV_EVENT_COVER_CHECK         = 26;
-    LV_EVENT_REFR_EXT_DRAW_SIZE  = 27;
-    LV_EVENT_DRAW_MAIN_BEGIN     = 28;
-    LV_EVENT_DRAW_MAIN           = 29;
-    LV_EVENT_DRAW_MAIN_END       = 30;
-    LV_EVENT_DRAW_POST_BEGIN     = 31;
-    LV_EVENT_DRAW_POST           = 32;
-    LV_EVENT_DRAW_POST_END       = 33;
-    LV_EVENT_DRAW_TASK_ADDED     = 34;
+    COVER_CHECK         = 26;
+    REFR_EXT_DRAW_SIZE  = 27;
+    DRAW_MAIN_BEGIN     = 28;
+    DRAW_MAIN           = 29;
+    DRAW_MAIN_END       = 30;
+    DRAW_POST_BEGIN     = 31;
+    DRAW_POST           = 32;
+    DRAW_POST_END       = 33;
+    DRAW_TASK_ADDED     = 34;
 
     // ---- Special / state ----
-    LV_EVENT_VALUE_CHANGED       = 35;  // slider, switch, checkbox changed
-    LV_EVENT_INSERT              = 36;
-    LV_EVENT_REFRESH             = 37;
-    LV_EVENT_READY               = 38;
-    LV_EVENT_CANCEL              = 39;
-    LV_EVENT_STATE_CHANGED       = 40;
+    VALUE_CHANGED       = 35;  // slider, switch, checkbox changed
+    INSERT              = 36;
+    REFRESH             = 37;
+    READY               = 38;
+    CANCEL              = 39;
+    STATE_CHANGED       = 40;
 
     // ---- Object lifecycle ----
-    LV_EVENT_CREATE              = 41;
-    LV_EVENT_DELETE              = 42;
-    LV_EVENT_CHILD_CHANGED       = 43;
-    LV_EVENT_CHILD_CREATED       = 44;
-    LV_EVENT_CHILD_DELETED       = 45;
-    LV_EVENT_SCREEN_UNLOAD_START = 46;
-    LV_EVENT_SCREEN_LOAD_START   = 47;
-    LV_EVENT_SCREEN_LOADED       = 48;
-    LV_EVENT_SCREEN_UNLOADED     = 49;
-    LV_EVENT_SIZE_CHANGED        = 50;
-    LV_EVENT_STYLE_CHANGED       = 51;
-    LV_EVENT_LAYOUT_CHANGED      = 52;
-    LV_EVENT_GET_SELF_SIZE       = 53;
+    CREATE              = 41;
+    DELETE              = 42;
+    CHILD_CHANGED       = 43;
+    CHILD_CREATED       = 44;
+    CHILD_DELETED       = 45;
+    SCREEN_UNLOAD_START = 46;
+    SCREEN_LOAD_START   = 47;
+    SCREEN_LOADED       = 48;
+    SCREEN_UNLOADED     = 49;
+    SIZE_CHANGED        = 50;
+    STYLE_CHANGED       = 51;
+    LAYOUT_CHANGED      = 52;
+    GET_SELF_SIZE       = 53;
 
     // ---- Display / render pipeline ----
-    LV_EVENT_INVALIDATE_AREA          = 54;
-    LV_EVENT_RESOLUTION_CHANGED       = 55;
-    LV_EVENT_COLOR_FORMAT_CHANGED     = 56;
-    LV_EVENT_REFR_REQUEST             = 57;
-    LV_EVENT_REFR_START               = 58;
-    LV_EVENT_REFR_READY               = 59;
-    LV_EVENT_RENDER_START             = 60;
-    LV_EVENT_RENDER_READY             = 61;
-    LV_EVENT_FLUSH_START              = 62;
-    LV_EVENT_FLUSH_FINISH             = 63;
-    LV_EVENT_FLUSH_WAIT_START         = 64;
-    LV_EVENT_FLUSH_WAIT_FINISH        = 65;
-    LV_EVENT_UPDATE_LAYOUT_COMPLETED  = 66;
-    LV_EVENT_VSYNC                    = 67;
-    LV_EVENT_VSYNC_REQUEST            = 68;
+    INVALIDATE_AREA          = 54;
+    RESOLUTION_CHANGED       = 55;
+    COLOR_FORMAT_CHANGED     = 56;
+    REFR_REQUEST             = 57;
+    REFR_START               = 58;
+    REFR_READY               = 59;
+    RENDER_START             = 60;
+    RENDER_READY             = 61;
+    FLUSH_START              = 62;
+    FLUSH_FINISH             = 63;
+    FLUSH_WAIT_START         = 64;
+    FLUSH_WAIT_FINISH        = 65;
+    UPDATE_LAYOUT_COMPLETED  = 66;
+    VSYNC                    = 67;
+    VSYNC_REQUEST            = 68;
 }
 
 // LVGL style selector bits. A `Style.for_state` value is the bitwise OR
@@ -155,25 +155,25 @@ enum LvEventCode {
 enum LvState {
     option allow_alias = true;
     // ---- states (lv_state_t) ----
-    LV_STATE_DEFAULT   = 0x0000;
-    LV_STATE_CHECKED   = 0x0001;
-    LV_STATE_FOCUSED   = 0x0002;
-    LV_STATE_FOCUS_KEY = 0x0004;
-    LV_STATE_EDITED    = 0x0008;
-    LV_STATE_HOVERED   = 0x0010;
-    LV_STATE_PRESSED   = 0x0020;
-    LV_STATE_SCROLLED  = 0x0040;
-    LV_STATE_DISABLED  = 0x0080;
+    STATE_DEFAULT   = 0x0000;
+    STATE_CHECKED   = 0x0001;
+    STATE_FOCUSED   = 0x0002;
+    STATE_FOCUS_KEY = 0x0004;
+    STATE_EDITED    = 0x0008;
+    STATE_HOVERED   = 0x0010;
+    STATE_PRESSED   = 0x0020;
+    STATE_SCROLLED  = 0x0040;
+    STATE_DISABLED  = 0x0080;
     // User states (custom) intentionally omitted — add when needed.
     // ---- parts (lv_part_t) ----
-    LV_PART_MAIN       = 0x000000;
-    LV_PART_SCROLLBAR  = 0x010000;
-    LV_PART_INDICATOR  = 0x020000;
-    LV_PART_KNOB       = 0x030000;
-    LV_PART_SELECTED   = 0x040000;
-    LV_PART_ITEMS      = 0x050000;
-    LV_PART_CURSOR     = 0x060000;
-    LV_PART_ANY        = 0x0F0000;
+    PART_MAIN       = 0x000000;
+    PART_SCROLLBAR  = 0x010000;
+    PART_INDICATOR  = 0x020000;
+    PART_KNOB       = 0x030000;
+    PART_SELECTED   = 0x040000;
+    PART_ITEMS      = 0x050000;
+    PART_CURSOR     = 0x060000;
+    PART_ANY        = 0x0F0000;
 }
 
 // Curated subset of `lv_style_prop_t` values that a `Transition` may
@@ -181,53 +181,53 @@ enum LvState {
 // the matching `LV_STYLE_*` constant at decode time so the wire format
 // stays insulated from LVGL version drift / `LV_USE_*` build flags.
 enum StyleProp {
-    STYLE_PROP_UNSET             = 0;
-    STYLE_PROP_BG_COLOR          = 1;
-    STYLE_PROP_BG_OPA            = 2;
-    STYLE_PROP_RADIUS            = 3;
-    STYLE_PROP_BORDER_WIDTH      = 4;
-    STYLE_PROP_BORDER_COLOR      = 5;
+    UNSET             = 0;
+    BG_COLOR          = 1;
+    BG_OPA            = 2;
+    RADIUS            = 3;
+    BORDER_WIDTH      = 4;
+    BORDER_COLOR      = 5;
     // Per-side pad props. LVGL has no single "all sides" transition
     // prop; pad-everywhere transitions need all four entries.
-    STYLE_PROP_PAD_TOP           = 6;
-    STYLE_PROP_TEXT_COLOR        = 7;
-    STYLE_PROP_IMAGE_RECOLOR     = 8;
-    STYLE_PROP_IMAGE_RECOLOR_OPA = 9;
-    STYLE_PROP_TRANSFORM_WIDTH   = 10;
-    STYLE_PROP_TRANSFORM_HEIGHT  = 11;
-    STYLE_PROP_PAD_BOTTOM        = 12;
-    STYLE_PROP_PAD_LEFT          = 13;
-    STYLE_PROP_PAD_RIGHT         = 14;
+    PAD_TOP           = 6;
+    TEXT_COLOR        = 7;
+    IMAGE_RECOLOR     = 8;
+    IMAGE_RECOLOR_OPA = 9;
+    TRANSFORM_WIDTH   = 10;
+    TRANSFORM_HEIGHT  = 11;
+    PAD_BOTTOM        = 12;
+    PAD_LEFT          = 13;
+    PAD_RIGHT         = 14;
     // Stage 59 — geometry / opacity props for declarative `Animation`s.
-    STYLE_PROP_X                 = 15;
-    STYLE_PROP_Y                 = 16;
-    STYLE_PROP_WIDTH             = 17;
-    STYLE_PROP_HEIGHT            = 18;
-    STYLE_PROP_OPA               = 19;
+    X                 = 15;
+    Y                 = 16;
+    WIDTH             = 17;
+    HEIGHT            = 18;
+    OPA               = 19;
 }
 
 // Animation path (easing curve) selector. Maps 1-to-1 onto the
 // `lv_anim_path_*` built-ins. Default = LINEAR.
 enum AnimPath {
-    ANIM_PATH_LINEAR      = 0;
-    ANIM_PATH_EASE_IN     = 1;
-    ANIM_PATH_EASE_OUT    = 2;
-    ANIM_PATH_EASE_IN_OUT = 3;
-    ANIM_PATH_OVERSHOOT   = 4;
-    ANIM_PATH_BOUNCE      = 5;
-    ANIM_PATH_STEP        = 6;
+    LINEAR      = 0;
+    EASE_IN     = 1;
+    EASE_OUT    = 2;
+    EASE_IN_OUT = 3;
+    OVERSHOOT   = 4;
+    BOUNCE      = 5;
+    STEP        = 6;
 }
 
 // Style-property transition. Mirrors `lv_style_transition_dsc_t`: when
 // the parent `Style` is added/removed from a widget's selector match
-// (e.g. on entering/leaving `LV_STATE_PRESSED`), LVGL animates every
+// (e.g. on entering/leaving `PRESSED`), LVGL animates every
 // `prop` in this list from the previous value to the new one along
 // `path` over `duration_ms`, starting after `delay_ms`.
 //
 // The classic "bind on the default style → covers both directions"
 // pattern works: attach one Transition to the `for_state = 0` Style
 // and LVGL uses it for both press and release. Attach a second
-// (different) Transition to the `for_state = LV_STATE_PRESSED` Style to
+// (different) Transition to the `for_state = PRESSED` Style to
 // get an asymmetric in/out animation (fast in, slow out).
 //
 // See https://lvgl.io/docs/open/main-modules/animation and the
@@ -284,7 +284,7 @@ message Animation {
 //
 // Stack multiple `Style` messages on a single `Widget.styles` to attach
 // different properties to different states / parts (e.g. one Style for
-// the default look, another with `for_state = LV_STATE_PRESSED` to
+// the default look, another with `for_state = PRESSED` to
 // change the background while pressed). Later entries win on ties;
 // state precedence still applies as documented by LVGL.
 //
@@ -541,22 +541,22 @@ message Button {
     // press+release (suppressed if the press is cancelled by
     // scroll/press-lost). `on_press` / `on_release` fire on the raw
     // edges, so they're suitable for hold-aware host code (e.g.
-    // StreamDeck plugins, MIDI note-on / note-off). LV_EVENT_PRESS_LOST
+    // StreamDeck plugins, MIDI note-on / note-off). PRESS_LOST
     // also triggers `on_release` so callers always see a matching
     // press/release pair. The host distinguishes which edge fired by
     // checking `LvEvent.code` against `LvEventCode` enum values:
-    // LV_EVENT_PRESSED=1, LV_EVENT_CLICKED=10, LV_EVENT_RELEASED=11,
-    // LV_EVENT_PRESS_LOST=3.
+    // PRESSED=1, CLICKED=10, RELEASED=11,
+    // PRESS_LOST=3.
     repeated Action on_press   = 3;  // see widgets.options for max count
     repeated Action on_release = 4;  // see widgets.options for max count
 }
 
 // Text alignment within a label widget. Maps directly to lv_text_align_t.
 enum TextAlign {
-    TEXT_ALIGN_AUTO   = 0;  // follow LVGL default / locale direction
-    TEXT_ALIGN_LEFT   = 1;
-    TEXT_ALIGN_CENTER = 2;
-    TEXT_ALIGN_RIGHT  = 3;
+    AUTO   = 0;  // follow LVGL default / locale direction
+    LEFT   = 1;
+    CENTER = 2;
+    RIGHT  = 3;
 }
 
 message Label {
@@ -594,20 +594,20 @@ message Image {
     // The value 10 (_LV_IMAGE_ALIGN_AUTO_TRANSFORM) is an internal LVGL marker
     // and is intentionally omitted.
     enum Align {
-        IMAGE_ALIGN_DEFAULT      = 0;   // LVGL default (top-left for unscaled images)
-        IMAGE_ALIGN_TOP_LEFT     = 1;
-        IMAGE_ALIGN_TOP_MID      = 2;
-        IMAGE_ALIGN_TOP_RIGHT    = 3;
-        IMAGE_ALIGN_BOTTOM_LEFT  = 4;
-        IMAGE_ALIGN_BOTTOM_MID   = 5;
-        IMAGE_ALIGN_BOTTOM_RIGHT = 6;
-        IMAGE_ALIGN_LEFT_MID     = 7;
-        IMAGE_ALIGN_RIGHT_MID    = 8;
-        IMAGE_ALIGN_CENTER       = 9;
-        IMAGE_ALIGN_STRETCH      = 11;  // fill widget area, ignoring aspect ratio
-        IMAGE_ALIGN_TILE         = 12;  // tile to fill widget area
-        IMAGE_ALIGN_CONTAIN      = 13;  // fit within area, keeping aspect ratio
-        IMAGE_ALIGN_COVER        = 14;  // fill area, keeping aspect ratio (may crop)
+        DEFAULT      = 0;   // LVGL default (top-left for unscaled images)
+        TOP_LEFT     = 1;
+        TOP_MID      = 2;
+        TOP_RIGHT    = 3;
+        BOTTOM_LEFT  = 4;
+        BOTTOM_MID   = 5;
+        BOTTOM_RIGHT = 6;
+        LEFT_MID     = 7;
+        RIGHT_MID    = 8;
+        CENTER       = 9;
+        STRETCH      = 11;  // fill widget area, ignoring aspect ratio
+        TILE         = 12;  // tile to fill widget area
+        CONTAIN      = 13;  // fit within area, keeping aspect ratio
+        COVER        = 14;  // fill area, keeping aspect ratio (may crop)
     }
 
     // Drive-prefixed LVGL path to a previously-uploaded image, e.g.

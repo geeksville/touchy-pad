@@ -119,13 +119,13 @@ void ripple_opa_completed(lv_anim_t *a)
 lv_anim_path_cb_t ripple_path_for(touchy_AnimPath p)
 {
     switch (p) {
-        case touchy_AnimPath_ANIM_PATH_EASE_IN:     return lv_anim_path_ease_in;
-        case touchy_AnimPath_ANIM_PATH_EASE_OUT:    return lv_anim_path_ease_out;
-        case touchy_AnimPath_ANIM_PATH_EASE_IN_OUT: return lv_anim_path_ease_in_out;
-        case touchy_AnimPath_ANIM_PATH_OVERSHOOT:   return lv_anim_path_overshoot;
-        case touchy_AnimPath_ANIM_PATH_BOUNCE:      return lv_anim_path_bounce;
-        case touchy_AnimPath_ANIM_PATH_STEP:        return lv_anim_path_step;
-        case touchy_AnimPath_ANIM_PATH_LINEAR:
+        case touchy_AnimPath_EASE_IN:     return lv_anim_path_ease_in;
+        case touchy_AnimPath_EASE_OUT:    return lv_anim_path_ease_out;
+        case touchy_AnimPath_EASE_IN_OUT: return lv_anim_path_ease_in_out;
+        case touchy_AnimPath_OVERSHOOT:   return lv_anim_path_overshoot;
+        case touchy_AnimPath_BOUNCE:      return lv_anim_path_bounce;
+        case touchy_AnimPath_STEP:        return lv_anim_path_step;
+        case touchy_AnimPath_LINEAR:
         default:                                    return lv_anim_path_linear;
     }
 }

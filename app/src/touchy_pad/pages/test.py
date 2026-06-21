@@ -53,12 +53,12 @@ def build() -> tuple[str, _proto.Widget]:
             style=[
                 style(
                     transition=transition(
-                        props=[StyleProp.STYLE_PROP_TRANSFORM_WIDTH, StyleProp.STYLE_PROP_BG_COLOR],
-                        path=AnimPath.ANIM_PATH_LINEAR,
+                        props=[StyleProp.TRANSFORM_WIDTH, StyleProp.BG_COLOR],
+                        path=AnimPath.LINEAR,
                         duration_ms=200,
                     )
                 ),
-                style(transform_width=20, bg_color=0xCC2222, for_state=LvState.LV_STATE_PRESSED),
+                style(transform_width=20, bg_color=0xCC2222, for_state=LvState.STATE_PRESSED),
             ],
         ),
         col=0,
@@ -119,11 +119,11 @@ def build() -> tuple[str, _proto.Widget]:
                 style(
                     transition=transition(
                         props=[
-                            StyleProp.STYLE_PROP_TRANSFORM_WIDTH,
-                            StyleProp.STYLE_PROP_IMAGE_RECOLOR_OPA,
-                            StyleProp.STYLE_PROP_BG_COLOR,
+                            StyleProp.TRANSFORM_WIDTH,
+                            StyleProp.IMAGE_RECOLOR_OPA,
+                            StyleProp.BG_COLOR,
                         ],
-                        path=AnimPath.ANIM_PATH_LINEAR,
+                        path=AnimPath.LINEAR,
                         duration_ms=300,
                     )
                 ),
@@ -132,7 +132,7 @@ def build() -> tuple[str, _proto.Widget]:
                     recolor=0xFF0000,
                     recolor_opa=255,
                     bg_color=0x00FF00,
-                    for_state=LvState.LV_STATE_PRESSED,
+                    for_state=LvState.STATE_PRESSED,
                 ),
             ],
         ),
@@ -160,11 +160,11 @@ def build() -> tuple[str, _proto.Widget]:
         style=[style(bg_color=0xE53935, radius=32767)],
         animations=[
             animation(
-                anim_track(StyleProp.STYLE_PROP_WIDTH, 10, 100),
-                anim_track(StyleProp.STYLE_PROP_HEIGHT, 10, 100),
-                anim_track(StyleProp.STYLE_PROP_X, 10, 380),
+                anim_track(StyleProp.WIDTH, 10, 100),
+                anim_track(StyleProp.HEIGHT, 10, 100),
+                anim_track(StyleProp.X, 10, 380),
                 duration_ms=1000,
-                path=AnimPath.ANIM_PATH_EASE_IN_OUT,
+                path=AnimPath.EASE_IN_OUT,
                 repeat_count=0,
                 repeat_delay_ms=500,
                 reverse=True,

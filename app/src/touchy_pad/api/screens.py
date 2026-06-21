@@ -79,7 +79,7 @@ __all__ = [
     "build_default_screen",
     "build_setup_screen",
     "build_user_pages",
-    # Proto enum types — use as namespaces, e.g. LvState.LV_STATE_PRESSED.
+    # Proto enum types — use as namespaces, e.g. LvState.STATE_PRESSED.
     "AnimPath",
     "LvState",
     "StyleProp",
@@ -88,8 +88,8 @@ __all__ = [
 
 
 # Re-export proto enum types as first-class names so callers can write
-# e.g. ``LvState.LV_STATE_PRESSED``, ``AnimPath.ANIM_PATH_EASE_IN_OUT``,
-# ``StyleProp.STYLE_PROP_TRANSFORM_WIDTH``, ``TextAlign.TEXT_ALIGN_CENTER``.
+# e.g. ``LvState.STATE_PRESSED``, ``AnimPath.EASE_IN_OUT``,
+# ``StyleProp.TRANSFORM_WIDTH``, ``TextAlign.CENTER``.
 AnimPath = _proto.AnimPath
 LvState = _proto.LvState
 StyleProp = _proto.StyleProp
@@ -283,7 +283,7 @@ def style(
 
 def transition(
     props: Iterable[int],
-    path: int = AnimPath.ANIM_PATH_LINEAR,
+    path: int = AnimPath.LINEAR,
     duration_ms: int = 200,
     delay_ms: int = 0,
 ) -> _proto.Transition:
@@ -602,7 +602,7 @@ def animation(
     * ``start_delay_ms`` — one-shot pre-roll before the first cycle.
     """
     if path is None:
-        path = AnimPath.ANIM_PATH_LINEAR
+        path = AnimPath.LINEAR
     a = _proto.Animation(
         duration_ms=duration_ms,
         path=path,
@@ -667,7 +667,7 @@ def label(
     id: str,
     text: str = "",
     font_size: int = 0,
-    text_align: int = TextAlign.TEXT_ALIGN_AUTO,
+    text_align: int = TextAlign.AUTO,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
@@ -944,7 +944,7 @@ def ripple_animation(
     start_opa: int = 200,
     max_radius: int = 40,
     duration_ms: int = 350,
-    path: int = AnimPath.ANIM_PATH_LINEAR,
+    path: int = AnimPath.LINEAR,
     border_width: int = 0,
 ) -> _proto.RippleAnimation:
     """Touch-feedback ripple descriptor.
@@ -1359,7 +1359,7 @@ def build_setup_screen() -> Screen:
     hint = label(
         "setup_hint",
         text="Run 'touchy init' to set up",
-        text_align=TextAlign.TEXT_ALIGN_CENTER,
+        text_align=TextAlign.CENTER,
         style=style(text_color=0xFFFFFF),
     )
     grow(hint, x=1)  # full width so the centred text spans the screen

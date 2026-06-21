@@ -41,9 +41,9 @@ use touchy_pad::{DiscoveredDevice, Touchy, discover};
 
 use crate::layout;
 
-const LV_EVENT_PRESSED: u32 = LvEventCode::LvEventPressed as u32;
-const LV_EVENT_PRESS_LOST: u32 = LvEventCode::LvEventPressLost as u32;
-const LV_EVENT_RELEASED: u32 = LvEventCode::LvEventReleased as u32;
+const LV_EVENT_PRESSED: u32 = LvEventCode::Pressed as u32;
+const LV_EVENT_PRESS_LOST: u32 = LvEventCode::PressLost as u32;
+const LV_EVENT_RELEASED: u32 = LvEventCode::Released as u32;
 
 /// Nominal key size in pixels used to compute the grid from the device's
 /// reported `display_width` / `display_height`. 96 px gives 5 × 3 on the

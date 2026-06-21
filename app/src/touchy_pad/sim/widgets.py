@@ -586,13 +586,13 @@ __all__ = ["build_widget", "EventHandler"]
 # Map proto AnimPath enum values → Qt easing curves. Qt has no Steps
 # curve, so STEP collapses to Linear in the sim (good-enough preview).
 _EASING_MAP: dict[int, QtCore.QEasingCurve.Type] = {
-    _proto.AnimPath.ANIM_PATH_LINEAR: QtCore.QEasingCurve.Type.Linear,
-    _proto.AnimPath.ANIM_PATH_EASE_IN: QtCore.QEasingCurve.Type.InQuad,
-    _proto.AnimPath.ANIM_PATH_EASE_OUT: QtCore.QEasingCurve.Type.OutQuad,
-    _proto.AnimPath.ANIM_PATH_EASE_IN_OUT: QtCore.QEasingCurve.Type.InOutQuad,
-    _proto.AnimPath.ANIM_PATH_OVERSHOOT: QtCore.QEasingCurve.Type.OutBack,
-    _proto.AnimPath.ANIM_PATH_BOUNCE: QtCore.QEasingCurve.Type.OutBounce,
-    _proto.AnimPath.ANIM_PATH_STEP: QtCore.QEasingCurve.Type.Linear,
+    _proto.AnimPath.LINEAR: QtCore.QEasingCurve.Type.Linear,
+    _proto.AnimPath.EASE_IN: QtCore.QEasingCurve.Type.InQuad,
+    _proto.AnimPath.EASE_OUT: QtCore.QEasingCurve.Type.OutQuad,
+    _proto.AnimPath.EASE_IN_OUT: QtCore.QEasingCurve.Type.InOutQuad,
+    _proto.AnimPath.OVERSHOOT: QtCore.QEasingCurve.Type.OutBack,
+    _proto.AnimPath.BOUNCE: QtCore.QEasingCurve.Type.OutBounce,
+    _proto.AnimPath.STEP: QtCore.QEasingCurve.Type.Linear,
 }
 
 
@@ -615,15 +615,15 @@ def _make_track_anim(
     anim.setDuration(max(1, int(duration_ms)))
     anim.setEasingCurve(easing)
 
-    if prop == _proto.StyleProp.STYLE_PROP_X:
+    if prop == _proto.StyleProp.X:
         anim.valueChanged.connect(lambda v: widget.move(int(v), widget.y()))
-    elif prop == _proto.StyleProp.STYLE_PROP_Y:
+    elif prop == _proto.StyleProp.Y:
         anim.valueChanged.connect(lambda v: widget.move(widget.x(), int(v)))
-    elif prop == _proto.StyleProp.STYLE_PROP_WIDTH:
+    elif prop == _proto.StyleProp.WIDTH:
         anim.valueChanged.connect(lambda v: widget.resize(int(v), widget.height()))
-    elif prop == _proto.StyleProp.STYLE_PROP_HEIGHT:
+    elif prop == _proto.StyleProp.HEIGHT:
         anim.valueChanged.connect(lambda v: widget.resize(widget.width(), int(v)))
-    elif prop == _proto.StyleProp.STYLE_PROP_OPA:
+    elif prop == _proto.StyleProp.OPA:
         # Attach a graphics opacity effect lazily; reuse if already
         # attached so multiple opacity tracks coexist.
         eff = widget.graphicsEffect()
