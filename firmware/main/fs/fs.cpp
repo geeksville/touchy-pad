@@ -72,6 +72,7 @@ Fs *fs_for_drive(char letter)
     switch (letter & ~0x20) {
         case 'F': return &FlashFs::instance();
         case 'R': return &RamFs::instance();
+        case 'T': return temp_fs_backing();
         default:  return nullptr;
     }
 }
@@ -193,4 +194,5 @@ void fs_register_lvgl_drivers()
     // lv_init() clears LVGL's FS driver linked list, so we must
     // (re)register after display_init() has run lv_init().
     RamFs::instance().registerLvglDriver();
+    temp_fs_register_lvgl_driver();
 }

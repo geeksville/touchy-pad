@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .. import _proto
 from ..api.screens import (
-    ANIM_PATH_EASE_OUT,
+    AnimPath,
     Layer,
     cell,
     grid,
@@ -81,13 +81,13 @@ def build(background_image: str | None = None) -> tuple[str, _proto.Widget]:
                 start_opa=180,
                 max_radius=45,
                 duration_ms=400,
-                path=ANIM_PATH_EASE_OUT,
+                path=AnimPath.EASE_OUT,
             ),
             tap_ripple=ripple_animation(
                 start_opa=255,
                 max_radius=70,
                 duration_ms=300,
-                path=ANIM_PATH_EASE_OUT,
+                path=AnimPath.EASE_OUT,
                 border_width=4,
             ),
         ),

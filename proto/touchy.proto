@@ -48,32 +48,32 @@ import "preferences.proto";
 // Storing them here means any language with a protobuf compiler gets them for
 // free without a separate constants file.
 enum Constants {
-    CONSTANTS_UNSPECIFIED = 0;
+    CONSTANTS_UNSPECIFIED = 0;       // reserved zero value for proto3 enum semantics; never used
     USB_VID               = 0x303A;  // Espressif-assigned vendor ID
     USB_PID               = 0x8369;  // touchy-pad product ID
 }
 
 // Generic result code shared by every Response.
 enum ResultCode {
-    RESULT_OK             = 0;
-    RESULT_UNKNOWN_ERROR  = 1;
-    RESULT_INVALID_ARG    = 2;
-    RESULT_NOT_FOUND      = 3;
-    RESULT_NO_SPACE       = 4;
-    RESULT_IO_ERROR       = 5;
-    RESULT_NOT_SUPPORTED  = 6;
+    OK             = 0;
+    UNKNOWN_ERROR  = 1;
+    INVALID_ARG    = 2;
+    NOT_FOUND      = 3;
+    NO_SPACE       = 4;
+    IO_ERROR       = 5;
+    NOT_SUPPORTED  = 6;
 }
 
 // Severity of a tunneled device log line (see LogRecord). The default
-// (`LOG_PRIORITY_TRACE`) is intentionally the noisiest level so a
+// (`TRACE`) is intentionally the noisiest level so a
 // LogRecord arriving with `priority` unset is treated as "more verbose
 // than DEBUG" rather than as a high-severity ERROR.
 enum LogPriority {
-    LOG_PRIORITY_TRACE = 0;
-    LOG_PRIORITY_DEBUG = 1;
-    LOG_PRIORITY_INFO  = 2;
-    LOG_PRIORITY_WARN  = 3;
-    LOG_PRIORITY_ERROR = 4;
+    TRACE = 0;
+    DEBUG = 1;
+    INFO  = 2;
+    WARN  = 3;
+    ERROR = 4;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ message FileDeleteCmd {
 // FileWriteCmd / FileCloseCmd messages must echo back.
 //
 // The device only supports one in-flight write transaction at a time;
-// attempting to open a second returns RESULT_IO_ERROR.
+// attempting to open a second returns IO_ERROR.
 //
 // On commit (FileCloseCmd { commit = true }) the data is atomically
 // renamed into place. On abort or any error mid-stream the partial
@@ -163,7 +163,7 @@ message SetPreferencesCmd {
 
 // Pop a single event from the device's event queue. The corresponding
 // Response is the Event message itself (wrapped in `Response.event`), or an
-// empty Response with code = RESULT_NOT_FOUND when the queue is empty.
+// empty Response with code = NOT_FOUND when the queue is empty.
 //
 // Used in conjunction with the asynchronous "event ready" interrupt that
 // the device sends on the event endpoint when it cannot fit a full event
@@ -210,7 +210,7 @@ message Command {
 //     lets the host retarget the active screen's WidgetRef (e.g. bring a
 //     `host/uscr/<page>.pb` body to the front) without a screen reload.
 //
-// Reply is a bare Response carrying RESULT_OK (or an error code); there is
+// Reply is a bare Response carrying OK (or an error code); there is
 // no dedicated response payload.
 message RunActionsCmd {
     repeated Action actions = 1;
@@ -226,6 +226,9 @@ message SysBoardInfoResponse {
     enum ProtocolVersion {
         option allow_alias = true;
         UNSPECIFIED = 0;
+
+        CURRENT = 10;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
+                
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
                  //           LvEvent.host_code added; events via host polling
@@ -244,7 +247,9 @@ message SysBoardInfoResponse {
                  //           free_psram_bytes, fs_total_bytes, fs_used_bytes
         V9 = 9;  // stage 82: SetPreferencesCmd replaces ScreenSleepTimeoutCmd
                  //           + ScreenLoadCmd; PreferencesFile fields optional
-        CURRENT = 9;  // alias: always equals the latest defined version
+        V10 = 10; // stage 87: SysBoardInfoResponse gains temp_is_flash (the
+                  //           'T:' transient drive is backed by flash, not
+                  //           PSRAM, on this board) — additive scalar field
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
@@ -280,6 +285,13 @@ message SysBoardInfoResponse {
     uint64 free_psram_bytes = 11;  // free PSRAM (MALLOC_CAP_SPIRAM); 0 if none
     uint64 fs_total_bytes   = 12;  // LittleFS (F:) capacity in bytes
     uint64 fs_used_bytes    = 13;  // LittleFS (F:) bytes currently in use
+    // Stage 87 — the 'T:' ("temp") transient drive resolves to a flash
+    // scratch area on this board instead of a PSRAM ramdisk. True on
+    // no-PSRAM boards (e.g. classic-ESP32 CYD). Host-side writers of
+    // transient assets (dynamic images, the image cache) use this only
+    // as an advisory hint to throttle high-frequency refreshes and warn
+    // about flash wear — the drive letter (`T:`) is the same either way.
+    bool temp_is_flash = 14;
 }
 
 // Reply to FileOpenWriteCmd. Carries the handle the host must echo
@@ -289,7 +301,7 @@ message FileOpenWriteResponse {
 }
 
 // Reply to EventConsumeCmd. Carries the popped event, if any. When the
-// queue is empty, the outer Response sets `code = RESULT_NOT_FOUND` and
+// queue is empty, the outer Response sets `code = NOT_FOUND` and
 // leaves `event` unset.
 message EventConsumeResponse {
     LvEvent event = 1;
@@ -299,7 +311,7 @@ message EventConsumeResponse {
 // as a `Response.log_record` payload alongside the normal
 // `EventConsumeResponse` flow. The host's existing
 // `EventConsumeCmd`-polling loop drains both queues; the dispatcher
-// returns either an event, a log record, or `RESULT_NOT_FOUND` when
+// returns either an event, a log record, or `NOT_FOUND` when
 // both are empty.
 //
 // `num_dropped` is normally zero. When the firmware's log ring buffer
@@ -308,7 +320,7 @@ message EventConsumeResponse {
 // the next successfully-enqueued record folds that count into its
 // `num_dropped` field so no loss is silent on the host side.
 message LogRecord {
-    LogPriority priority     = 1;  // unset == LOG_PRIORITY_TRACE
+    LogPriority priority     = 1;  // unset == TRACE
     string      message      = 2;  // pre-formatted line, no trailing '\n'
     uint32      num_dropped  = 3;  // records dropped since last success
     uint32      timestamp_ms = 4;  // esp_timer_get_time()/1000 at enqueue,
@@ -369,11 +381,11 @@ message LvEvent {
 // for variable-size payloads adds complexity, so the device always sends
 // just the `event_ready` flag. On receipt the host drains the device queue
 // by issuing `EventConsumeCmd` repeatedly until the device responds with
-// `RESULT_NOT_FOUND`.
+// `NOT_FOUND`.
 message Event {
     oneof evt {
         // "There is at least one event waiting; please send EventConsumeCmd
-        // until you get RESULT_NOT_FOUND."
+        // until you get NOT_FOUND."
         bool event_ready = 1;
     }
 }

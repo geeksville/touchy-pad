@@ -6,16 +6,10 @@ import logging
 
 from .. import _proto
 from ..api.screens import (
-    ANIM_PATH_EASE_IN_OUT,
-    ANIM_PATH_LINEAR,
-    PROP_BG_COLOR,
-    PROP_HEIGHT,
-    PROP_IMAGE_RECOLOR_OPA,
-    PROP_TRANSFORM_WIDTH,
-    PROP_WIDTH,
-    PROP_X,
-    STATE_PRESSED,
+    AnimPath,
     Layer,
+    LvState,
+    StyleProp,
     absolute,
     anim_track,
     animation,
@@ -59,12 +53,12 @@ def build() -> tuple[str, _proto.Widget]:
             style=[
                 style(
                     transition=transition(
-                        props=[PROP_TRANSFORM_WIDTH, PROP_BG_COLOR],
-                        path=ANIM_PATH_LINEAR,
+                        props=[StyleProp.TRANSFORM_WIDTH, StyleProp.BG_COLOR],
+                        path=AnimPath.LINEAR,
                         duration_ms=200,
                     )
                 ),
-                style(transform_width=20, bg_color=0xCC2222, for_state=STATE_PRESSED),
+                style(transform_width=20, bg_color=0xCC2222, for_state=LvState.STATE_PRESSED),
             ],
         ),
         col=0,
@@ -124,8 +118,12 @@ def build() -> tuple[str, _proto.Widget]:
             style=[
                 style(
                     transition=transition(
-                        props=[PROP_TRANSFORM_WIDTH, PROP_IMAGE_RECOLOR_OPA, PROP_BG_COLOR],
-                        path=ANIM_PATH_LINEAR,
+                        props=[
+                            StyleProp.TRANSFORM_WIDTH,
+                            StyleProp.IMAGE_RECOLOR_OPA,
+                            StyleProp.BG_COLOR,
+                        ],
+                        path=AnimPath.LINEAR,
                         duration_ms=300,
                     )
                 ),
@@ -134,7 +132,7 @@ def build() -> tuple[str, _proto.Widget]:
                     recolor=0xFF0000,
                     recolor_opa=255,
                     bg_color=0x00FF00,
-                    for_state=STATE_PRESSED,
+                    for_state=LvState.STATE_PRESSED,
                 ),
             ],
         ),
@@ -162,11 +160,11 @@ def build() -> tuple[str, _proto.Widget]:
         style=[style(bg_color=0xE53935, radius=32767)],
         animations=[
             animation(
-                anim_track(PROP_WIDTH, 10, 100),
-                anim_track(PROP_HEIGHT, 10, 100),
-                anim_track(PROP_X, 10, 380),
+                anim_track(StyleProp.WIDTH, 10, 100),
+                anim_track(StyleProp.HEIGHT, 10, 100),
+                anim_track(StyleProp.X, 10, 380),
                 duration_ms=1000,
-                path=ANIM_PATH_EASE_IN_OUT,
+                path=AnimPath.EASE_IN_OUT,
                 repeat_count=0,
                 repeat_delay_ms=500,
                 reverse=True,

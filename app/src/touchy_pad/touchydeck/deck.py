@@ -59,9 +59,9 @@ from . import layout as _layout
 
 _LOG = logging.getLogger(__name__)
 
-_LV_EVENT_PRESSED = _LvEventCode.LV_EVENT_PRESSED
-_LV_EVENT_PRESS_LOST = _LvEventCode.LV_EVENT_PRESS_LOST
-_LV_EVENT_RELEASED = _LvEventCode.LV_EVENT_RELEASED
+_LV_EVENT_PRESSED = _LvEventCode.PRESSED
+_LV_EVENT_PRESS_LOST = _LvEventCode.PRESS_LOST
+_LV_EVENT_RELEASED = _LvEventCode.RELEASED
 
 
 class _FakeTransportDevice:

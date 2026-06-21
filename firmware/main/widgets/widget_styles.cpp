@@ -61,26 +61,26 @@ void widget_styles_delete_cb(lv_event_t *e)
 lv_style_prop_t lv_prop_from_proto(touchy_StyleProp p)
 {
     switch (p) {
-        case touchy_StyleProp_STYLE_PROP_BG_COLOR:          return LV_STYLE_BG_COLOR;
-        case touchy_StyleProp_STYLE_PROP_BG_OPA:            return LV_STYLE_BG_OPA;
-        case touchy_StyleProp_STYLE_PROP_RADIUS:            return LV_STYLE_RADIUS;
-        case touchy_StyleProp_STYLE_PROP_BORDER_WIDTH:      return LV_STYLE_BORDER_WIDTH;
-        case touchy_StyleProp_STYLE_PROP_BORDER_COLOR:      return LV_STYLE_BORDER_COLOR;
-        case touchy_StyleProp_STYLE_PROP_PAD_TOP:           return LV_STYLE_PAD_TOP;
-        case touchy_StyleProp_STYLE_PROP_PAD_BOTTOM:        return LV_STYLE_PAD_BOTTOM;
-        case touchy_StyleProp_STYLE_PROP_PAD_LEFT:          return LV_STYLE_PAD_LEFT;
-        case touchy_StyleProp_STYLE_PROP_PAD_RIGHT:         return LV_STYLE_PAD_RIGHT;
-        case touchy_StyleProp_STYLE_PROP_TEXT_COLOR:        return LV_STYLE_TEXT_COLOR;
-        case touchy_StyleProp_STYLE_PROP_IMAGE_RECOLOR:     return LV_STYLE_IMAGE_RECOLOR;
-        case touchy_StyleProp_STYLE_PROP_IMAGE_RECOLOR_OPA: return LV_STYLE_IMAGE_RECOLOR_OPA;
-        case touchy_StyleProp_STYLE_PROP_TRANSFORM_WIDTH:   return LV_STYLE_TRANSFORM_WIDTH;
-        case touchy_StyleProp_STYLE_PROP_TRANSFORM_HEIGHT:  return LV_STYLE_TRANSFORM_HEIGHT;
+        case touchy_StyleProp_BG_COLOR:          return LV_STYLE_BG_COLOR;
+        case touchy_StyleProp_BG_OPA:            return LV_STYLE_BG_OPA;
+        case touchy_StyleProp_RADIUS:            return LV_STYLE_RADIUS;
+        case touchy_StyleProp_BORDER_WIDTH:      return LV_STYLE_BORDER_WIDTH;
+        case touchy_StyleProp_BORDER_COLOR:      return LV_STYLE_BORDER_COLOR;
+        case touchy_StyleProp_PAD_TOP:           return LV_STYLE_PAD_TOP;
+        case touchy_StyleProp_PAD_BOTTOM:        return LV_STYLE_PAD_BOTTOM;
+        case touchy_StyleProp_PAD_LEFT:          return LV_STYLE_PAD_LEFT;
+        case touchy_StyleProp_PAD_RIGHT:         return LV_STYLE_PAD_RIGHT;
+        case touchy_StyleProp_TEXT_COLOR:        return LV_STYLE_TEXT_COLOR;
+        case touchy_StyleProp_IMAGE_RECOLOR:     return LV_STYLE_IMAGE_RECOLOR;
+        case touchy_StyleProp_IMAGE_RECOLOR_OPA: return LV_STYLE_IMAGE_RECOLOR_OPA;
+        case touchy_StyleProp_TRANSFORM_WIDTH:   return LV_STYLE_TRANSFORM_WIDTH;
+        case touchy_StyleProp_TRANSFORM_HEIGHT:  return LV_STYLE_TRANSFORM_HEIGHT;
         // Stage 59 — geometry / opacity for declarative animations.
-        case touchy_StyleProp_STYLE_PROP_X:                 return LV_STYLE_X;
-        case touchy_StyleProp_STYLE_PROP_Y:                 return LV_STYLE_Y;
-        case touchy_StyleProp_STYLE_PROP_WIDTH:             return LV_STYLE_WIDTH;
-        case touchy_StyleProp_STYLE_PROP_HEIGHT:            return LV_STYLE_HEIGHT;
-        case touchy_StyleProp_STYLE_PROP_OPA:               return LV_STYLE_OPA;
+        case touchy_StyleProp_X:                 return LV_STYLE_X;
+        case touchy_StyleProp_Y:                 return LV_STYLE_Y;
+        case touchy_StyleProp_WIDTH:             return LV_STYLE_WIDTH;
+        case touchy_StyleProp_HEIGHT:            return LV_STYLE_HEIGHT;
+        case touchy_StyleProp_OPA:               return LV_STYLE_OPA;
         default:                                            return LV_STYLE_PROP_INV;
     }
 }
@@ -91,13 +91,13 @@ lv_style_prop_t lv_prop_from_proto(touchy_StyleProp p)
 lv_anim_path_cb_t lv_path_from_proto(touchy_AnimPath p)
 {
     switch (p) {
-        case touchy_AnimPath_ANIM_PATH_EASE_IN:     return lv_anim_path_ease_in;
-        case touchy_AnimPath_ANIM_PATH_EASE_OUT:    return lv_anim_path_ease_out;
-        case touchy_AnimPath_ANIM_PATH_EASE_IN_OUT: return lv_anim_path_ease_in_out;
-        case touchy_AnimPath_ANIM_PATH_OVERSHOOT:   return lv_anim_path_overshoot;
-        case touchy_AnimPath_ANIM_PATH_BOUNCE:      return lv_anim_path_bounce;
-        case touchy_AnimPath_ANIM_PATH_STEP:        return lv_anim_path_step;
-        case touchy_AnimPath_ANIM_PATH_LINEAR:
+        case touchy_AnimPath_EASE_IN:     return lv_anim_path_ease_in;
+        case touchy_AnimPath_EASE_OUT:    return lv_anim_path_ease_out;
+        case touchy_AnimPath_EASE_IN_OUT: return lv_anim_path_ease_in_out;
+        case touchy_AnimPath_OVERSHOOT:   return lv_anim_path_overshoot;
+        case touchy_AnimPath_BOUNCE:      return lv_anim_path_bounce;
+        case touchy_AnimPath_STEP:        return lv_anim_path_step;
+        case touchy_AnimPath_LINEAR:
         default:                                    return lv_anim_path_linear;
     }
 }

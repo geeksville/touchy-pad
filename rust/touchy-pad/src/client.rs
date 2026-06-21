@@ -98,7 +98,7 @@ impl Client {
 	}
 
 	fn check(resp: Response) -> Result<Response> {
-		if resp.code == ResultCode::ResultOk as i32 {
+		if resp.code == ResultCode::Ok as i32 {
 			Ok(resp)
 		} else {
 			let name = ResultCode::try_from(resp.code)
@@ -318,7 +318,7 @@ impl Client {
 				cmd: Some(command::Cmd::EventConsume(EventConsumeCmd {})),
 			})
 			.await?;
-		if resp.code == ResultCode::ResultNotFound as i32 {
+		if resp.code == ResultCode::NotFound as i32 {
 			return Ok(None);
 		}
 		let resp = Self::check(resp)?;

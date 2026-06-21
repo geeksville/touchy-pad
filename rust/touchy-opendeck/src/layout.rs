@@ -106,7 +106,7 @@ fn key_button(key: u8, blank_path: &str) -> Widget {
 	};
 	let released = Image {
 		path: blank_path.to_string(),
-		align: Some(image::Align::ImageAlignStretch as i32),
+		align: Some(image::Align::Stretch as i32),
 		..Default::default()
 	};
 	Widget {
@@ -180,7 +180,7 @@ mod tests {
 
 	#[test]
 	fn build_page_has_expected_children() {
-		let page = build_page(5, 3, "R:host/icache/blank.bin");
+		let page = build_page(5, 3, "T:host/icache/blank.bin");
 		match page.kind.unwrap() {
 			widget::Kind::LayoutGrid(g) => {
 				assert_eq!(g.cols, 5);
@@ -191,7 +191,7 @@ mod tests {
 				assert_eq!(children[0].id, key_widget_id(0));
 				match children[0].kind.as_ref().unwrap() {
 					widget::Kind::ImageButton(ib) => {
-						assert_eq!(ib.released.as_ref().unwrap().path, "R:host/icache/blank.bin");
+						assert_eq!(ib.released.as_ref().unwrap().path, "T:host/icache/blank.bin");
 					}
 					_ => panic!("expected ImageButton cell"),
 				}
@@ -202,7 +202,7 @@ mod tests {
 
 	#[test]
 	fn key_button_carries_host_code_and_blank_path() {
-		let page = build_page(2, 1, "R:host/icache/blank.bin");
+		let page = build_page(2, 1, "T:host/icache/blank.bin");
 		let children = match page.kind.unwrap() {
 			widget::Kind::LayoutGrid(g) => g.layout.unwrap().children,
 			_ => panic!("expected LayoutGrid"),
@@ -211,7 +211,7 @@ mod tests {
 		assert_eq!(cell.id, key_widget_id(1));
 		match cell.kind.as_ref().unwrap() {
 			widget::Kind::ImageButton(ib) => {
-				assert_eq!(ib.released.as_ref().unwrap().path, "R:host/icache/blank.bin");
+				assert_eq!(ib.released.as_ref().unwrap().path, "T:host/icache/blank.bin");
 				let act = ib.on_press[0].kind.as_ref().unwrap();
 				match act {
 					action::Kind::Host(h) => assert_eq!(h.code, host_code_for(1)),

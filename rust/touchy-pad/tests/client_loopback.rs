@@ -41,7 +41,7 @@ impl Transport for Mock {
 
 fn ok(payload: response::Payload) -> Response {
 	Response {
-		code: ResultCode::ResultOk as i32,
+		code: ResultCode::Ok as i32,
 		payload: Some(payload),
 	}
 }
@@ -67,7 +67,7 @@ async fn sys_board_info_round_trip() {
 async fn event_consume_empty_returns_none() {
 	let mock = Arc::new(Mock::default());
 	mock.push(Response {
-		code: ResultCode::ResultNotFound as i32,
+		code: ResultCode::NotFound as i32,
 		payload: None,
 	});
 	let client = Client::new(mock);
@@ -96,14 +96,14 @@ async fn non_ok_code_becomes_device_error() {
 	let mock = Arc::new(Mock::default());
 	// arbitrary non-OK code
 	mock.push(Response {
-		code: ResultCode::ResultInvalidArg as i32,
+		code: ResultCode::InvalidArg as i32,
 		payload: None,
 	});
 	let client = Client::new(mock);
 	let err = client.sys_board_info_get().await.unwrap_err();
 	match err {
 		TouchyError::Device { code, name } => {
-			assert_eq!(code, ResultCode::ResultInvalidArg as i32);
+			assert_eq!(code, ResultCode::InvalidArg as i32);
 			assert!(name.contains("INVALID_ARG"), "name was {name}");
 		}
 		other => panic!("expected Device error, got {other:?}"),
@@ -143,7 +143,7 @@ async fn event_consume_silently_consumes_log_records() {
 	// After the log record, the device reports an empty queue;
 	// event_consume() drains the log internally then returns None.
 	mock.push(Response {
-		code: ResultCode::ResultNotFound as i32,
+		code: ResultCode::NotFound as i32,
 		payload: None,
 	});
 	let client = Client::new(mock);

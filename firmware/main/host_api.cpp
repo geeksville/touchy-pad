@@ -377,7 +377,7 @@ static bool write_frame(HostApiLink *link, const uint8_t *payload, size_t len)
 
 static void fill_board_info(touchy_Response *resp)
 {
-    resp->code = touchy_ResultCode_RESULT_OK;
+    resp->code = touchy_ResultCode_OK;
     resp->which_payload = touchy_Response_sys_board_info_tag;
     touchy_SysBoardInfoResponse *v = &resp->payload.sys_board_info;
     v->protocol_version = TOUCHY_PROTOCOL_VERSION;
@@ -414,13 +414,18 @@ static void fill_board_info(touchy_Response *resp)
         v->fs_total_bytes = fs_total;
         v->fs_used_bytes  = fs_used;
     }
+
+    // Stage 87: advisory hint — is the transient 'T:' drive flash-backed
+    // (no-PSRAM board) rather than a PSRAM ramdisk? Host writers of
+    // throwaway assets use this to throttle high-frequency refreshes.
+    v->temp_is_flash = temp_is_flash();
 }
 
 static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
 {
     // Default: every unimplemented command returns NOT_SUPPORTED. Stages
     // 14+ will fill these in.
-    resp->code          = touchy_ResultCode_RESULT_NOT_SUPPORTED;
+    resp->code          = touchy_ResultCode_NOT_SUPPORTED;
     resp->which_payload = 0;
 
     switch (cmd->which_cmd) {
@@ -437,7 +442,7 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         std::string  rest;
         Fs *fs = fs_resolve(path, &rest);
         if (!fs) {
-            resp->code = touchy_ResultCode_RESULT_INVALID_ARG;
+            resp->code = touchy_ResultCode_INVALID_ARG;
             break;
         }
         // Try as a tree first; FlashFs::removeTree falls back to a
@@ -449,8 +454,8 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         // must not unregister the active screen, or its auto-reload
         // after a later stub write would fail with "not registered".
         screens_notify_path_deleted(path);
-        resp->code = ok ? touchy_ResultCode_RESULT_OK
-                        : touchy_ResultCode_RESULT_IO_ERROR;
+        resp->code = ok ? touchy_ResultCode_OK
+                        : touchy_ResultCode_IO_ERROR;
         break;
     }
 
@@ -458,10 +463,10 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         const char *path = cmd->cmd.file_open_write.path;
         uint32_t handle = fs_open_write(path);
         if (handle == 0) {
-            resp->code = touchy_ResultCode_RESULT_IO_ERROR;
+            resp->code = touchy_ResultCode_IO_ERROR;
             s_active_write_path.clear();
         } else {
-            resp->code          = touchy_ResultCode_RESULT_OK;
+            resp->code          = touchy_ResultCode_OK;
             resp->which_payload = touchy_Response_file_open_write_tag;
             resp->payload.file_open_write.handle = handle;
             s_active_write_path = path ? path : "";
@@ -474,8 +479,8 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         const uint8_t *bytes = fw.data ? fw.data->bytes : nullptr;
         size_t         nbytes = fw.data ? fw.data->size  : 0;
         bool ok = fs_append_write(fw.handle, bytes, nbytes);
-        resp->code = ok ? touchy_ResultCode_RESULT_OK
-                        : touchy_ResultCode_RESULT_IO_ERROR;
+        resp->code = ok ? touchy_ResultCode_OK
+                        : touchy_ResultCode_IO_ERROR;
         break;
     }
 
@@ -528,15 +533,15 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
             }
         }
         s_active_write_path.clear();
-        resp->code = ok ? touchy_ResultCode_RESULT_OK
-                        : touchy_ResultCode_RESULT_IO_ERROR;
+        resp->code = ok ? touchy_ResultCode_OK
+                        : touchy_ResultCode_IO_ERROR;
         break;
     }
 
     case touchy_Command_event_consume_tag: {
         touchy_LvEvent evt;
         if (s_evt_queue && xQueueReceive(s_evt_queue, &evt, 0) == pdTRUE) {
-            resp->code          = touchy_ResultCode_RESULT_OK;
+            resp->code          = touchy_ResultCode_OK;
             resp->which_payload = touchy_Response_event_consume_tag;
             resp->payload.event_consume.has_event = true;
             resp->payload.event_consume.event     = evt;
@@ -548,19 +553,19 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         // promptly.
         touchy_LogRecord rec;
         if (log_proto_pop(&rec)) {
-            resp->code          = touchy_ResultCode_RESULT_OK;
+            resp->code          = touchy_ResultCode_OK;
             resp->which_payload = touchy_Response_log_record_tag;
             resp->payload.log_record = rec;
             break;
         }
         // Both queues empty — host will back off on this code.
-        resp->code = touchy_ResultCode_RESULT_NOT_FOUND;
+        resp->code = touchy_ResultCode_NOT_FOUND;
         break;
     }
 
     case touchy_Command_screen_wake_tag:
         backlight_wake();
-        resp->code = touchy_ResultCode_RESULT_OK;
+        resp->code = touchy_ResultCode_OK;
         break;
 
     case touchy_Command_set_preferences_tag:
@@ -569,8 +574,8 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         // (backlight timeout, screen switch, log threshold). Returns
         // RESULT_NOT_FOUND if a requested current_screen can't be loaded.
         resp->code = Prefs::instance().apply_partial(cmd->cmd.set_preferences.prefs)
-                         ? touchy_ResultCode_RESULT_OK
-                         : touchy_ResultCode_RESULT_NOT_FOUND;
+                         ? touchy_ResultCode_OK
+                         : touchy_ResultCode_NOT_FOUND;
         break;
 
     case touchy_Command_run_actions_tag: {
@@ -579,7 +584,7 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         // pointer/count live in the repeated-field pair.
         const auto &ra = cmd->cmd.run_actions;
         widget_run_actions(ra.actions, ra.actions_count);
-        resp->code = touchy_ResultCode_RESULT_OK;
+        resp->code = touchy_ResultCode_OK;
         break;
     }
 
@@ -590,7 +595,7 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
 
     default:
         ESP_LOGW(TAG, "unknown command tag %u", (unsigned)cmd->which_cmd);
-        resp->code = touchy_ResultCode_RESULT_INVALID_ARG;
+        resp->code = touchy_ResultCode_INVALID_ARG;
         break;
     }
 }
@@ -639,7 +644,7 @@ static void host_api_task(void *arg)
 
         if (!cmd.decode(link->rx_buf, payload_len)) {
             ESP_LOGE(TAG, "pb_decode failed");
-            resp->code = touchy_ResultCode_RESULT_INVALID_ARG;
+            resp->code = touchy_ResultCode_INVALID_ARG;
             std::size_t n = 0;
             if (resp.encode(link->tx_buf, HOST_API_TX_MAX, &n)) {
                 write_frame(link, link->tx_buf, n);

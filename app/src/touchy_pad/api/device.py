@@ -32,9 +32,9 @@ from google.protobuf.message import Message as _PbMessage
 
 from .. import _proto
 from ..client import TouchyClient
-from ..paths import screen_path
+from ..paths import DYNAMIC_IMAGE_DIR, screen_path
 from ..transport import PID, VID, Transport
-from . import _events, protobuf
+from . import _events, images_dynamic, protobuf
 from .screens import Screen as _DslScreen
 
 logger = logging.getLogger(__name__)
@@ -51,17 +51,30 @@ MINIMUM_FIRMWARE_VERSION: int = int(_proto.SysBoardInfoResponse.ProtocolVersion.
 
 
 class IncompatibleFirmwareError(RuntimeError):
-    """Raised when the attached device reports a firmware version older
-    than :data:`MINIMUM_FIRMWARE_VERSION`.
+    """Raised when the device's wire-format version is incompatible.
+
+    ``device_too_new`` is ``True`` when the device is ahead of the library
+    (upgrade ``touchy-pad`` with ``pip install -U touchy-pad``); ``False``
+    when the device is behind (flash newer firmware).
     """
 
-    def __init__(self, device_version: int, minimum: int) -> None:
-        super().__init__(
-            f"device firmware wire-format version {device_version} is older than "
-            f"the minimum supported version {minimum}; please update the firmware"
-        )
+    def __init__(self, device_version: int, minimum: int, *, device_too_new: bool = False) -> None:
+        if device_too_new:
+            msg = (
+                f"device firmware version {device_version} is newer than "
+                f"this library supports (max {minimum}); "
+                f"please upgrade: pip install -U touchy-pad"
+            )
+        else:
+            msg = (
+                f"device firmware version {device_version} is older than "
+                f"the minimum supported version {minimum}; please run 'touchy update' "
+                f"to flash the latest firmware"
+            )
+        super().__init__(msg)
         self.device_version = device_version
         self.minimum = minimum
+        self.device_too_new = device_too_new
 
 
 def touchy_get_pad_ids() -> list[str]:
@@ -150,6 +163,10 @@ class Touchy:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # Stage 87 — bound dynamic image sources (timers stopped on close)
+        # and a one-shot wipe of the T:dyn/ scratch dir per connection.
+        self._image_sources: list[images_dynamic.ImageSource] = []
+        self._dyn_dir_wiped = False
         if start_event_thread:
             self._thread = threading.Thread(
                 target=self._event_loop,
@@ -163,6 +180,13 @@ class Touchy:
     def close(self) -> None:
         """Stop the background event thread and close the USB transport."""
         self._stop.set()
+        # Stop any dynamic-image refresh timers before tearing down the
+        # transport so their final update() doesn't race the close.
+        for src in self._image_sources:
+            try:
+                src.stop()
+            except Exception:  # noqa: BLE001
+                logger.exception("failed to stop image source %s", src.path)
         try:
             self._client.close()
         finally:
@@ -273,6 +297,7 @@ class Touchy:
             widget_count,
         )
         self._register_inline_callbacks(msg)
+        self._bind_image_sources(msg)
         self._client.file_save(screen_path(final_name), msg.SerializeToString())
         return final_name
 
@@ -305,6 +330,51 @@ class Touchy:
             return
         for code, cb in _events.harvest(codes).items():
             self.on_host_event(code, cb)
+
+    def _bind_image_sources(self, msg: _PbMessage) -> None:
+        """Bind any embedded :class:`ImageSource`s and push their first frame.
+
+        Stage 87: walks the serialised tree for every ``Image.path`` it
+        references, harvests the matching pending sources, wipes the
+        ``T:dyn/`` scratch dir once per connection, then binds each
+        source to this device (initial upload + timer start) and tracks
+        it so :meth:`close` can stop its refresh thread.
+        """
+        paths = self._collect_image_paths(msg)
+        if not paths:
+            return
+        sources = images_dynamic.harvest(paths)
+        if not sources:
+            return
+        if not self._dyn_dir_wiped:
+            try:
+                self._client.file_delete(DYNAMIC_IMAGE_DIR.rstrip("/"))
+            except Exception:  # noqa: BLE001 — best-effort scratch wipe.
+                logger.debug("could not wipe %s", DYNAMIC_IMAGE_DIR, exc_info=True)
+            self._dyn_dir_wiped = True
+        for src in sources.values():
+            src._bind(self)
+            self._image_sources.append(src)
+
+    @staticmethod
+    def _collect_image_paths(msg: _PbMessage) -> set[str]:
+        """Recursively collect every ``Image.path`` referenced in *msg*."""
+        paths: set[str] = set()
+        if isinstance(msg, _proto.Image):
+            if msg.path:
+                paths.add(msg.path)
+            return paths
+        for field, value in msg.ListFields():
+            if field.type != field.TYPE_MESSAGE:
+                continue
+            if field.is_repeated:
+                if field.message_type.GetOptions().map_entry:
+                    continue
+                for item in value:
+                    paths |= Touchy._collect_image_paths(item)
+            else:
+                paths |= Touchy._collect_image_paths(value)
+        return paths
 
     @staticmethod
     def _collect_host_codes(msg: _PbMessage) -> set[int]:
@@ -382,6 +452,7 @@ class Touchy:
         stamped.version = _proto.Widget.Version.CURRENT
         logger.debug("widget_save: %s", path)
         self._register_inline_callbacks(stamped)
+        self._bind_image_sources(stamped)
         self._client.file_save(path, stamped.SerializeToString())
         return path
 
@@ -422,6 +493,7 @@ class Touchy:
         stamped.version = _proto.Widget.Version.CURRENT
         logger.debug("user_screen_save: %s", path)
         self._register_inline_callbacks(stamped)
+        self._bind_image_sources(stamped)
         self._client.file_save(path, stamped.SerializeToString())
         return path
 
@@ -570,9 +642,15 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
         raise
 
     device_version = int(getattr(ver, "protocol_version", 0))
-    if device_version and device_version < MINIMUM_FIRMWARE_VERSION:
-        client.close()
-        raise IncompatibleFirmwareError(device_version, MINIMUM_FIRMWARE_VERSION)
+    if device_version:
+        if device_version < MINIMUM_FIRMWARE_VERSION:
+            client.close()
+            raise IncompatibleFirmwareError(device_version, MINIMUM_FIRMWARE_VERSION)
+        if device_version > MINIMUM_FIRMWARE_VERSION:
+            client.close()
+            raise IncompatibleFirmwareError(
+                device_version, MINIMUM_FIRMWARE_VERSION, device_too_new=True
+            )
 
     return Touchy(client, board_info=ver)
 

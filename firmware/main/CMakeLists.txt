@@ -26,6 +26,7 @@ idf_component_register(
         "fs/fs.cpp"
         "fs/flash_fs.cpp"
         "fs/ram_fs.cpp"
+        "fs/temp_fs.cpp"
         "prefs.cpp"
         "backlight.cpp"
         "debug.cpp"

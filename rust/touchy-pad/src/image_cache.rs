@@ -8,11 +8,12 @@
 //! a widget at it cheaply (e.g. via `ActionChangeWidgetRef`).
 //!
 //! The cache is **host-side and volatile**: the in-RAM map is never
-//! serialized, and the device assets live on the `R:` PSRAM ramdisk
-//! (wiped on reboot). Build a fresh [`ImageCache`] whenever you
-//! (re)attach to a device — the first [`ImageCache::set_cached_image`]
-//! call clears [`IMAGE_CACHE_ROOT`] on the device so a crashed prior
-//! session leaves no stale files behind.
+//! serialized, and the device assets live on the `T:` transient drive
+//! (a PSRAM ramdisk where available, else a flash scratch area — the
+//! device decides; see `SysBoardInfoResponse.temp_is_flash`). Build a
+//! fresh [`ImageCache`] whenever you (re)attach to a device — the first
+//! [`ImageCache::set_cached_image`] call clears [`IMAGE_CACHE_ROOT`] on
+//! the device so a crashed prior session leaves no stale files behind.
 //!
 //! Eviction is least-recently-used: once [`MAX_IMAGE_CACHE`] distinct
 //! images are resident, the next miss deletes the least-recently-used
@@ -30,9 +31,10 @@ use crate::error::Result;
 use crate::images::normalize_for_device;
 use crate::pad::Touchy;
 
-/// On-device directory holding cached image assets. Volatile PSRAM
-/// ramdisk — wiped on device reboot.
-pub const IMAGE_CACHE_ROOT: &str = "R:host/icache/";
+/// On-device directory holding cached image assets. Lives on the `T:`
+/// transient drive (PSRAM ramdisk where available, else a flash scratch
+/// area) — wiped on device reboot.
+pub const IMAGE_CACHE_ROOT: &str = "T:host/icache/";
 
 /// Maximum number of distinct images kept resident on the device
 /// before the least-recently-used one is evicted.

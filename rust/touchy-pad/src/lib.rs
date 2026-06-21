@@ -67,3 +67,10 @@ pub const DEFAULT_SCREEN_PATH: &str = "F:host/s/default.pb";
 /// Directory holding user page bodies that the default chrome's
 /// `widget_ref(id="page")` pages through (Stage 68).
 pub const USER_SCREENS_DIR: &str = "F:host/uscr/";
+
+/// The logical `T:` ("temp") transient drive (Stage 87). The device
+/// resolves it to a PSRAM ramdisk where available, else a flash scratch
+/// area (see `SysBoardInfoResponse.temp_is_flash`). Host writers of
+/// throwaway assets address it as `T:...` and never branch on the board.
+/// Mirror of `touchy_pad.paths.TEMP_DRIVE`.
+pub const TEMP_DRIVE: &str = "T:";

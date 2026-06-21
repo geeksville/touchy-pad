@@ -31,11 +31,11 @@ impl Transport for Mock {
 		let next = self.events.lock().await.pop_front();
 		let resp = match next {
 			Some(evt) => Response {
-				code: ResultCode::ResultOk as i32,
+				code: ResultCode::Ok as i32,
 				payload: Some(response::Payload::EventConsume(EventConsumeResponse { event: Some(evt) })),
 			},
 			None => Response {
-				code: ResultCode::ResultNotFound as i32,
+				code: ResultCode::NotFound as i32,
 				payload: None,
 			},
 		};

@@ -55,7 +55,7 @@ def _split_drive(path: str) -> tuple[str, str]:
     if len(path) < 2 or path[1] != ":":
         raise ValueError(f"missing drive letter in path: {path!r}")
     letter = path[0].upper()
-    if letter not in ("F", "R"):
+    if letter not in ("F", "R", "T"):
         raise ValueError(f"unknown drive {letter!r} in {path!r}")
     rest = path[2:]
     if rest.startswith("/"):
@@ -94,7 +94,7 @@ class SimFs:
         return abs_path
 
     def _drive_root(self, letter: str) -> Path:
-        if letter not in ("F", "R"):
+        if letter not in ("F", "R", "T"):
             raise ValueError(f"unknown drive {letter!r}")
         return self.root / letter
 
@@ -141,7 +141,7 @@ class SimFs:
         boot-time scan of every drive's ``host/s/*.pb`` subtree.
         """
         found: list[str] = []
-        for letter in ("F", "R"):
+        for letter in ("F", "R", "T"):
             d = self._drive_root(letter) / "host" / "s"
             if not d.is_dir():
                 continue

@@ -257,6 +257,10 @@ def to_lvgl_bin(
         img = Image.open(source)
     elif isinstance(source, bytes | bytearray | memoryview):
         img = Image.open(io.BytesIO(bytes(source)))
+    elif isinstance(source, Image.Image):
+        # Already a decoded PIL image (e.g. a freshly rendered frame from
+        # an ImageSource). Use it directly.
+        img = source
     else:
         raise TypeError(f"unsupported source type: {type(source).__name__}")
 
@@ -272,10 +276,11 @@ def to_lvgl_bin(
     if chosen == "":
         # Auto-pick: prefer RGB565; fall back to RGB565A8 on real alpha.
         if _has_non_opaque_alpha(img):
-            # Only warn when the destination is R: (PSRAM ramdisk) — that is
-            # the only filesystem that supports the zero-copy mmap fast path.
+            # Only warn when the destination is a ramdisk-backed drive
+            # (R: PSRAM, or T: when it resolves to PSRAM) — those are the
+            # only filesystems that support the zero-copy mmap fast path.
             # F: (flash) never mmaps, so RGB565A8 there is fine silently.
-            if dest_path is None or dest_path.upper().startswith("R:"):
+            if dest_path is None or dest_path.upper().startswith(("R:", "T:")):
                 _log.warning(
                     "image has non-opaque alpha (%dx%d, mode=%s); falling back "
                     "to RGB565A8 — this asset will miss the on-device mmap "

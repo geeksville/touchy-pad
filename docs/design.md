@@ -4332,7 +4332,57 @@ concurrency/perf bugs once the gross failures above were cleared:
    one-upload-per-distinct-image guarantee *and* preserves the press
    state machine — fixing both the lost-keyUp and the missing-key bugs.
 
-## Stage 87: MakerFabs MaTouch 4.3" board support ✅
+# Stage 87: dynamic image rendering + the `T:` transient drive
+
+Goal: let host code push *freshly rendered* bitmaps into a live image
+widget and keep it tracking a data source, without leaking device
+storage details (ramdisk vs flash, content hashing, redraw triggering)
+into user code. Planned in `docs/user-widgets.md` ("dynamic rendering").
+
+1. **A new logical `T:` ("temp") drive.** Host writers of throwaway
+   assets address `T:...` and never branch on the board; the *device*
+   resolves it to a PSRAM ramdisk where available, else a flash scratch
+   area. Firmware: `firmware/main/fs/temp_fs.{h,cpp}` picks RamFs when
+   `heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0` else FlashFs, and
+   registers a buffered read-only LVGL `T` driver (via `readBinary`, so
+   it works for either backend); `fs_for_drive('T')` and
+   `fs_register_lvgl_drivers()` route to it. The host learns whether `T:`
+   is flash-backed (to throttle high-frequency refreshes) via the new
+   advisory `bool temp_is_flash = 14` on `SysBoardInfoResponse`
+   (`ProtocolVersion.V10`; firmware fills it in `host_api.cpp`, the CLI
+   prints it under `board-info`). Path constants are centralised
+   (`paths.py` `TEMP_DRIVE`/`DYNAMIC_IMAGE_DIR`/`IMAGE_CACHE_DIR`, Rust
+   `lib.rs` `TEMP_DRIVE`). `R:` stays a fully-supported explicit drive.
+
+2. **Rust backport.** `ImageCache`'s `IMAGE_CACHE_ROOT` moved
+   `R:host/icache/` → `T:host/icache/`; content-hash/LRU/OpenDeck paths
+   unchanged.
+
+3. **Python `ImageSource`** (`app/src/touchy_pad/api/images_dynamic.py`).
+   Accepts a `PIL.Image` / `bytes` / zero-arg callable; owns a stable
+   `T:dyn/<n>.bin` path (`<n>` = process-global monotonic counter).
+   `image()` / `image_button()` accept it (or a bare `PIL.Image`/`bytes`,
+   auto-wrapped) anywhere they take a path `str`; `_fill_image` resolves
+   it to its stable path. On `screen_save` / `widget_save` /
+   `user_screen_save` the embedded sources are harvested and bound to the
+   device (one-shot `T:dyn/` wipe per connection, initial upload, timer
+   start). `.update(new=None)` is the single primitive: re-render →
+   encode (`lvgl_image.to_lvgl_bin`, now PIL-aware) → content-hash → skip
+   if unchanged, else `file_save` the rewrite (which the firmware/sim
+   treat as an asset invalidation → in-place repaint, no widget rebuild).
+   `every=` + `start()`/`stop()` is a thin refresh-thread wrapper over
+   `.update()`; sources are stopped on `Touchy.close()`.
+
+4. **Redraw needs no new wire op.** Because the path is stable, rewriting
+   the bytes invalidates the LVGL image cache for that asset and repaints
+   in place — reusing the Stage 60 image-binding registry
+   (`widget_image_registry_notify`). No `ActionChangeWidgetRef`; Stage 86's
+   slot swap remains the tool for swapping between two *pre-uploaded*
+   button images. The simulator mirrors this: `sim/fs.py` learns the `T:`
+   drive, `sim/device.py` reports `temp_is_flash=False` and broadens its
+   `set_image_update_callback` gate to any `T:`/`.bin` rewrite.
+   
+## Stage 88: MakerFabs MaTouch 4.3" board support ✅
 
 **Goal.** Add a `matouch_43` board target for the MakerFabs MaTouch 4.3"
 (ESP32-S3-WROOM-1-N16R8, 800×480 RGB-16-bit parallel display, GT911

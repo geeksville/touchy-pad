@@ -16,7 +16,7 @@
             "growX": 1,
             "label": {
               "text": "Run 'touchy init' to set up",
-              "textAlign": "TEXT_ALIGN_CENTER"
+              "textAlign": "CENTER"
             }
           },
           {
@@ -67,14 +67,14 @@
                         "startOpa": 180,
                         "maxRadius": 45,
                         "durationMs": 400,
-                        "path": "ANIM_PATH_EASE_OUT",
+                        "path": "EASE_OUT",
                         "borderWidth": 0
                       },
                       "tapRipple": {
                         "startOpa": 255,
                         "maxRadius": 70,
                         "durationMs": 300,
-                        "path": "ANIM_PATH_EASE_OUT",
+                        "path": "EASE_OUT",
                         "borderWidth": 4
                       },
                       "scrollbarColor": 11393254

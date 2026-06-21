@@ -32,6 +32,7 @@ from pathlib import Path
 
 from .. import _proto
 from . import _events
+from .images_dynamic import ImageSource
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ __all__ = [
     "checkbox",
     "image",
     "image_button",
+    "ImageSource",
     "arc",
     "spacer",
     "widget_ref",
@@ -77,129 +79,21 @@ __all__ = [
     "build_default_screen",
     "build_setup_screen",
     "build_user_pages",
-    # LvState / LvPart selector bits (see widgets.proto:LvState).
-    "STATE_DEFAULT",
-    "STATE_CHECKED",
-    "STATE_FOCUSED",
-    "STATE_FOCUS_KEY",
-    "STATE_EDITED",
-    "STATE_HOVERED",
-    "STATE_PRESSED",
-    "STATE_SCROLLED",
-    "STATE_DISABLED",
-    "PART_MAIN",
-    "PART_SCROLLBAR",
-    "PART_INDICATOR",
-    "PART_KNOB",
-    "PART_SELECTED",
-    "PART_ITEMS",
-    "PART_CURSOR",
-    "PART_ANY",
-    # StyleProp values for use with `transition(props=[...])`.
-    "PROP_BG_COLOR",
-    "PROP_BG_OPA",
-    "PROP_RADIUS",
-    "PROP_BORDER_WIDTH",
-    "PROP_BORDER_COLOR",
-    "PROP_PAD_TOP",
-    "PROP_PAD_BOTTOM",
-    "PROP_PAD_LEFT",
-    "PROP_PAD_RIGHT",
-    "PROP_TEXT_COLOR",
-    "PROP_IMAGE_RECOLOR",
-    "PROP_IMAGE_RECOLOR_OPA",
-    "PROP_TRANSFORM_WIDTH",
-    "PROP_TRANSFORM_HEIGHT",
-    # Stage 59 — geometry / opacity props for declarative `animation(...)`.
-    "PROP_X",
-    "PROP_Y",
-    "PROP_WIDTH",
-    "PROP_HEIGHT",
-    "PROP_OPA",
-    # AnimPath easing curves for use with `transition(path=...)`.
-    "ANIM_PATH_LINEAR",
-    "ANIM_PATH_EASE_IN",
-    "ANIM_PATH_EASE_OUT",
-    "ANIM_PATH_EASE_IN_OUT",
-    "ANIM_PATH_OVERSHOOT",
-    "ANIM_PATH_BOUNCE",
-    "ANIM_PATH_STEP",
-    # Label horizontal text alignment.
-    "TEXT_ALIGN_AUTO",
-    "TEXT_ALIGN_LEFT",
-    "TEXT_ALIGN_CENTER",
-    "TEXT_ALIGN_RIGHT",
+    # Proto enum types — use as namespaces, e.g. LvState.STATE_PRESSED.
+    "AnimPath",
+    "LvState",
+    "StyleProp",
+    "TextAlign",
 ]
 
 
-# ---------------------------------------------------------------------------
-# LVGL style selector bits (LvState + LvPart, see widgets.proto)
-# ---------------------------------------------------------------------------
-#
-# Pass these (OR'd together) as `for_state=` to :func:`style` to target a
-# specific state and/or sub-part. Default (0) = main part, default state.
-STATE_DEFAULT = _proto.LvState.LV_STATE_DEFAULT
-STATE_CHECKED = _proto.LvState.LV_STATE_CHECKED
-STATE_FOCUSED = _proto.LvState.LV_STATE_FOCUSED
-STATE_FOCUS_KEY = _proto.LvState.LV_STATE_FOCUS_KEY
-STATE_EDITED = _proto.LvState.LV_STATE_EDITED
-STATE_HOVERED = _proto.LvState.LV_STATE_HOVERED
-STATE_PRESSED = _proto.LvState.LV_STATE_PRESSED
-STATE_SCROLLED = _proto.LvState.LV_STATE_SCROLLED
-STATE_DISABLED = _proto.LvState.LV_STATE_DISABLED
-PART_MAIN = _proto.LvState.LV_PART_MAIN
-PART_SCROLLBAR = _proto.LvState.LV_PART_SCROLLBAR
-PART_INDICATOR = _proto.LvState.LV_PART_INDICATOR
-PART_KNOB = _proto.LvState.LV_PART_KNOB
-PART_SELECTED = _proto.LvState.LV_PART_SELECTED
-PART_ITEMS = _proto.LvState.LV_PART_ITEMS
-PART_CURSOR = _proto.LvState.LV_PART_CURSOR
-PART_ANY = _proto.LvState.LV_PART_ANY
-
-
-# ---------------------------------------------------------------------------
-# StyleProp / AnimPath constants — used with :func:`transition`.
-# ---------------------------------------------------------------------------
-#
-# These mirror the curated wire-stable subsets defined in
-# ``widgets.proto`` (``StyleProp`` and ``AnimPath``). The firmware
-# translates each into the matching ``LV_STYLE_*`` constant or
-# ``lv_anim_path_*`` callback at decode time.
-PROP_BG_COLOR = _proto.StyleProp.STYLE_PROP_BG_COLOR
-PROP_BG_OPA = _proto.StyleProp.STYLE_PROP_BG_OPA
-PROP_RADIUS = _proto.StyleProp.STYLE_PROP_RADIUS
-PROP_BORDER_WIDTH = _proto.StyleProp.STYLE_PROP_BORDER_WIDTH
-PROP_BORDER_COLOR = _proto.StyleProp.STYLE_PROP_BORDER_COLOR
-PROP_PAD_TOP = _proto.StyleProp.STYLE_PROP_PAD_TOP
-PROP_PAD_BOTTOM = _proto.StyleProp.STYLE_PROP_PAD_BOTTOM
-PROP_PAD_LEFT = _proto.StyleProp.STYLE_PROP_PAD_LEFT
-PROP_PAD_RIGHT = _proto.StyleProp.STYLE_PROP_PAD_RIGHT
-PROP_TEXT_COLOR = _proto.StyleProp.STYLE_PROP_TEXT_COLOR
-PROP_IMAGE_RECOLOR = _proto.StyleProp.STYLE_PROP_IMAGE_RECOLOR
-PROP_IMAGE_RECOLOR_OPA = _proto.StyleProp.STYLE_PROP_IMAGE_RECOLOR_OPA
-PROP_TRANSFORM_WIDTH = _proto.StyleProp.STYLE_PROP_TRANSFORM_WIDTH
-PROP_TRANSFORM_HEIGHT = _proto.StyleProp.STYLE_PROP_TRANSFORM_HEIGHT
-# Stage 59 — geometry / opacity props for `animation(...)`.
-PROP_X = _proto.StyleProp.STYLE_PROP_X
-PROP_Y = _proto.StyleProp.STYLE_PROP_Y
-PROP_WIDTH = _proto.StyleProp.STYLE_PROP_WIDTH
-PROP_HEIGHT = _proto.StyleProp.STYLE_PROP_HEIGHT
-PROP_OPA = _proto.StyleProp.STYLE_PROP_OPA
-
-ANIM_PATH_LINEAR = _proto.AnimPath.ANIM_PATH_LINEAR
-ANIM_PATH_EASE_IN = _proto.AnimPath.ANIM_PATH_EASE_IN
-ANIM_PATH_EASE_OUT = _proto.AnimPath.ANIM_PATH_EASE_OUT
-ANIM_PATH_EASE_IN_OUT = _proto.AnimPath.ANIM_PATH_EASE_IN_OUT
-ANIM_PATH_OVERSHOOT = _proto.AnimPath.ANIM_PATH_OVERSHOOT
-ANIM_PATH_BOUNCE = _proto.AnimPath.ANIM_PATH_BOUNCE
-ANIM_PATH_STEP = _proto.AnimPath.ANIM_PATH_STEP
-
-# Horizontal text alignment for `label(..., text_align=...)` (see
-# widgets.proto:TextAlign). Maps to LVGL `lv_text_align_t`.
-TEXT_ALIGN_AUTO = _proto.TextAlign.TEXT_ALIGN_AUTO
-TEXT_ALIGN_LEFT = _proto.TextAlign.TEXT_ALIGN_LEFT
-TEXT_ALIGN_CENTER = _proto.TextAlign.TEXT_ALIGN_CENTER
-TEXT_ALIGN_RIGHT = _proto.TextAlign.TEXT_ALIGN_RIGHT
+# Re-export proto enum types as first-class names so callers can write
+# e.g. ``LvState.STATE_PRESSED``, ``AnimPath.EASE_IN_OUT``,
+# ``StyleProp.TRANSFORM_WIDTH``, ``TextAlign.CENTER``.
+AnimPath = _proto.AnimPath
+LvState = _proto.LvState
+StyleProp = _proto.StyleProp
+TextAlign = _proto.TextAlign
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +283,7 @@ def style(
 
 def transition(
     props: Iterable[int],
-    path: int = ANIM_PATH_LINEAR,
+    path: int = AnimPath.LINEAR,
     duration_ms: int = 200,
     delay_ms: int = 0,
 ) -> _proto.Transition:
@@ -708,7 +602,7 @@ def animation(
     * ``start_delay_ms`` — one-shot pre-roll before the first cycle.
     """
     if path is None:
-        path = ANIM_PATH_LINEAR
+        path = AnimPath.LINEAR
     a = _proto.Animation(
         duration_ms=duration_ms,
         path=path,
@@ -773,7 +667,7 @@ def label(
     id: str,
     text: str = "",
     font_size: int = 0,
-    text_align: int = TEXT_ALIGN_AUTO,
+    text_align: int = TextAlign.AUTO,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
@@ -845,14 +739,20 @@ def checkbox(
 
 def image(
     id: str,
-    asset: str,
+    asset: str | ImageSource | bytes,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
     scale: int | float | None = None,
     rotation: int | float | None = None,
 ) -> _proto.Widget:
-    """Display a previously-uploaded image asset (``/from_host/<asset>``).
+    """Display an image asset.
+
+    *asset* is either a path ``str`` to a previously-uploaded asset, or a
+    dynamic source — an :class:`ImageSource`, or a bare ``PIL.Image`` /
+    ``bytes`` (auto-wrapped). A dynamic source owns a stable on-device
+    path and is uploaded when the screen is saved; later
+    :meth:`ImageSource.update` calls repaint the widget in place.
 
     ``scale`` is a multiplier (``1.0`` / ``1`` / ``256`` all mean 100%):
     floats are interpreted as a multiplier (``0.5`` = 50%, ``2.0`` =
@@ -867,8 +767,8 @@ def image(
 
 def image_button(
     id: str,
-    asset: str,
-    pressed_asset: str | None = None,
+    asset: str | ImageSource | bytes,
+    pressed_asset: str | ImageSource | bytes | None = None,
     on_click=None,
     on_press=None,
     on_release=None,
@@ -916,18 +816,30 @@ def image_button(
 
 def _fill_image(
     msg: _proto.Image,
-    asset: str,
+    asset: object,
     scale: int | float | None,
     rotation: int | float | None,
 ) -> None:
-    """Populate a ``touchy.Image`` submessage from DSL kwargs."""
-    # Match the host-side conversion done by ``TouchyClient.file_save``:
-    # any BMP/PNG/JPEG/GIF/WebP gets converted to LVGL ``.bin`` and
-    # renamed accordingly, so the asset path stored in the screen has
-    # to track that rename or LVGL won't find the file on flash.
-    from .lvgl_image import rewrite_to_bin_path
+    """Populate a ``touchy.Image`` submessage from DSL kwargs.
 
-    msg.path = rewrite_to_bin_path(asset)
+    *asset* may be a path ``str`` (a previously-uploaded asset), or a
+    dynamic source: an :class:`~touchy_pad.api.images_dynamic.ImageSource`,
+    or a bare ``PIL.Image`` / ``bytes`` (auto-wrapped in a single-use
+    ``ImageSource``). Dynamic sources contribute their own stable
+    ``T:dyn/<n>.bin`` path and are uploaded when the screen is saved.
+    """
+    if isinstance(asset, str):
+        # Match the host-side conversion done by ``TouchyClient.file_save``:
+        # any BMP/PNG/JPEG/GIF/WebP gets converted to LVGL ``.bin`` and
+        # renamed accordingly, so the asset path stored in the screen has
+        # to track that rename or LVGL won't find the file on flash.
+        from .lvgl_image import rewrite_to_bin_path
+
+        msg.path = rewrite_to_bin_path(asset)
+    else:
+        from .images_dynamic import coerce_image_source
+
+        msg.path = coerce_image_source(asset).path
     if scale is not None:
         msg.scale = _encode_scale(scale)
     if rotation is not None:
@@ -1032,7 +944,7 @@ def ripple_animation(
     start_opa: int = 200,
     max_radius: int = 40,
     duration_ms: int = 350,
-    path: int = ANIM_PATH_LINEAR,
+    path: int = AnimPath.LINEAR,
     border_width: int = 0,
 ) -> _proto.RippleAnimation:
     """Touch-feedback ripple descriptor.
@@ -1447,7 +1359,7 @@ def build_setup_screen() -> Screen:
     hint = label(
         "setup_hint",
         text="Run 'touchy init' to set up",
-        text_align=TEXT_ALIGN_CENTER,
+        text_align=TextAlign.CENTER,
         style=style(text_color=0xFFFFFF),
     )
     grow(hint, x=1)  # full width so the centred text spans the screen

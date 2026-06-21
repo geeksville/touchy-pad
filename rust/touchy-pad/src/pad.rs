@@ -92,6 +92,32 @@ impl Touchy {
 			}
 		};
 		let touchy = Self::from_transport(transport);
+		// Version check: reject firmware that is too old (needs a flash) or
+		// too new (caller should `cargo add touchy-pad` to get a newer lib).
+		use crate::proto::sys_board_info_response::ProtocolVersion;
+		const LIBRARY_VERSION: i32 = ProtocolVersion::Current as i32;
+		match touchy.client.sys_board_info_get().await {
+			Ok(info) => {
+				let dv = info.protocol_version;
+				if dv > 0 && dv != LIBRARY_VERSION {
+					let (device_too_new, hint) = if dv > LIBRARY_VERSION {
+						(true, "upgrade the library: cargo add touchy-pad")
+					} else {
+						(false, "update the device firmware")
+					};
+					return Err(TouchyError::IncompatibleFirmware {
+						msg: format!(
+							"device wire-format version {dv} is incompatible \
+							 with library version {LIBRARY_VERSION}; {hint}"
+						),
+						device_version: dv,
+						library_version: LIBRARY_VERSION,
+						device_too_new,
+					});
+				}
+			}
+			Err(e) => log::debug!("sys_board_info_get at connect: {e}"),
+		}
 		// Stage 64.1: drain any device-side log records / events
 		// buffered before the host connected so the first
 		// `events()` consumer doesn't see stale data and the `log`
@@ -253,7 +279,7 @@ impl Touchy {
 	/// its touch state and still emits its release event.
 	///
 	/// `path` is a drive-prefixed image asset (e.g. a cached
-	/// `R:host/icache/<hash>.bin` from
+	/// `T:host/icache/<hash>.bin` from
 	/// [`ImageCache`][crate::image_cache::ImageCache]). The change is
 	/// visible at once only if that slot is the one currently displayed;
 	/// otherwise the bytes are staged for the next press/release edge.
