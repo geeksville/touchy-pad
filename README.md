@@ -20,8 +20,10 @@ To see (and hear) a video demo click this:
 If you have Python installed and a [suitable $15ish device](docs/hardware.md#jc4827w543), you can have this running on your hardware in less than a minute:
 ```bash
 pip install touchy-pad
-touchy update # This will automatically install the firmware on your board - prompting you as needed
+touchy update
 ```
+(This will automatically install the firmware on your board - prompting you as needed)
+
 More installation instructions [here](docs/installing.md).
 
 ## Current features

@@ -55,6 +55,12 @@ SUPPORTED_BOARDS: tuple[str, ...] = (
     "jc4827w543",
     "jc4827w543r",
     "waveshare_s3_lcd_7b",
+    "esp32_2432s028rv3",
+    "elecrow_p4_lcd_7",
+    "elecrow_s3_lcd_7",
+    "elecrow_s3_lcd_7_adv",
+    "squixl",
+    "matouch_43",
 )
 
 # How long to wait for the user to enter the bootloader after we ask

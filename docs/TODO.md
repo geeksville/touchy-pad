@@ -3,6 +3,7 @@
 ## Alpha 5
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
+* [ ] update readme based on this progress...
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] add photo of the small board
 * [ ] change recommended board in hardware.md
@@ -10,24 +11,18 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [x] properly warn user if selected gif/file is too large to use (based on ram size)
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] publish the opendeck plugin
-* [ ] [user widgets](user-widgets.md)
+* [x] progress on [user widgets](user-widgets.md) (not yet user visible, but closer to a 'stable' API)
 * [x] cleanup screens.py constants
 * [x] Give user friendly error msg if firmware or py code is too old
 * [x] when using ch341 uart try to use 460800 for better speeds
 * [x] support turn, back, forward, up, zoom, twist gestures natively.  be careful to not confuse with drags.  add various slope/min-dist/max-time thresholds.
 * [x] allow setting brightness by putting that GPIO on a hw PWM output
-
 * [ ] write a hackster.io article for buzz.  Reference old Meshtastic article.
 * [ ] Post here https://www.reddit.com/r/esp32
 
-* work with eink https://community.home-assistant.io/t/tesserae-open-source-self-hosted-dashboard-companion-for-e-ink-panels/1013540?fbclid=IwdGRjcAScseZjbGNrBJyxrWV4dG4DYWVtAjExAHNydGMGYXBwX2lkDDM1MDY4NTUzMTcyOAABHpakuwZfLZ2RwRC5fJk_xDqFcN2nU98BQOvznjnu5C55IZdUJ5a1OdIt7CkG_aem_-4f8uimClvcVhU0N7MeGvA 
-https://github.com/dmellok/tesserae 
-probaby via BYOS protocol https://help.trmnl.com/en/articles/9510536-private-plugins
-
-
-
 # Alpha n
 
+* [ ] finish [user widgets](user-widgets.md) 
 * [ ] make 'streamdeck like' knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
 * [ ] use gestures for left/right screen switching instead of buttons at top.
 * [ ] Implement multitouch HID to support multitouch native apps
@@ -45,6 +40,10 @@ probaby via BYOS protocol https://help.trmnl.com/en/articles/9510536-private-plu
 * [ ] Possibly no need for the full StreamController app, just go straight from per app yaml to an optional Python helper app (use to set icons/shortcuts etc).
 * [ ] implement the StreamDeck background graphic API
 * [ ] try turning off GPIO matrix for SPI display writes - per https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/spi_master.html#_CPPv416spi_bus_config_t might allow increase to 80Mhz.  "You can use this structure to specify the GPIO pins of the bus. Normally, the driver will use the GPIO matrix to route the signals. An exception is made when all signals either can be routed through the IO_MUX or are -1. In that case, the IO_MUX is used. On ESP32, using GPIO matrix will bring about 25ns of input delay, which may cause incorrect read for >40MHz speeds."
+
+* work with eink https://community.home-assistant.io/t/tesserae-open-source-self-hosted-dashboard-companion-for-e-ink-panels/1013540?fbclid=IwdGRjcAScseZjbGNrBJyxrWV4dG4DYWVtAjExAHNydGMGYXBwX2lkDDM1MDY4NTUzMTcyOAABHpakuwZfLZ2RwRC5fJk_xDqFcN2nU98BQOvznjnu5C55IZdUJ5a1OdIt7CkG_aem_-4f8uimClvcVhU0N7MeGvA 
+https://github.com/dmellok/tesserae 
+probaby via BYOS protocol https://help.trmnl.com/en/articles/9510536-private-plugins
 
 # Already completed
 
