@@ -7,7 +7,7 @@ Adopt that as the standard 'better than streamdeck' replacement.  so people can 
 * python callbacks for behaviors / datasources
 * url based fetching/sharing/registry (new? stream controler? opendeck?)
 * asset packs?  
-* let user pair python handler code with device GUI.  
+* let user pair python handler code with device GUI yaml?  
 * Make a few examples (fps widget? steam coverart? perfmon?).  
 * Extend those uscrs with triggers of "show when app X is in foreground".  
 * add some of the example JSON to the API docs
