@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from .. import _proto
+from ..api import hid_keys
+from ..api.macros import key_tap
 from ..api.screens import (
     AnimPath,
     Layer,
@@ -10,6 +12,7 @@ from ..api.screens import (
     grid,
     image,
     label,
+    macro_action,
     ripple_animation,
     spacer,
     style,
@@ -100,6 +103,18 @@ def build(background_image: str | None = None) -> tuple[str, _proto.Widget]:
             swipe_consecutive_distance=40,
             swipe_consecutive_time=200,
             swipe_angle=30,
+            # Stage 92 — enable two-finger zoom (pinch) detection. A pinch
+            # whose span changes by ~50 px within 300 ms fires, then repeats
+            # every ~25 px while the fingers keep moving. Bound to the
+            # de-facto desktop zoom shortcuts: Ctrl+"=" (zoom in) and
+            # Ctrl+"-" (zoom out). The device also logs each recognised
+            # zoom via ESP_LOGI for hardware validation.
+            zoom_initial_distance=50,
+            zoom_initial_time=300,
+            zoom_consecutive_distance=25,
+            zoom_consecutive_time=200,
+            on_zoom_in=macro_action([key_tap(hid_keys.KEY_EQUAL, hid_keys.CTRL)]),
+            on_zoom_out=macro_action([key_tap(hid_keys.KEY_MINUS, hid_keys.CTRL)]),
         ),
         col=0,
         row=0,

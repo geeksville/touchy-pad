@@ -666,6 +666,44 @@ def test_trackpad_swipe_config_round_trip():
     assert tp.on_down_swipe[0].macro.steps[0].WhichOneof("step") == "mouse_move"
 
 
+def test_trackpad_zoom_disabled_by_default():
+    """Stage 92: a bare trackpad leaves the zoom engine off (no fields,
+    no zoom action lists)."""
+    s = Screen("t")
+    s += trackpad("pad")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert not tp.HasField("zoom_initial_distance")
+    assert not tp.HasField("zoom_initial_time")
+    assert not tp.HasField("zoom_consecutive_distance")
+    assert not tp.HasField("zoom_consecutive_time")
+    assert len(tp.on_zoom_in) == 0
+    assert len(tp.on_zoom_out) == 0
+
+
+def test_trackpad_zoom_config_round_trip():
+    """Setting the zoom knobs + bindings round-trips through the wire."""
+    s = Screen("t")
+    s += trackpad(
+        "pad",
+        zoom_initial_distance=50,
+        zoom_initial_time=300,
+        zoom_consecutive_distance=25,
+        zoom_consecutive_time=200,
+        on_zoom_in=11,
+        on_zoom_out=macro_action([macros.zoom_move()]),
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert tp.zoom_initial_distance == 50
+    assert tp.zoom_initial_time == 300
+    assert tp.zoom_consecutive_distance == 25
+    assert tp.zoom_consecutive_time == 200
+    assert tp.on_zoom_in[0].host.code == 11
+    # A bare Action (not a list) is accepted; the macro became a Move step.
+    assert tp.on_zoom_out[0].macro.steps[0].WhichOneof("step") == "zoom_move"
+
+
 def test_build_demo_screen_trackpad_has_ripples():
     """Demo widget page ships ripple eye-candy so users see the feature."""
     _, widgets = build_demo()

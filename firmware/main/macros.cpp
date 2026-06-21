@@ -109,6 +109,23 @@ uint32_t run_step(const touchy_MacroStep &step, uint32_t sticky_delay_ms,
         usb_hid_mouse_scroll(v, h);
         break;
     }
+    case touchy_MacroStep_zoom_move_tag: {
+        const auto &m = step.step.zoom_move;
+        // Stage 92: dx carries the signed zoom magnitude (+ = in,
+        // - = out), with the same ambient-delta fallback as mouse_move /
+        // scroll_move. Emit the de-facto desktop zoom gesture: hold Ctrl,
+        // scroll vertically by dx, release Ctrl.
+        int32_t rz = m.has_dx ? m.dx : (move_ctx ? move_ctx->dx : 0);
+        int8_t z = rz >  127 ?  127 : rz < -127 ? -127 : (int8_t)rz;
+        if (z != 0) {
+            // Modifier-only report (Ctrl held, no keys). Pass nullptr so
+            // the HID layer zero-fills the 6-byte keycode array.
+            usb_hid_keyboard_report(0x01 /* LCTRL */, nullptr);
+            usb_hid_mouse_scroll(z, 0);
+            usb_hid_keyboard_report(0, nullptr);
+        }
+        break;
+    }
     case touchy_MacroStep_set_delay_ms_tag:
         // Update the sticky delay for subsequent steps. No HID I/O.
         return step.step.set_delay_ms;

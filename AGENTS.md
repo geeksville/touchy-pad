@@ -26,8 +26,8 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, and 91 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 22`,
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, and 92 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 23`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
 `PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:
@@ -272,6 +272,34 @@ Highlights worth remembering:
   `MacroMoveCtx`. Each fire also `ESP_LOGI`s `swipe <dir> dx=.. dy=..`,
   which is how the swipe-enabled default `pages/trackpad.py` (no Actions
   bound) is validated on hardware. `Widget.Version` 21→22.
+
+- **Stage 92 (two-finger zoom/pinch gestures).** `Trackpad` gained two
+  `repeated Action` lists — `on_zoom_in` (fingers spreading, positive) /
+  `on_zoom_out` (pinching, negative) — plus four `optional uint32` knobs:
+  `zoom_initial_distance` (the **master switch** — zoom recognition is
+  entirely off unless set, zero per-frame cost when absent),
+  `zoom_initial_time` (ms window for the first pinch; unset → 300),
+  `zoom_consecutive_distance`/`zoom_consecutive_time` (set the distance to
+  enable repeat-fire while the pinch keeps changing span in the locked
+  direction; unset → single-shot). The measured quantity is the
+  **inter-touch span** `|p1−p0|` (order-invariant, so immune to GT911 slot
+  swaps) — not travel from an anchor — and there is **no angle test**
+  (only the sign of the span change picks in vs. out). Detection is
+  **additive** to `on_scroll` (two-finger drag still scrolls) and both
+  lists default empty, so behaviour is unchanged unless opted in.
+  Direction switching requires the span to re-clear the full
+  `zoom_initial_distance` the other way, which also gates zoom↔scroll
+  (a pure translate never crosses the span threshold). Firmware engine is
+  `firmware/main/widgets/trackpad_widget.{h,cpp}` (`_zoom_process` /
+  `_emit_zoom`), reusing the Stage 90 `widget_run_actions_inline` +
+  `MacroMoveCtx{dx=Δ, dy=0}` so the signed span change rides in Relative X.
+  New `MacroStep.zoom_move` (a `Move`, tag 11) is the HID helper that
+  consumes it — unset `dx` pulls the ambient zoom delta, then the firmware
+  emits the desktop zoom gesture (hold Ctrl, vertical scroll by dx,
+  release Ctrl); host helper `macros.zoom_move()`. It is **not**
+  auto-seeded; `pages/trackpad.py` binds Ctrl+= / Ctrl+- as the worked
+  example, and each fire `ESP_LOGI`s `zoom <in|out> d=..` for hardware
+  validation. `Widget.Version` 22→23.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

@@ -4658,6 +4658,230 @@ wire change).
    high-frequency in consecutive mode.
 6. **Fixed-point angle test** (no float trig in the per-frame loop).
 
+## Stage 92: trackpad zoom (pinch) gestures
+
+**Status: DONE.** Two-finger *zoom* (pinch) gestures: spreading the
+fingers apart reports **zoom in** (positive), pinching them together
+reports **zoom out** (negative), bound to Action lists exactly like the
+Stage 90/91 gestures. A zoom is recognised when the **distance between
+the two touches** changes by more than a threshold, then keeps firing as
+the pinch continues. Behaviour is opt-in: the zoom Action lists default
+to **empty**, so existing trackpads are unchanged until a host binds one.
+
+This is the two-finger analogue of the Stage 91 single-finger swipe: the
+recognition model, the master-switch gating, the optional consecutive
+repeat, the inline runner + `MacroMoveCtx` reporting, and the fixed-point
+hot-loop discipline are all reused. The key differences: the measured
+quantity is the **inter-touch span** (not travel from an anchor), the
+axis/direction along which the two fingers move is **irrelevant** (only
+the change in span matters), and direction is **expand vs. contract**
+(not up/down/left/right).
+
+### Recognition model
+
+A zoom is evaluated **per two-finger touch** (`count == 2`), in parallel
+with the existing two-finger scroll → `on_scroll`. The whole zoom engine
+is **gated on `zoom_initial_distance` being set**: if the proto leaves it
+unset the trackpad skips zoom detection entirely (no state tracking, no
+per-frame work), so zooms are strictly opt-in and the default trackpad
+pays nothing.
+
+When `count` goes to `2`, anchor the **initial span** `s0 = |p1 - p0|`
+(Euclidean distance between the two touch points) at time `s_ms`. On each
+subsequent frame compute the current span `s` and the signed change
+`Δ = s - s0` (positive = fingers spreading = zoom in; negative = pinching
+= zoom out). A zoom is recognised when:
+
+1. **Distance** — `|Δ| >= zoom_initial_distance` (px).
+2. **Time** — that change was reached within `t <= zoom_initial_time`
+   (ms). If `|Δ|` crosses the threshold only *after* the time window
+   expired (a slow drift), re-anchor `(s0, s_ms)` to the current span so
+   a later quick pinch can still register (rolling window), exactly like
+   the swipe slow-drag guard.
+
+There is **no angle test** — the direction/axis along which the two
+touches move is not relevant, only the change in span. The sign of `Δ`
+picks the gesture: `Δ > 0` → `on_zoom_in`, `Δ < 0` → `on_zoom_out`.
+
+On recognition we fire the matching list — `on_zoom_in` / `on_zoom_out` —
+through the **Stage 90 inline runner** (`widget_run_actions_inline`) with
+`MacroMoveCtx{dx = Δ, dy = 0}`, so the zoom magnitude is reported in
+**Relative X** (signed: positive = zoom in, negative = zoom out). The new
+**`MacroStep.zoom_move`** step (a `Move`, see below) is the helper that
+consumes it: a `zoom_move` with an unset `dx` substitutes the trackpad's
+live ambient zoom delta (`MacroMoveCtx.dx`) — exactly the `mouse_move` /
+`scroll_move` ambient-delta pattern from Stage 90 — for hosts that want a
+proportional HID zoom. The zoom Action lists themselves default **empty**
+(like the Stage 91 swipe lists); nothing is seeded automatically. An
+`ESP_LOGI` line is emitted per fired zoom.
+
+**Consecutive zooms (optional).** If `zoom_consecutive_distance` is set,
+then after the initial recognition the engine re-anchors `(s0, s_ms)` to
+the recognition span, **locks the direction** (expand or contract), and
+swaps the thresholds to `zoom_consecutive_distance` /
+`zoom_consecutive_time`. While the span keeps changing in the locked
+direction, it keeps emitting the *same* zoom event each time `|Δ|` clears
+the consecutive distance within the consecutive time — a continuous
+stream for one pinch motion. If `zoom_consecutive_distance` is unset,
+exactly one event fires per two-finger touch.
+
+**Direction switching.** switching from zoom-in to
+zoom-out (or vice versa) requires the **initial** conditions to be met in
+the opposite direction before the switch can occur. Concretely: while
+locked into one direction the engine only tests the locked direction's
+consecutive threshold; to flip, the span must reverse far enough to clear
+the full `zoom_initial_distance` in the opposite direction, which re-runs
+recognition and re-locks. This naturally also gates **zoom ↔ scroll**
+alternation: a two-finger drag that translates (rather than changing
+span) never clears `zoom_initial_distance`, so it stays a scroll until a
+genuine pinch crosses the initial threshold.
+
+### Proto (`proto/widgets.proto` + `widgets.options`)
+
+Extend `message Trackpad` (next free tag is 24):
+
+* `optional uint32 zoom_initial_distance     = 24;` — px. **Presence is
+  the master switch:** unset → zoom detection is disabled entirely;
+  set → zooms are active and this is the span-change threshold.
+* `optional uint32 zoom_initial_time         = 25;` — ms; unset → default
+  (~300).
+* `optional uint32 zoom_consecutive_distance = 26;` — px; **unset =
+  single event per touch** (no repeat).
+* `optional uint32 zoom_consecutive_time     = 27;` — ms; unset → default.
+* `repeated Action on_zoom_in  = 28;` — fingers spreading (positive).
+* `repeated Action on_zoom_out = 29;` — fingers pinching (negative).
+
+Extend `message MacroStep` (next free tag is 11) with a dedicated zoom
+step, reusing the existing `Move` payload:
+
+* `Move zoom_move = 11;` — relative zoom magnitude in `dx` (Relative X;
+  `+` = zoom in, `-` = zoom out). Same ambient-delta semantics as
+  `mouse_move` / `scroll_move`: an unset `dx` inside a `Trackpad`
+  `on_zoom_in` / `on_zoom_out` action pulls the live per-frame zoom delta.
+  Device-side HID mapping: emit the de-facto desktop zoom gesture —
+  **Ctrl held + vertical scroll** by `dx` (the firmware brackets the
+  scroll with a Ctrl `key_down` / `key_up`), so a bare `zoom_move()`
+  drives application zoom with no host involvement. Update the `Move` doc
+  comment to mention `zoom_move` alongside `mouse_move` / `scroll_move`.
+
+`widgets.options`: cap the two new `repeated Action` fields with
+`type:FT_POINTER` (mirroring the Stage 90/91 `on_*` entries). `zoom_move`
+is a scalar `Move` (no options entry needed).
+
+Bump **`Widget.Version.CURRENT` 22 → 23** (additive, but it's a Trackpad
++ MacroStep wire change).
+
+### Firmware (`trackpad_widget.{h,cpp}`)
+
+* **Config + tuning.** In the constructor, set `_zoom_enabled =
+  cfg.has_zoom_initial_distance`. When false the engine short-circuits on
+  the first line of the per-frame check (no zoom state seeded). When true,
+  borrow the two `on_zoom_*` array pointers + counts and copy the four
+  tuning scalars, applying a header-defined default
+  (`…_ZOOM_INITIAL_TIME`) for any unset secondary knob
+  (`zoom_initial_distance` itself is always present when enabled).
+* **Zoom state.** Add per-touch members reset on all-fingers-up:
+  `_zoom_anchor_span` (the `s0` baseline, in px or px² — see below),
+  `_zoom_anchor_ms`, `_zoom_done` (single-shot guard), `_zoom_locked` +
+  `_zoom_dir_sign` (`+1` expand / `-1` contract, set once consecutive
+  mode latches). The anchor span is seeded when `count` becomes `2`
+  (alongside the existing two-finger scroll bookkeeping).
+* **Engine.** Inside the existing `count == 2` branch (the block that
+  already emits `on_scroll`), bail immediately when `!_zoom_enabled`;
+  otherwise compute the current span, the signed `Δ`, and run the two
+  threshold checks. On recognition: `widget_run_actions_inline(list, n,
+  &MacroMoveCtx{Δ, 0})`, `ESP_LOGI(TAG, "zoom %s d=%d", in/out, Δ)`, then
+  either re-anchor + lock (consecutive) or set `_zoom_done` (single).
+* **`zoom_move` HID step (`macros.cpp`).** Add a `zoom_move` case to the
+  inline/async macro runner: read `dx` (ambient `MacroMoveCtx.dx` when
+  unset), then drive a Ctrl-modified scroll — `usb_hid_key_down(CTRL)`,
+  `usb_hid_mouse_scroll(dx)`, `usb_hid_key_up(CTRL)` (or hold Ctrl across
+  a consecutive burst if that proves smoother). This is the only new HID
+  plumbing; clicks/keystrokes already exist.
+* **Coexistence.** Zoom detection is **additive** — it does not suppress
+  `on_scroll`. Since the zoom lists default to empty, the default
+  trackpad is byte-for-byte unchanged; a host that binds zoom accepts
+  that a pinch may also scroll (it can clear `on_scroll` for a pure-zoom
+  surface).
+* **Avoid the per-frame `sqrt`.** The span needs a Euclidean distance,
+  but the hot loop can compare **squared** spans to avoid `sqrtf`:
+  recognition on `|s² - s0²|` is monotonic with `|s - s0|` only
+  approximately, so compute the true span once per *recognised* frame for
+  the reported `Δ` and the re-anchor, but use a cheap squared-distance
+  pre-filter to skip frames that obviously haven't moved. (Decision Q3 —
+  if the approximation is ever a problem, fall back to a single `sqrtf`
+  per frame; two-finger frames are rare enough that this is acceptable.)
+
+### Host (Python — `api/screens.py`, `api/macros.py`)
+
+* **`api/macros.py`.** Add a `zoom_move(dx=None)` helper that emits a
+  `MacroStep` with the `zoom_move` `Move` payload (omitting `dx` when
+  `None` → "use the trackpad's ambient zoom delta"), mirroring
+  `mouse_move()` / `scroll_move()`. Available for hosts that want
+  proportional HID zoom; nothing uses it by default.
+* `trackpad()` gains keyword args `zoom_initial_distance`,
+  `zoom_initial_time`, `zoom_consecutive_distance`,
+  `zoom_consecutive_time` (each `int | None`, written only when not
+  `None`) and `on_zoom_in`, `on_zoom_out` (each
+  `Iterable[Action] | int | None`, run through `_normalise_actions`).
+  **Like** the Stage 91 swipe lists these default to **empty** (no
+  `_USE_DEFAULT` seeding) so adding zoom is purely opt-in.
+* A host binds whatever it wants per direction, e.g.
+  `on_zoom_in=macro_action([macros.key_tap("ctrl", "plus")])`,
+  `on_zoom_out=macro_action([macros.key_tap("ctrl", "minus")])` for
+  keystroke zoom, or `on_zoom_in=macro_action([macros.zoom_move()])` for
+  proportional Ctrl+scroll HID zoom.
+
+### Rust
+
+* prost regenerates the new fields from the symlinked proto. Optionally
+  add `trackpad`-builder pass-throughs in `touchy-pad` if/when a Rust
+  caller needs zoom; the OpenDeck plugin doesn't use the trackpad, so no
+  functional Rust change is required.
+
+### Default screen / docs
+
+* No change to `proto/default_screen.json`. As with Stage 91's swipe
+  validation, enable zoom on `pages/trackpad.py` (set
+  `zoom_initial_distance` + the consecutive knobs) — and, unlike the
+  swipe page, **bind real Actions**: `on_zoom_in=macro_action([
+  macros.key_tap("ctrl", "plus")])` and `on_zoom_out=macro_action([
+  macros.key_tap("ctrl", "minus")])`, so a pinch performs application
+  zoom-in / zoom-out. The `ESP_LOGI("zoom in/out …")` output can still be
+  watched on hardware to confirm recognition.
+* Add a Python round-trip test (the two lists + four tuning scalars) and
+  a "disabled by default" assertion, mirroring the Stage 91 tests.
+
+### Decisions (for review)
+
+1. **Zoom is additive to `on_scroll`** (does not suppress two-finger
+   scroll); empty defaults keep current behaviour. *(Alternative: latch a
+   zoom and suppress that frame's `on_scroll` — more modal, more
+   surprising.)*
+2. **Two distinct lists (`on_zoom_in` / `on_zoom_out`)** rather than one
+   `on_zoom` list with a signed magnitude. Two lists match the swipe
+   per-direction shape and let a host bind only one direction; the signed
+   magnitude is *still* available to each via Relative X. *(Alternative:
+   single `on_zoom` + sign in `MacroMoveCtx.dx` — rejected as less
+   ergonomic for the common keystroke binding.)*
+3. **Squared-distance pre-filter, true `sqrtf` only on recognised
+   frames** to keep the two-finger hot loop cheap. Revisit if precision
+   bites.
+4. **Direction switch requires re-clearing `zoom_initial_distance` in the
+   opposite direction** this also gates zoom ↔
+   scroll alternation for free.
+5. **Reuse the Stage 90 inline runner + `MacroMoveCtx`**, reporting the
+   signed span change in **Relative X** (`dx`, `dy = 0`). A new
+   **`MacroStep.zoom_move`** step (default device HID = Ctrl+scroll) is
+   provided as the proportional-zoom helper, but is **not** seeded into
+   the lists. *(Alternative: reuse `scroll_move` directly — rejected so
+   zoom can have its own HID mapping and be bound independently.)*
+6. **Master switch = `zoom_initial_distance` presence** (zero per-frame
+   cost when unset), mirroring Stage 91.
+7. **Zoom lists default empty** (opt-in, like the Stage 91 swipe lists) —
+   no auto-seeded `zoom_move()`. The `pages/trackpad.py` page binds
+   `ctrl`+`plus` / `ctrl`+`minus` keystroke macros as the worked example.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

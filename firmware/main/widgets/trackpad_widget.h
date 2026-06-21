@@ -53,6 +53,11 @@ public:
     static constexpr uint32_t DEFAULT_SWIPE_INITIAL_TIME = 300;  // ms
     static constexpr uint32_t DEFAULT_SWIPE_ANGLE        = 30;   // degrees
 
+    // Stage 92 — zoom-gesture tuning default for the secondary time knob;
+    // `zoom_initial_distance` has no default (its presence is the master
+    // enable, see `_zoom_enabled`).
+    static constexpr uint32_t DEFAULT_ZOOM_INITIAL_TIME = 300;  // ms
+
     // Construct the widget as a child of `parent`. The caller is
     // expected to size/style it via the usual `apply_rect` /
     // `apply_style` pass after construction.
@@ -180,6 +185,41 @@ private:
     // Fire the directional swipe action list + log, given the travel
     // `(dx, dy)` since the anchor. `axis_h`/`sign` pick the direction.
     void _emit_swipe(bool axis_h, int8_t sign, int16_t dx, int16_t dy);
+
+    // Stage 92 — two-finger zoom (pinch) gesture engine. Gated on
+    // `_zoom_enabled` (set iff the proto carries `zoom_initial_distance`);
+    // when false none of the state below is touched and the per-frame
+    // check bails immediately. The measured quantity is the *span* (the
+    // Euclidean distance between the two touch points); the axis the
+    // fingers move along is irrelevant — only the change in span matters.
+    bool                _zoom_enabled              = false;
+    uint32_t            _zoom_initial_distance     = 0;
+    uint32_t            _zoom_initial_time         = DEFAULT_ZOOM_INITIAL_TIME;
+    bool                _zoom_has_consecutive      = false;
+    uint32_t            _zoom_consecutive_distance = 0;
+    uint32_t            _zoom_consecutive_time     = DEFAULT_ZOOM_INITIAL_TIME;
+    const touchy_Action *_on_zoom_in   = nullptr;
+    pb_size_t            _on_zoom_in_n  = 0;
+    const touchy_Action *_on_zoom_out  = nullptr;
+    pb_size_t            _on_zoom_out_n = 0;
+
+    // Per-touch zoom state (reset on all-fingers-up). The anchor is the
+    // span/time the current zoom evaluation window started from; it rolls
+    // forward on a too-slow pinch and re-anchors after each recognised
+    // (consecutive) zoom.
+    float    _zoom_anchor_span = 0.0f;
+    uint32_t _zoom_anchor_ms   = 0;
+    bool     _zoom_done        = false;  // single-shot guard (no consecutive)
+    bool     _zoom_locked      = false;  // consecutive mode: direction fixed
+    int8_t   _zoom_dir_sign    = 0;      // locked direction: +1 in / -1 out
+
+    // Run the zoom engine for the current two-finger `span` (px, the
+    // distance between the two touch points) at time `now`. No-op unless
+    // `_zoom_enabled`.
+    void _zoom_process(float span, uint32_t now);
+    // Fire the zoom action list + log given the signed span change
+    // `delta` (Relative X; + = zoom in, - = zoom out).
+    void _emit_zoom(int32_t delta);
 
     // Per-instance tap-vs-drag hold threshold in ms, sourced from
     // `Trackpad.tap_max_ms` (or `DEFAULT_TAP_MAX_MS` if unset).

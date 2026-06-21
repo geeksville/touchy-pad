@@ -203,6 +203,27 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
         _on_down_swipe_n  = cfg.on_down_swipe_count;
     }
 
+    // Stage 92 — zoom (pinch) engine. Master switch is the presence of
+    // `zoom_initial_distance`; everything else has a sensible default.
+    _zoom_enabled = cfg.has_zoom_initial_distance;
+    if (_zoom_enabled) {
+        _zoom_initial_distance = cfg.zoom_initial_distance;
+        _zoom_initial_time =
+            cfg.has_zoom_initial_time ? cfg.zoom_initial_time
+                                      : DEFAULT_ZOOM_INITIAL_TIME;
+        _zoom_has_consecutive = cfg.has_zoom_consecutive_distance;
+        _zoom_consecutive_distance =
+            cfg.has_zoom_consecutive_distance ? cfg.zoom_consecutive_distance
+                                              : 0;
+        _zoom_consecutive_time =
+            cfg.has_zoom_consecutive_time ? cfg.zoom_consecutive_time
+                                          : _zoom_initial_time;
+        _on_zoom_in    = cfg.on_zoom_in;
+        _on_zoom_in_n  = cfg.on_zoom_in_count;
+        _on_zoom_out   = cfg.on_zoom_out;
+        _on_zoom_out_n = cfg.on_zoom_out_count;
+    }
+
     // The widget *is* the LVGL container; caller sizes/styles it via the
     // host DSL's Rect / Style. The container is transparent so sibling
     // widgets drawn earlier in the same grid cell (background fill, hint
@@ -322,6 +343,19 @@ void TrackpadWidget::_process()
         _swipe_locked      = false;
         _swipe_locked_h    = false;
         _swipe_locked_sign = 0;
+    }
+
+    // ── Stage 92: seed the zoom anchor when two fingers become present ─
+    // (1→2 or 3→2). The span is order-invariant, so a GT911 slot swap is
+    // harmless. Re-seeding on 3→2 simply restarts zoom for the new pair.
+    if (_zoom_enabled && count == 2 && _prev_count != 2) {
+        float zdx = static_cast<float>(pts[0].x) - pts[1].x;
+        float zdy = static_cast<float>(pts[0].y) - pts[1].y;
+        _zoom_anchor_span = sqrtf(zdx * zdx + zdy * zdy);
+        _zoom_anchor_ms   = now;
+        _zoom_done        = false;
+        _zoom_locked      = false;
+        _zoom_dir_sign    = 0;
     }
 
     // ── Recolor all live touch ripples when the finger count changes ─
@@ -515,6 +549,14 @@ void TrackpadWidget::_process()
             }
         }
 
+        // Stage 92 — zoom detection runs in parallel with the scroll above
+        // (additive; it does not suppress on_scroll). No-op unless enabled.
+        if (_zoom_enabled) {
+            float zdx = static_cast<float>(pts[0].x) - pts[1].x;
+            float zdy = static_cast<float>(pts[0].y) - pts[1].y;
+            _zoom_process(sqrtf(zdx * zdx + zdy * zdy), now);
+        }
+
         _fingers[0].last_x = static_cast<int16_t>(pts[0].x);
         _fingers[0].last_y = static_cast<int16_t>(pts[0].y);
         _fingers[1].last_x = static_cast<int16_t>(pts[1].x);
@@ -593,6 +635,10 @@ void TrackpadWidget::_process()
         _swipe_done        = false;
         _swipe_locked      = false;
         _swipe_locked_sign = 0;
+        // Stage 92 — reset the per-touch zoom window.
+        _zoom_done     = false;
+        _zoom_locked   = false;
+        _zoom_dir_sign = 0;
         for (int i = 0; i < MAX_FINGERS; i++) _fingers[i] = FingerState{};
         // Take down the scrollbar (if it was up). Animation is a quick
         // fade-out; the bar deletes itself when the opacity anim ends.
@@ -724,6 +770,90 @@ void TrackpadWidget::_swipe_process(int16_t x, int16_t y, uint32_t now)
     _swipe_anchor_x  = x;
     _swipe_anchor_y  = y;
     _swipe_anchor_ms = now;
+}
+
+void TrackpadWidget::_emit_zoom(int32_t delta)
+{
+    const touchy_Action *actions = nullptr;
+    pb_size_t            n        = 0;
+    const char         *name     = "?";
+    if (delta > 0) { actions = _on_zoom_in;  n = _on_zoom_in_n;  name = "in";  }
+    else           { actions = _on_zoom_out; n = _on_zoom_out_n; name = "out"; }
+    // Report the signed span change as the ambient Move delta in Relative X
+    // (dx), run inline (same path as on_scroll). A zoom_move / scroll_move /
+    // mouse_move step with unset dx picks it up. Empty list → no-op, but we
+    // still log for hardware validation.
+    int8_t cx = delta > 127 ? 127 : delta < -127 ? -127 : (int8_t)delta;
+    MacroMoveCtx ctx{cx, 0};
+    widget_run_actions_inline(actions, n, &ctx);
+    log_line_post("zoom %s %+d", name, (int)delta);
+    ESP_LOGI(TAG, "zoom %s d=%d", name, (int)delta);
+}
+
+void TrackpadWidget::_zoom_process(float span, uint32_t now)
+{
+    if (!_zoom_enabled || _zoom_done) return;
+
+    int32_t delta    = (int32_t)lroundf(span - _zoom_anchor_span);
+    int32_t adelta   = delta < 0 ? -delta : delta;
+    uint32_t t       = now - _zoom_anchor_ms;
+    int32_t need     = (int32_t)_zoom_initial_distance;
+
+    if (!_zoom_locked) {
+        // ── Initial recognition ──────────────────────────────────────
+        if (adelta < need) return;  // span-change threshold not met yet
+        if (t > _zoom_initial_time) {
+            // Threshold reached but too slow → roll the window forward so
+            // a later quick pinch can still register (a slow drift never
+            // latches a zoom).
+            _zoom_anchor_span = span;
+            _zoom_anchor_ms   = now;
+            return;
+        }
+        int8_t sign = delta > 0 ? 1 : -1;
+        _emit_zoom(delta);
+        if (_zoom_has_consecutive) {
+            _zoom_locked   = true;
+            _zoom_dir_sign = sign;
+            _zoom_anchor_span = span;
+            _zoom_anchor_ms   = now;
+        } else {
+            _zoom_done = true;  // single event per touch
+        }
+        return;
+    }
+
+    // ── Consecutive mode: travel along the locked direction ──────────
+    int32_t along = delta * _zoom_dir_sign;  // + = continuing same way
+    if (along < (int32_t)_zoom_consecutive_distance) {
+        // Direction switch: the span must re-clear the *initial* distance
+        // in the opposite direction before in↔out can flip.
+        if (-along >= need) {
+            int8_t sign = (int8_t)(-_zoom_dir_sign);
+            _emit_zoom(delta);
+            _zoom_dir_sign    = sign;
+            _zoom_anchor_span = span;
+            _zoom_anchor_ms   = now;
+            return;
+        }
+        // Not far enough yet. Roll the anchor forward in time if the
+        // consecutive window expired (keeps a paused-then-resumed pinch
+        // alive without firing).
+        if (t > _zoom_consecutive_time) {
+            _zoom_anchor_span = span;
+            _zoom_anchor_ms   = now;
+        }
+        return;
+    }
+    if (t > _zoom_consecutive_time) {
+        // Cleared the distance but too slowly → re-anchor, no event.
+        _zoom_anchor_span = span;
+        _zoom_anchor_ms   = now;
+        return;
+    }
+    _emit_zoom(delta);
+    _zoom_anchor_span = span;
+    _zoom_anchor_ms   = now;
 }
 
 uint32_t TrackpadWidget::_color_for_count(uint8_t n) const

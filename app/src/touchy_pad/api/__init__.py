@@ -58,6 +58,7 @@ from .macros import (
     scroll_move,
     set_delay,
     type_text,
+    zoom_move,
 )
 from .screens import (
     AnimPath,
@@ -186,6 +187,7 @@ __all__ = [
     "set_delay",
     "delay",
     "type_text",
+    "zoom_move",
     "HID_MOUSE_BTN_LEFT",
     "HID_MOUSE_BTN_RIGHT",
     "HID_MOUSE_BTN_MIDDLE",

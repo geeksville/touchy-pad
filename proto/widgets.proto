@@ -346,11 +346,12 @@ message KeyEvent {
     uint32 modifiers = 2;
 }
 
-// Relative motion step inside an `ActionMacro`. Used for BOTH mouse-cursor
-// moves (`MacroStep.mouse_move`) and scroll-wheel moves
-// (`MacroStep.scroll_move`); the enclosing step decides which HID report
-// it drives. Both components are signed and `optional`: when a `Move`
-// inside a `Trackpad` `on_move` / `on_scroll` action leaves an axis
+// Relative motion step inside an `ActionMacro`. Used for mouse-cursor
+// moves (`MacroStep.mouse_move`), scroll-wheel moves
+// (`MacroStep.scroll_move`), and zoom (`MacroStep.zoom_move`); the
+// enclosing step decides which HID report it drives. Both components are
+// signed and `optional`: when a `Move` inside a `Trackpad`
+// `on_move` / `on_scroll` / `on_zoom_*` action leaves an axis
 // unset, the firmware substitutes the trackpad's live per-frame delta for
 // that axis (so the macro just says "emit a move" without hard-coding a
 // magnitude).
@@ -380,6 +381,13 @@ message MacroStep {
         // horizontal pan. Same `Move` ambient-delta semantics as
         // `mouse_move`.
         Move      scroll_move       = 10;
+        // Relative zoom: `dx` (Relative X) carries the signed zoom
+        // magnitude (+ = zoom in, - = zoom out). Same ambient-delta
+        // semantics as `mouse_move` / `scroll_move` — an unset `dx` inside
+        // a `Trackpad` `on_zoom_*` action pulls the live per-frame span
+        // change. Device HID mapping: Ctrl held + vertical scroll by `dx`
+        // (the de-facto desktop zoom gesture).
+        Move      zoom_move         = 11;
     }
 }
 
@@ -766,6 +774,34 @@ message Trackpad {
     repeated Action on_right_swipe  = 21;
     repeated Action on_up_swipe     = 22;
     repeated Action on_down_swipe   = 23;
+
+    // Stage 92 — two-finger *zoom* (pinch) gestures.
+    //
+    // Gated on `zoom_initial_distance` exactly like swipe: unset → zoom
+    // detection is off (zero per-frame cost). When set, a zoom is
+    // recognised when the distance *between the two touch points* (the
+    // span) changes by at least `zoom_initial_distance` px within
+    // `zoom_initial_time` ms. The sign of the span change picks the
+    // direction — spreading apart (positive) runs `on_zoom_in`, pinching
+    // together (negative) runs `on_zoom_out` — via the same inline runner
+    // as `on_scroll`. The magnitude is reported in Relative X (`dx`), so a
+    // `zoom_move` / `scroll_move` / `mouse_move` step with unset `dx`
+    // picks up the signed span change. The axis along which the fingers
+    // move is irrelevant.
+    //
+    // If `zoom_consecutive_distance` is set the gesture repeats: after the
+    // initial recognition the engine re-anchors at the recognition span,
+    // locks the direction, and keeps emitting the same zoom each time the
+    // span clears `zoom_consecutive_distance` px within
+    // `zoom_consecutive_time` ms. Switching direction (in↔out) requires the
+    // span to re-clear the full `zoom_initial_distance` the other way.
+    // Unset → exactly one event per touch.
+    optional uint32 zoom_initial_distance     = 24;  // px — master switch
+    optional uint32 zoom_initial_time         = 25;  // ms; unset → default
+    optional uint32 zoom_consecutive_distance = 26;  // px; unset → single
+    optional uint32 zoom_consecutive_time     = 27;  // ms; unset → default
+    repeated Action on_zoom_in      = 28;  // fingers spreading (positive)
+    repeated Action on_zoom_out     = 29;  // fingers pinching (negative)
 }
 
 // Reusable touch-feedback ripple. Animates a circle from radius 0 →
@@ -864,7 +900,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 22;
+        CURRENT         = 23;
     }
     Version version = 6;
 

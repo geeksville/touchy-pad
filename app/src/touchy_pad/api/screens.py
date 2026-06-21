@@ -1007,6 +1007,12 @@ def trackpad(
     on_right_swipe=None,
     on_up_swipe=None,
     on_down_swipe=None,
+    zoom_initial_distance: int | None = None,
+    zoom_initial_time: int | None = None,
+    zoom_consecutive_distance: int | None = None,
+    zoom_consecutive_time: int | None = None,
+    on_zoom_in=None,
+    on_zoom_out=None,
 ) -> _proto.Widget:
     """Multitouch trackpad surface (device-side HID mouse).
 
@@ -1060,6 +1066,20 @@ def trackpad(
     repeat the same swipe while the finger keeps moving; leave
     ``swipe_consecutive_distance`` ``None`` for one event per touch. A
     ``Move`` step inside a swipe action reports the relative swipe travel.
+
+    Stage 92 — two-finger **zoom** (pinch) gestures. Gated on
+    ``zoom_initial_distance`` exactly like swipe: leave it ``None`` and
+    zoom detection is off (the default). Set it (px) to enable zooms; a
+    zoom is recognised when the distance *between the two fingers* changes
+    by that much within ``zoom_initial_time`` (ms). Spreading the fingers
+    apart runs ``on_zoom_in``; pinching them together runs ``on_zoom_out``
+    (each a single ``Action`` / host-code ``int`` or an iterable; **empty /
+    unset = no-op**, no default bindings). Set
+    ``zoom_consecutive_distance`` / ``zoom_consecutive_time`` to repeat
+    while the pinch continues; leave ``zoom_consecutive_distance`` ``None``
+    for one event per touch. The signed zoom magnitude is reported in
+    Relative X, so a :func:`~touchy_pad.api.macros.zoom_move` step (or any
+    ``Move`` step with unset ``dx``) inside the action picks it up.
     """
     w = _widget(id, rect=rect, style=style, animations=animations)
     tp = w.trackpad
@@ -1109,6 +1129,19 @@ def trackpad(
     tp.on_right_swipe.extend(_normalise_actions(on_right_swipe))
     tp.on_up_swipe.extend(_normalise_actions(on_up_swipe))
     tp.on_down_swipe.extend(_normalise_actions(on_down_swipe))
+
+    # Stage 92 — zoom tuning + bindings. Opt-in: writing
+    # `zoom_initial_distance` enables the device-side engine.
+    if zoom_initial_distance is not None:
+        tp.zoom_initial_distance = zoom_initial_distance
+    if zoom_initial_time is not None:
+        tp.zoom_initial_time = zoom_initial_time
+    if zoom_consecutive_distance is not None:
+        tp.zoom_consecutive_distance = zoom_consecutive_distance
+    if zoom_consecutive_time is not None:
+        tp.zoom_consecutive_time = zoom_consecutive_time
+    tp.on_zoom_in.extend(_normalise_actions(on_zoom_in))
+    tp.on_zoom_out.extend(_normalise_actions(on_zoom_out))
     return w
 
 

@@ -137,7 +137,39 @@
                       "swipeInitialTime": 300,
                       "swipeConsecutiveDistance": 40,
                       "swipeConsecutiveTime": 200,
-                      "swipeAngle": 30
+                      "swipeAngle": 30,
+                      "zoomInitialDistance": 50,
+                      "zoomInitialTime": 300,
+                      "zoomConsecutiveDistance": 25,
+                      "zoomConsecutiveTime": 200,
+                      "onZoomIn": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "keyTap": {
+                                  "keycode": 46,
+                                  "modifiers": 1
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "onZoomOut": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "keyTap": {
+                                  "keycode": 45,
+                                  "modifiers": 1
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
                     }
                   }
                 ]

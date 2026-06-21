@@ -44,6 +44,8 @@ touchy.Trackpad.on_left_swipe          type:FT_POINTER
 touchy.Trackpad.on_right_swipe         type:FT_POINTER
 touchy.Trackpad.on_up_swipe            type:FT_POINTER
 touchy.Trackpad.on_down_swipe          type:FT_POINTER
+touchy.Trackpad.on_zoom_in             type:FT_POINTER
+touchy.Trackpad.on_zoom_out            type:FT_POINTER
 touchy.ActionMacro.steps               type:FT_POINTER
 touchy.Transition.props                type:FT_POINTER
 touchy.Widget.animations               type:FT_POINTER

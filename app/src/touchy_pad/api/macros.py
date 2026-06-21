@@ -106,6 +106,22 @@ def scroll_move(dx: int | None = None, dy: int | None = None) -> _proto.MacroSte
     return _proto.MacroStep(scroll_move=move)
 
 
+def zoom_move(dx: int | None = None) -> _proto.MacroStep:
+    """Send a single relative zoom step (Stage 92).
+
+    ``dx`` (Relative X) carries the signed zoom magnitude: positive zooms
+    in, negative zooms out. Left as ``None`` it is omitted from the wire
+    ``Move``; inside a :func:`~touchy_pad.api.screens.trackpad`
+    ``on_zoom_in`` / ``on_zoom_out`` action that means "use the trackpad's
+    live per-frame span change". The device maps this to the de-facto
+    desktop zoom gesture: Ctrl held + a vertical scroll by ``dx``.
+    """
+    move = _proto.Move()
+    if dx is not None:
+        move.dx = dx
+    return _proto.MacroStep(zoom_move=move)
+
+
 def set_delay(ms: int) -> _proto.MacroStep:
     """Set the sticky inter-step delay (ms) for every subsequent step."""
     if ms < 0:
