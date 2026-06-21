@@ -4,7 +4,7 @@
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
 * [ ] add a which hw/why guide (psram etc...)
-* [ ] properly warn user if selected gif/file is too large to use (based on ram size)
+* [x] properly warn user if selected gif/file is too large to use (based on ram size)
 * [ ] support no-touch devices
 * [ ] add photo of the small board
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
@@ -12,7 +12,7 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] home assistant?
 * [ ] [user widgets](user-widgets.md)
 * [x] cleanup screens.py constants
-* [ ] Give user friendly error msg if firmware or py code is too old
+* [x] Give user friendly error msg if firmware or py code is too old
 * [x] when using ch341 uart try to use 460800 for better speeds
 * [ ] make knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
 * [ ] use gestures for left/right screen switching instead of buttons at top.

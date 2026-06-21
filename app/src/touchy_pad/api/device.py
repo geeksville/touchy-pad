@@ -51,17 +51,30 @@ MINIMUM_FIRMWARE_VERSION: int = int(_proto.SysBoardInfoResponse.ProtocolVersion.
 
 
 class IncompatibleFirmwareError(RuntimeError):
-    """Raised when the attached device reports a firmware version older
-    than :data:`MINIMUM_FIRMWARE_VERSION`.
+    """Raised when the device's wire-format version is incompatible.
+
+    ``device_too_new`` is ``True`` when the device is ahead of the library
+    (upgrade ``touchy-pad`` with ``pip install -U touchy-pad``); ``False``
+    when the device is behind (flash newer firmware).
     """
 
-    def __init__(self, device_version: int, minimum: int) -> None:
-        super().__init__(
-            f"device firmware wire-format version {device_version} is older than "
-            f"the minimum supported version {minimum}; please update the firmware"
-        )
+    def __init__(self, device_version: int, minimum: int, *, device_too_new: bool = False) -> None:
+        if device_too_new:
+            msg = (
+                f"device firmware version {device_version} is newer than "
+                f"this library supports (max {minimum}); "
+                f"please upgrade: pip install -U touchy-pad"
+            )
+        else:
+            msg = (
+                f"device firmware version {device_version} is older than "
+                f"the minimum supported version {minimum}; please run 'touchy update' "
+                f"to flash the latest firmware"
+            )
+        super().__init__(msg)
         self.device_version = device_version
         self.minimum = minimum
+        self.device_too_new = device_too_new
 
 
 def touchy_get_pad_ids() -> list[str]:
@@ -629,9 +642,15 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
         raise
 
     device_version = int(getattr(ver, "protocol_version", 0))
-    if device_version and device_version < MINIMUM_FIRMWARE_VERSION:
-        client.close()
-        raise IncompatibleFirmwareError(device_version, MINIMUM_FIRMWARE_VERSION)
+    if device_version:
+        if device_version < MINIMUM_FIRMWARE_VERSION:
+            client.close()
+            raise IncompatibleFirmwareError(device_version, MINIMUM_FIRMWARE_VERSION)
+        if device_version > MINIMUM_FIRMWARE_VERSION:
+            client.close()
+            raise IncompatibleFirmwareError(
+                device_version, MINIMUM_FIRMWARE_VERSION, device_too_new=True
+            )
 
     return Touchy(client, board_info=ver)
 

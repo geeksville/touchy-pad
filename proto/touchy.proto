@@ -226,6 +226,9 @@ message SysBoardInfoResponse {
     enum ProtocolVersion {
         option allow_alias = true;
         UNSPECIFIED = 0;
+
+        CURRENT = 10;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
+                
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
                  //           LvEvent.host_code added; events via host polling
@@ -247,7 +250,6 @@ message SysBoardInfoResponse {
         V10 = 10; // stage 87: SysBoardInfoResponse gains temp_is_flash (the
                   //           'T:' transient drive is backed by flash, not
                   //           PSRAM, on this board) — additive scalar field
-        CURRENT = 10;  // alias: always equals the latest defined version
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number

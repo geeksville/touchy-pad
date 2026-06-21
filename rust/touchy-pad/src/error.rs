@@ -56,6 +56,22 @@ pub enum TouchyError {
 	#[error("transport error: {0}")]
 	Transport(String),
 
+	/// The device's wire-format protocol version is incompatible with this
+	/// library. When `device_too_new` is `true` the device is ahead of the
+	/// library — upgrade with `cargo add touchy-pad` / `pip install -U
+	/// touchy-pad`. When `false` the device needs a firmware update.
+	#[error("{msg}")]
+	IncompatibleFirmware {
+		/// Human-readable explanation (includes the pip/cargo hint).
+		msg: String,
+		/// Wire-format version the device reported.
+		device_version: i32,
+		/// Wire-format version this library supports.
+		library_version: i32,
+		/// `true` → device is newer than library; `false` → device is older.
+		device_too_new: bool,
+	},
+
 	/// Anything else.
 	#[error("{0}")]
 	Other(String),
