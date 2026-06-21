@@ -136,9 +136,9 @@ extern "C" void app_main(void)
     // FIXME - in early boot for some reason we often crash if DEBUG logs are enabled.  leave the the default
     // level at at least INFO level until late boot
     touchy_LogPriority log_level = (touchy_LogPriority)Prefs::instance().min_log_level();
-    log_proto_set_min_level(log_level >= touchy_LogPriority_LOG_PRIORITY_INFO 
+    log_proto_set_min_level(log_level >= touchy_LogPriority_INFO 
         ? log_level 
-        : touchy_LogPriority_LOG_PRIORITY_INFO);
+        : touchy_LogPriority_INFO);
 
     // Stage 82: optional early-boot delay. The transports (USB vendor link /
     // serial) are already up from host_api_start() above, so a host can

@@ -66,7 +66,7 @@ static std::atomic<uint32_t> s_pending_dropped;
 // do NOT bump s_pending_dropped for them). Default ERROR; the prefs
 // subsystem overrides it on boot and on SetPreferencesCmd. Atomic because
 // it's read from arbitrary task contexts inside s_vprintf.
-static std::atomic<int> s_min_level{touchy_LogPriority_LOG_PRIORITY_ERROR};
+static std::atomic<int> s_min_level{touchy_LogPriority_ERROR};
 
 // Translate an ESP-IDF level letter (the first character ESP_LOG
 // prepends to every line: 'E', 'W', 'I', 'D', 'V') to our wire
@@ -74,12 +74,12 @@ static std::atomic<int> s_min_level{touchy_LogPriority_LOG_PRIORITY_ERROR};
 static touchy_LogPriority level_from_letter(char letter)
 {
     switch (letter) {
-    case 'E': return touchy_LogPriority_LOG_PRIORITY_ERROR;
-    case 'W': return touchy_LogPriority_LOG_PRIORITY_WARN;
-    case 'I': return touchy_LogPriority_LOG_PRIORITY_INFO;
-    case 'D': return touchy_LogPriority_LOG_PRIORITY_DEBUG;
-    case 'V': return touchy_LogPriority_LOG_PRIORITY_TRACE;
-    default:  return touchy_LogPriority_LOG_PRIORITY_TRACE;
+    case 'E': return touchy_LogPriority_ERROR;
+    case 'W': return touchy_LogPriority_WARN;
+    case 'I': return touchy_LogPriority_INFO;
+    case 'D': return touchy_LogPriority_DEBUG;
+    case 'V': return touchy_LogPriority_TRACE;
+    default:  return touchy_LogPriority_TRACE;
     }
 }
 
@@ -95,7 +95,7 @@ static void parse_esp_log_prefix(char *line,
                                  const char **out_tag,
                                  const char **out_body)
 {
-    *out_prio = touchy_LogPriority_LOG_PRIORITY_TRACE;
+    *out_prio = touchy_LogPriority_TRACE;
     *out_tag  = "";
     *out_body = line;
 
@@ -237,8 +237,8 @@ static int s_vprintf(const char *fmt, va_list ap)
     // Intentional filtering — do NOT bump s_pending_dropped.
     int min_level = s_min_level.load(std::memory_order_relaxed);
     bool is_touchy = (strncmp(tag, "tc-", 3) == 0);
-    int effective_min = (!is_touchy && min_level < touchy_LogPriority_LOG_PRIORITY_INFO)
-                        ? (int)touchy_LogPriority_LOG_PRIORITY_INFO
+    int effective_min = (!is_touchy && min_level < touchy_LogPriority_INFO)
+                        ? (int)touchy_LogPriority_INFO
                         : min_level;
     if ((int)prio < effective_min) {
         in_emit_clear();

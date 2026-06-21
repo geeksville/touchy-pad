@@ -656,7 +656,7 @@ def pref_log_level(level: str) -> None:
     """
     from . import _proto
 
-    value = _proto.LogPriority.Value(f"LOG_PRIORITY_{level.upper()}")
+    value = _proto.LogPriority.Value(level.upper())
     with _client() as c:
         c.set_min_log_level(value)
 

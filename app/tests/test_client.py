@@ -302,7 +302,7 @@ def test_device_error_raises_touchy_error(make_client):
         with pytest.raises(TouchyError) as exc:
             c.screen_wake()
         assert exc.value.code == _proto.RESULT_INVALID_ARG
-        assert exc.value.code_name == "RESULT_INVALID_ARG"
+        assert exc.value.code_name == "INVALID_ARG"
 
 
 def test_stream_events_drains_via_polling(make_client):

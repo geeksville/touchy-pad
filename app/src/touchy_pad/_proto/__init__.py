@@ -75,21 +75,21 @@ from .widgets_pb2 import (  # noqa: F401  (re-exported)
 
 # Convenience aliases so callers can write `_proto.RESULT_OK` without poking
 # into the enum descriptor.
-RESULT_OK = ResultCode.Value("RESULT_OK")
-RESULT_UNKNOWN_ERROR = ResultCode.Value("RESULT_UNKNOWN_ERROR")
-RESULT_INVALID_ARG = ResultCode.Value("RESULT_INVALID_ARG")
-RESULT_NOT_FOUND = ResultCode.Value("RESULT_NOT_FOUND")
-RESULT_NO_SPACE = ResultCode.Value("RESULT_NO_SPACE")
-RESULT_IO_ERROR = ResultCode.Value("RESULT_IO_ERROR")
-RESULT_NOT_SUPPORTED = ResultCode.Value("RESULT_NOT_SUPPORTED")
+RESULT_OK = ResultCode.Value("OK")
+RESULT_UNKNOWN_ERROR = ResultCode.Value("UNKNOWN_ERROR")
+RESULT_INVALID_ARG = ResultCode.Value("INVALID_ARG")
+RESULT_NOT_FOUND = ResultCode.Value("NOT_FOUND")
+RESULT_NO_SPACE = ResultCode.Value("NO_SPACE")
+RESULT_IO_ERROR = ResultCode.Value("IO_ERROR")
+RESULT_NOT_SUPPORTED = ResultCode.Value("NOT_SUPPORTED")
 
 # Flat aliases for ``LogPriority`` so callers can write
 # ``_proto.LOG_PRIORITY_INFO`` without poking into the descriptor.
-LOG_PRIORITY_TRACE = LogPriority.Value("LOG_PRIORITY_TRACE")
-LOG_PRIORITY_DEBUG = LogPriority.Value("LOG_PRIORITY_DEBUG")
-LOG_PRIORITY_INFO = LogPriority.Value("LOG_PRIORITY_INFO")
-LOG_PRIORITY_WARN = LogPriority.Value("LOG_PRIORITY_WARN")
-LOG_PRIORITY_ERROR = LogPriority.Value("LOG_PRIORITY_ERROR")
+LOG_PRIORITY_TRACE = LogPriority.Value("TRACE")
+LOG_PRIORITY_DEBUG = LogPriority.Value("DEBUG")
+LOG_PRIORITY_INFO = LogPriority.Value("INFO")
+LOG_PRIORITY_WARN = LogPriority.Value("WARN")
+LOG_PRIORITY_ERROR = LogPriority.Value("ERROR")
 
 # Flat aliases for the ``TextAlign`` enum so callers can write
 # ``_proto.TEXT_ALIGN_CENTER`` without poking into the descriptor.

@@ -58,7 +58,7 @@ impl Transport for Mock {
 		let cmd = rec.last.take().expect("recv_response without a prior send");
 		let resp = match cmd.cmd {
 			Some(command::Cmd::EventConsume(_)) => Response {
-				code: ResultCode::ResultNotFound as i32,
+				code: ResultCode::NotFound as i32,
 				payload: None,
 			},
 			Some(command::Cmd::FileOpenWrite(c)) => {
@@ -66,20 +66,20 @@ impl Transport for Mock {
 				let handle = rec.next_handle;
 				rec.next_handle += 1;
 				Response {
-					code: ResultCode::ResultOk as i32,
+					code: ResultCode::Ok as i32,
 					payload: Some(response::Payload::FileOpenWrite(FileOpenWriteResponse { handle })),
 				}
 			}
 			Some(command::Cmd::FileDelete(c)) => {
 				rec.deleted.push(c.path);
 				Response {
-					code: ResultCode::ResultOk as i32,
+					code: ResultCode::Ok as i32,
 					payload: None,
 				}
 			}
 			// FileWrite, FileClose, and anything else: bare OK.
 			_ => Response {
-				code: ResultCode::ResultOk as i32,
+				code: ResultCode::Ok as i32,
 				payload: None,
 			},
 		};

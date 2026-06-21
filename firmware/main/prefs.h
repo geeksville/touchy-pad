@@ -74,6 +74,6 @@ private:
 
     // Stage 82 — see accessors above. Default min log level is ERROR so the
     // host log tunnel is quiet unless explicitly turned up.
-    uint32_t    m_min_log_level  = touchy_LogPriority_LOG_PRIORITY_ERROR;
+    uint32_t    m_min_log_level  = touchy_LogPriority_ERROR;
     uint32_t    m_boot_delay_s   = 0;
 };
