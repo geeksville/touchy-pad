@@ -1,25 +1,23 @@
-# Creep3r
-
-Listens to people talking and plays along with the idea that people are creeped out about their phones listening to them.  Use a 100% local AI (so never sending anything to the internet) to listen for people talking.  Once it hears a phrase rate it for 'interestingness'.  If considered interesting ask a different local AI 'write something witty about PHRASE'.  Scroll that witty phrase down the sides of a hanging LED block - about 3 ft long and 6" square on a side?
-
-Notes about LED-ART variant
-
-* Scrolling vertically - hanging art project
-* Use multiple "WS2812B RGB Panel LED RGB IC addressable LED strip Flexible Digital 8x8 8x32 16x16 4x12 5050SMD independently addressable PCB 5V" panels.  Probably the the 8x32 variant.  Stripe down the sides of a 3d printed frame.  
-ESP32-S3-ROOM inside.
-* touchy-pad module will talk to host linux CPU that is doing (locally hosted) ai voice rec to find funny things to start scrolling.
+# Creep3r and related projects
+Notes about LED-ART variants
 
 Probably best done as seperate projects:
 * lightbar: based on touchypad-code, 12V highwatt in, drives panels and talks protobuf over wifi
 * voicebot: use a local (coral based?) voice->text, text->voice AI.  possibly add homekit integration support so it can be an entirely local smart homekit controller.  Via MCP?
 * creep3r: uses lightbar and voicebot to do its art.  probably runs on the same hw with voicebot
 
-https://github.com/Xylopyrographer/LiteLED - high perf esp driver
-https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf 
-https://www.superlightingled.com/PDF/Addressable-Flex-LED-Pixel-Panel.pdf
-https://github.com/AaronLiddiment/LEDText/wiki
-https://docs.soldered.com/ws2812b/how-it-works/ 
-https://github.com/fastled/fastled#-documentation--support
+## creep3r
+
+Listens to people talking and plays along with the idea that people are creeped out about their phones listening to them.  Use a 100% local AI (so never sending anything to the internet) to listen for people talking.  Once it hears a phrase rate it for 'interestingness'.  If considered interesting ask a different local AI 'write something witty about PHRASE'.  Scroll that witty phrase down the sides of a hanging LED block - about 3 ft long and 6" square on a side?
+
+* Scrolling vertically - hanging art project
+* Use multiple "WS2812B RGB Panel LED RGB IC addressable LED strip Flexible Digital 8x8 8x32 16x16 4x12 5050SMD independently addressable PCB 5V" panels.  Probably the the 8x32 variant.  Stripe down the sides of a 3d printed frame.  
+ESP32-S3-ROOM inside.
+* touchy-pad module will talk to host linux CPU that is doing (locally hosted) ai voice rec to find funny things to start scrolling.
+
+### Voice input
+Great thread https://www.reddit.com/r/homeassistant/s/wl02ow67MK
+https://www.reddit.com/r/RockchipNPU/comments/1g3cetq/fast_and_accurate_speechtotext_on_rk3588_with/?share_id=5YA3sA8R8K1hXxF8YJaFh 
 
 What about if I use this device over USB instead of esp32s3?  Can I hook it to my rpi and still take advantage of the built in vad?
 Possibly this version reSpeaker USB 4-Mic Array XVF3000 v3.0 | Seeed Studio Wiki https://share.google/SmlZbrjco82vemvfg
@@ -32,6 +30,13 @@ Orangepi info https://www.reddit.com/r/SBCs/s/LBz8vA3nx5
 * Max of 4 bit lanes per box module, max of 4 modules (16 display panels - each panel 8x32 pixel).  Initially try just one lane per box module (4 displays daisy chained) and see how bad it is...
 * 12V 200W in, internally use little 12V->buck converters to power the esp32 board and 5V device control
 * include a small fan to help convection
+
+https://github.com/Xylopyrographer/LiteLED - high perf esp driver
+https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf 
+https://www.superlightingled.com/PDF/Addressable-Flex-LED-Pixel-Panel.pdf
+https://github.com/AaronLiddiment/LEDText/wiki
+https://docs.soldered.com/ws2812b/how-it-works/ 
+https://github.com/fastled/fastled#-documentation--support
 
 ### Similar projects?
 
