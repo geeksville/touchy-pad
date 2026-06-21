@@ -213,6 +213,38 @@ The ST7701S requires a one-time register-init sequence via a 3-wire 9-bit SPI bu
 
 Board id: `squixl`, IDF target `esp32s3`. The firmware uses the 16 MB partition table (`partitions/16M.csv`).
 
+## MakerFabs MaTouch 4.3" (`matouch_43`)
+
+The [MakerFabs MaTouch 4.3"](https://www.makerfabs.com/esp32-s3-parallel-tft-with-touch-4-3-inch.html) is an ESP32-S3 board with an 800×480 IPS display and GT911 capacitive multitouch. Costs around $30 USD.
+
+**Full USB HID** — GPIO 19/20 are not used by the display or touch interface, so the ESP32-S3's native USB-OTG port is fully available for mouse + keyboard emulation.
+
+| Component | Specification |
+| :--- | :--- |
+| **SoC** | ESP32-S3-WROOM-1-N16R8 (dual-core Xtensa LX7 @ 240 MHz) |
+| **Flash** | 16 MB QIO |
+| **PSRAM** | 8 MB Octal @ 80 MHz |
+| **Display** | 4.3" 800×480 RGB-16-bit parallel |
+| **Touch** | GT911 capacitive multitouch, I²C |
+
+### Key GPIO assignments
+
+| Signal | GPIO |
+| :--- | :--- |
+| **LCD PCLK** | GPIO 42 @ 16 MHz |
+| **LCD HSYNC** | GPIO 39 |
+| **LCD VSYNC** | GPIO 41 |
+| **LCD DE** | not connected |
+| **LCD D0–D4 (B0–B4)** | GPIO 8, 3, 46, 9, 1 |
+| **LCD D5–D10 (G0–G5)** | GPIO 5, 6, 7, 15, 16, 4 |
+| **LCD D11–D15 (R0–R4)** | GPIO 45, 48, 47, 21, 14 |
+| **Backlight** | GPIO 44 (GPIO HIGH = on) |
+| **I²C SCL** | GPIO 18 (GT911) |
+| **I²C SDA** | GPIO 17 |
+| **GT911 RST** | GPIO 38 |
+
+Board id: `matouch_43`, IDF target `esp32s3`. Uses the 16 MB partition table (`partitions/16M.csv`).
+
 ## Elecrow CrowPanel 7" ESP32-S3 (`elecrow_s3_lcd_7` / `elecrow_s3_lcd_7_adv`)
 
 Two variants of the Elecrow 7" ESP32-S3 board are supported: the [regular CrowPanel 7"](https://www.elecrow.com/esp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html) and the [CrowPanel Advance 7"](https://www.elecrow.com/crowpanel-advance-7-hmi-esp32-ai-display-800x480-ai-ips-touch-screen.html). Both use an ESP32-S3 with an 800×480 RGB panel and GT911 capacitive multitouch, and cost around $20–25 USD.
