@@ -92,6 +92,7 @@ jobs:
           - elecrow_s3_lcd_7
           - elecrow_s3_lcd_7_adv
           - squixl
+          - matouch_43
     runs-on: ubuntu-latest
     env:
       IDF_VERSION: ${{ needs.install-esp-idf.outputs.idf-version }}

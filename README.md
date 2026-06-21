@@ -147,6 +147,7 @@ However, in some of my other open-source projects, I've seen the current hell PR
 
 * [@chmouel](https://github.com/chmouel) added support for the resistive touchscreen variant of the jc4827w543 board.
 * [@ckirmse](https://github.com/ckirmse) added support for:
+  * MakerFabs MaTouch 4.3" (`matouch_43`)
   * elecrow_p4_lcd_7 (ESP32-P4, MIPI-DSI 1024x600) 
   * elecrow_s3_lcd_7 / elecrow_s3_lcd_7_adv (ESP32-S3 7", 800x480 RGB) devices.
   * SQUiXL by Unexpected Maker.
