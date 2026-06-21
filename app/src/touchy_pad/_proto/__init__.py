@@ -58,7 +58,7 @@ from .widgets_pb2 import (  # noqa: F401  (re-exported)
     LvEventCode,
     LvState,
     MacroStep,
-    MouseMove,
+    Move,
     Rect,
     RippleAnimation,
     Screen,

@@ -5,8 +5,8 @@ Main new features? Much easier scripting than through StreamController - allow a
 
 * [ ] add a which hw/why guide (psram etc...)
 * [x] properly warn user if selected gif/file is too large to use (based on ram size)
-* [ ] support no-touch devices
 * [ ] add photo of the small board
+* [ ] change recommended board in hardware.md
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] publish the opendeck plugin
 * [ ] home assistant?
@@ -35,6 +35,7 @@ https://www.reddit.com/r/RockchipNPU/comments/1g3cetq/fast_and_accurate_speechto
 
 * [ ] make a 'builder' to help users with making new uscrs - walk them through running apps, icon selection etc...
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
+* [ ] support no-touch devices
 * [ ] Support a few more board types
 * [ ] support eink displays in my test devices drawer
 * [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/

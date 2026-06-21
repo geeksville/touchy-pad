@@ -576,6 +576,53 @@ def test_trackpad_full_kwargs_roundtrip():
     assert tp.tap_ripple.border_width == 3
 
 
+def test_trackpad_default_gesture_actions():
+    """Stage 90: a bare trackpad seeds the five gesture Action lists with
+    the conventional USB-HID mouse defaults."""
+    s = Screen("t")
+    s += trackpad("pad")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+
+    # Clicks → mouse_click macros with the matching HID button.
+    assert tp.on_left_click[0].macro.steps[0].mouse_click == (macros.HID_MOUSE_BTN_LEFT)
+    assert tp.on_right_click[0].macro.steps[0].mouse_click == (macros.HID_MOUSE_BTN_RIGHT)
+    assert tp.on_middle_click[0].macro.steps[0].mouse_click == (macros.HID_MOUSE_BTN_MIDDLE)
+
+    # Move / scroll → ambient Move steps with no dx/dy set (firmware
+    # substitutes the live per-frame delta).
+    move = tp.on_move[0].macro.steps[0]
+    assert move.WhichOneof("step") == "mouse_move"
+    assert not move.mouse_move.HasField("dx")
+    assert not move.mouse_move.HasField("dy")
+    scroll = tp.on_scroll[0].macro.steps[0]
+    assert scroll.WhichOneof("step") == "scroll_move"
+    assert not scroll.scroll_move.HasField("dx")
+    assert not scroll.scroll_move.HasField("dy")
+
+
+def test_trackpad_empty_list_disables_gesture():
+    """Passing an explicit empty list clears that gesture's default."""
+    s = Screen("t")
+    s += trackpad("pad", on_right_click=[], on_scroll=[])
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert len(tp.on_right_click) == 0
+    assert len(tp.on_scroll) == 0
+    # Other gestures keep their defaults.
+    assert len(tp.on_left_click) == 1
+    assert len(tp.on_move) == 1
+
+
+def test_trackpad_custom_gesture_action():
+    """A caller can rebind a gesture to any Action, e.g. a host event."""
+    s = Screen("t")
+    s += trackpad("pad", on_left_click=42)
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert tp.on_left_click[0].host.code == 42
+
+
 def test_build_demo_screen_trackpad_has_ripples():
     """Demo widget page ships ripple eye-candy so users see the feature."""
     _, widgets = build_demo()

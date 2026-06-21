@@ -241,6 +241,25 @@ void widget_run_actions(const touchy_Action *actions, pb_size_t actions_count)
     lvgl_port_unlock();
 }
 
+void widget_run_actions_inline(const touchy_Action *actions,
+                               pb_size_t actions_count,
+                               const MacroMoveCtx *move_ctx)
+{
+    if (!actions || actions_count == 0) return;
+    // Caller already holds the LVGL lock (trackpad event path). Macros
+    // run synchronously with the ambient delta; host / device actions
+    // take the normal path.
+    for (pb_size_t i = 0; i < actions_count; i++) {
+        const touchy_Action &act = actions[i];
+        if (act.which_kind == touchy_Action_macro_tag) {
+            macros_run_inline(&act.kind.macro, move_ctx);
+        } else {
+            widget_run_action(act, nullptr, "", LV_EVENT_CLICKED,
+                              widget_value_none);
+        }
+    }
+}
+
 void widget_value_none(lv_obj_t *, touchy_LvEvent *) {}
 
 void widget_value_slider(lv_obj_t *obj, touchy_LvEvent *evt)

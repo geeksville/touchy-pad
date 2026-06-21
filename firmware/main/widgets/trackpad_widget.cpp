@@ -4,7 +4,8 @@
 #include "tc_tag.h"
 
 #include "log_line.h"
-#include "usb_hid.h"
+#include "macros.h"
+#include "widget_actions.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -154,6 +155,20 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
         _scrollbar_color = cfg.scrollbar_color;
     }
     if (cfg.has_tap_max_ms) _tap_max_ms = cfg.tap_max_ms;
+
+    // Stage 90 — borrow the gesture Action lists. These pointers index
+    // into the active screen's decoded proto (FT_POINTER heap), which
+    // outlives this widget; we never copy or free them.
+    _on_left_click    = cfg.on_left_click;
+    _on_left_click_n  = cfg.on_left_click_count;
+    _on_middle_click  = cfg.on_middle_click;
+    _on_middle_click_n = cfg.on_middle_click_count;
+    _on_right_click   = cfg.on_right_click;
+    _on_right_click_n = cfg.on_right_click_count;
+    _on_move          = cfg.on_move;
+    _on_move_n        = cfg.on_move_count;
+    _on_scroll        = cfg.on_scroll;
+    _on_scroll_n      = cfg.on_scroll_count;
 
     // The widget *is* the LVGL container; caller sizes/styles it via the
     // host DSL's Rect / Style. The container is transparent so sibling
@@ -330,7 +345,11 @@ void TrackpadWidget::_process()
             };
             int8_t mx = clamp(dx * MOVE_SCALE);
             int8_t my = clamp(dy * MOVE_SCALE);
-            usb_hid_mouse_move(mx, my);
+            // Stage 90: run the on_move Action list inline with the live
+            // delta as the ambient Move (mouse_move steps with unset
+            // dx/dy pick it up). Empty list → no-op.
+            MacroMoveCtx ctx{mx, my};
+            widget_run_actions_inline(_on_move, _on_move_n, &ctx);
             log_line_post("drag %+d,%+d", mx, my);
         }
 
@@ -424,7 +443,12 @@ void TrackpadWidget::_process()
             int8_t v = emit(_scroll_accum_v);
             int8_t h = emit(_scroll_accum_h);
             if (v != 0 || h != 0) {
-                usb_hid_mouse_scroll(v, h);
+                // Stage 90: run the on_scroll Action list inline. A
+                // scroll_move step maps dy→vertical wheel, dx→horizontal
+                // pan, so the ambient ctx carries {dx=h, dy=v}. Empty
+                // list → no-op.
+                MacroMoveCtx ctx{h, v};
+                widget_run_actions_inline(_on_scroll, _on_scroll_n, &ctx);
                 log_line_post("scroll v=%+d h=%+d", v, h);
             }
 
@@ -527,14 +551,21 @@ void TrackpadWidget::_process()
 
 void TrackpadWidget::_clickButton(int finger_count)
 {
-    uint8_t btn;
-    const char *name;
+    // Stage 90: map finger count → gesture Action list and run it on the
+    // async macro runner (clicks are low-frequency, unlike move/scroll).
+    // 1 finger = left, 2 = right, 3+ = middle. Empty list → no-op.
+    const touchy_Action *actions;
+    pb_size_t            count;
+    const char         *name;
     switch (finger_count) {
-        case 1:  btn = HID_MOUSE_BTN_LEFT;   name = "LEFT click";   break;
-        case 2:  btn = HID_MOUSE_BTN_RIGHT;  name = "RIGHT click";  break;
-        default: btn = HID_MOUSE_BTN_MIDDLE; name = "MIDDLE click"; break;
+        case 1:  actions = _on_left_click;   count = _on_left_click_n;
+                 name = "LEFT click";   break;
+        case 2:  actions = _on_right_click;  count = _on_right_click_n;
+                 name = "RIGHT click";  break;
+        default: actions = _on_middle_click; count = _on_middle_click_n;
+                 name = "MIDDLE click"; break;
     }
-    usb_hid_mouse_click(btn);
+    widget_run_actions(actions, count);
     log_line_post("%s (%d finger%s)", name, finger_count,
                   finger_count > 1 ? "s" : "");
     ESP_LOGI(TAG, "%s", name);

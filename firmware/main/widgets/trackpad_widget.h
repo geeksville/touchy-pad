@@ -114,6 +114,24 @@ private:
     bool _scroll_invert_y = false;
     bool _scroll_invert_x = false;
 
+    // Stage 90 — Action lists for the trackpad gestures, borrowed from
+    // the active screen's decoded proto (which outlives the widget — the
+    // same lifetime argument as the per-widget ActionSlots). An empty
+    // list (count == 0) means "do nothing" for that gesture; the host DSL
+    // is responsible for populating sensible defaults. Click lists run on
+    // the async macro runner; the high-frequency move / scroll lists run
+    // synchronously inline with the live per-frame delta.
+    const touchy_Action *_on_left_click    = nullptr;
+    pb_size_t            _on_left_click_n   = 0;
+    const touchy_Action *_on_middle_click  = nullptr;
+    pb_size_t            _on_middle_click_n = 0;
+    const touchy_Action *_on_right_click   = nullptr;
+    pb_size_t            _on_right_click_n  = 0;
+    const touchy_Action *_on_move          = nullptr;
+    pb_size_t            _on_move_n         = 0;
+    const touchy_Action *_on_scroll        = nullptr;
+    pb_size_t            _on_scroll_n       = 0;
+
     // Per-instance tap-vs-drag hold threshold in ms, sourced from
     // `Trackpad.tap_max_ms` (or `DEFAULT_TAP_MAX_MS` if unset).
     uint32_t _tap_max_ms = DEFAULT_TAP_MAX_MS;

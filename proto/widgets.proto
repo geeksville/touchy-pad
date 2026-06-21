@@ -346,12 +346,17 @@ message KeyEvent {
     uint32 modifiers = 2;
 }
 
-// Relative mouse motion step inside an `ActionMacro`. All three components
-// are signed; `wheel` is the standard HID vertical wheel.
-message MouseMove {
-    int32 dx    = 1;
-    int32 dy    = 2;
-    int32 wheel = 3;
+// Relative motion step inside an `ActionMacro`. Used for BOTH mouse-cursor
+// moves (`MacroStep.mouse_move`) and scroll-wheel moves
+// (`MacroStep.scroll_move`); the enclosing step decides which HID report
+// it drives. Both components are signed and `optional`: when a `Move`
+// inside a `Trackpad` `on_move` / `on_scroll` action leaves an axis
+// unset, the firmware substitutes the trackpad's live per-frame delta for
+// that axis (so the macro just says "emit a move" without hard-coding a
+// magnitude).
+message Move {
+    optional int32 dx = 1;
+    optional int32 dy = 2;
 }
 
 // A single step inside an `ActionMacro`. Steps run in order on a dedicated
@@ -365,12 +370,16 @@ message MacroStep {
         uint32    mouse_button_down = 4;   // bitmask: L=1,R=2,M=4
         uint32    mouse_button_up   = 5;
         uint32    mouse_click       = 6;   // down then up
-        MouseMove mouse_move        = 7;
+        Move      mouse_move        = 7;   // relative cursor motion
         // Update the sticky inter-step delay (ms). Applies to every step
         // *after* this one until the next `set_delay_ms`.
         uint32    set_delay_ms      = 8;
         // One-shot extra pause (ms). Does not affect the sticky delay.
         uint32    delay_ms          = 9;
+        // Relative scroll-wheel motion: dy → vertical wheel, dx →
+        // horizontal pan. Same `Move` ambient-delta semantics as
+        // `mouse_move`.
+        Move      scroll_move       = 10;
     }
 }
 
@@ -659,10 +668,12 @@ message Spacer {
 }
 
 // Multitouch trackpad surface. Touches inside the widget are converted to
-// USB HID mouse events on-device (one-finger drag -> move,
-// 1/2/3-finger tap -> left/right/middle click, two-finger drag ->
-// scroll wheel). No host round-trip, no Actions: the widget runs entirely
-// device-side.
+// gestures on-device (one-finger drag -> move, 1/2/3-finger tap ->
+// left/right/middle click, two-finger drag -> scroll). Each gesture runs
+// a list of Actions (Stage 90): the `on_*` fields below. The host DSL
+// seeds them with the obvious USB-HID mouse defaults, but callers can
+// override any gesture (e.g. bind a tap to a macro or host event). An
+// empty list disables that gesture.
 //
 // To see live gesture feedback, place a `LogLine` somewhere on the
 // same screen; the trackpad pushes a short status line on every
@@ -710,6 +721,23 @@ message Trackpad {
     // Default: 200 ms. Range is host-defined; very large values let
     // long-presses still register as taps.
     optional uint32 tap_max_ms = 9;
+
+    // Stage 90 — gesture → Action bindings. The trackpad recognises a
+    // gesture device-side and runs the matching action list (in order),
+    // exactly like `Button.on_click`. An **empty** list means the
+    // gesture does nothing — the host DSL is responsible for populating
+    // sensible defaults (the standard HID click / move / scroll macros).
+    //
+    // Click lists run through the normal (async) macro runner. The
+    // motion lists (`on_move` / `on_scroll`) run through a synchronous,
+    // delay-free inline runner because they fire on every touch frame;
+    // a `Move` step inside them with unset `dx`/`dy` picks up the
+    // trackpad's live per-frame delta (see `Move`).
+    repeated Action on_left_click   = 10;  // 1-finger tap
+    repeated Action on_middle_click = 11;  // 3+-finger tap
+    repeated Action on_right_click  = 12;  // 2-finger tap
+    repeated Action on_move         = 13;  // one-finger drag
+    repeated Action on_scroll       = 14;  // two-finger drag
 }
 
 // Reusable touch-feedback ripple. Animates a circle from radius 0 →
@@ -808,7 +836,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 20;
+        CURRENT         = 21;
     }
     Version version = 6;
 

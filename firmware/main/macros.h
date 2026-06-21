@@ -27,6 +27,23 @@ void macros_init(void);
 // queue is full or the macro is rejected (e.g. zero steps).
 bool macros_run(const touchy_ActionMacro *macro);
 
+// Stage 90 — ambient relative-motion context for the synchronous inline
+// runner. A `mouse_move` / `scroll_move` step whose `Move` leaves an axis
+// unset substitutes the matching field here. `dx`/`dy` are the trackpad's
+// live per-frame delta in device units (clamped to int8 when emitted).
+typedef struct {
+    int32_t dx;
+    int32_t dy;
+} MacroMoveCtx;
+
+// Stage 90 — run `macro` synchronously on the *calling* task with NO
+// inter-step delays (the `set_delay_ms` / `delay_ms` steps are ignored).
+// Intended for the trackpad's high-frequency on_move / on_scroll lists,
+// which must keep up with the fingers. `move_ctx` (may be null) supplies
+// the ambient delta for `Move` steps with unset dx/dy.
+void macros_run_inline(const touchy_ActionMacro *macro,
+                       const MacroMoveCtx *move_ctx);
+
 #ifdef __cplusplus
 }
 #endif

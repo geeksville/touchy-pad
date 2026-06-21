@@ -55,6 +55,7 @@ from .macros import (
     mouse_button_up,
     mouse_click,
     mouse_move,
+    scroll_move,
     set_delay,
     type_text,
 )
@@ -181,6 +182,7 @@ __all__ = [
     "mouse_button_up",
     "mouse_click",
     "mouse_move",
+    "scroll_move",
     "set_delay",
     "delay",
     "type_text",

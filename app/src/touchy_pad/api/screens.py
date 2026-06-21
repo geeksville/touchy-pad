@@ -33,8 +33,20 @@ from pathlib import Path
 from .. import _proto
 from . import _events
 from .images_dynamic import ImageSource
+from .macros import (
+    HID_MOUSE_BTN_LEFT,
+    HID_MOUSE_BTN_MIDDLE,
+    HID_MOUSE_BTN_RIGHT,
+    mouse_click,
+    mouse_move,
+    scroll_move,
+)
 
 logger = logging.getLogger(__name__)
+
+# Sentinel distinguishing "argument not supplied" (→ use the standard
+# default action) from an explicit empty list (→ disable the gesture).
+_USE_DEFAULT = object()
 
 __all__ = [
     "Screen",
@@ -981,6 +993,11 @@ def trackpad(
     tap_ripple: _proto.RippleAnimation | None = None,
     scrollbar_color: int | None = None,
     tap_max_ms: int | None = None,
+    on_left_click=_USE_DEFAULT,
+    on_middle_click=_USE_DEFAULT,
+    on_right_click=_USE_DEFAULT,
+    on_move=_USE_DEFAULT,
+    on_scroll=_USE_DEFAULT,
 ) -> _proto.Widget:
     """Multitouch trackpad surface (device-side HID mouse).
 
@@ -1008,6 +1025,18 @@ def trackpad(
     that grows along the active scroll axis when a two-finger scroll
     starts and fades out when all fingers lift. ``tap_max_ms`` overrides
     the tap-vs-drag hold threshold (default 200 ms on-device).
+
+    Stage 90 — each gesture runs a host-supplied :class:`_proto.Action`
+    list (like :func:`button`): ``on_left_click`` / ``on_middle_click`` /
+    ``on_right_click`` (1/3/2-finger taps), ``on_move`` (one-finger drag)
+    and ``on_scroll`` (two-finger drag). Each accepts a single
+    ``Action`` / host-code ``int`` or an iterable of them. Left at the
+    default, each slot gets the standard HID behaviour (left/right/middle
+    ``mouse_click``, an ambient ``mouse_move()``, an ambient
+    ``scroll_move()``). Pass an explicit empty list (``[]``) to disable a
+    gesture entirely — the firmware treats an empty list as a no-op.
+    Inside ``on_move`` / ``on_scroll`` a ``Move`` step with unset
+    ``dx``/``dy`` uses the trackpad's live per-frame delta.
     """
     w = _widget(id, rect=rect, style=style, animations=animations)
     tp = w.trackpad
@@ -1027,6 +1056,19 @@ def trackpad(
         tp.scrollbar_color = scrollbar_color
     if tap_max_ms is not None:
         tp.tap_max_ms = tap_max_ms
+
+    def _slot(value, default):
+        return _normalise_actions(default if value is _USE_DEFAULT else value)
+
+    tp.on_left_click.extend(_slot(on_left_click, [macro_action([mouse_click(HID_MOUSE_BTN_LEFT)])]))
+    tp.on_middle_click.extend(
+        _slot(on_middle_click, [macro_action([mouse_click(HID_MOUSE_BTN_MIDDLE)])])
+    )
+    tp.on_right_click.extend(
+        _slot(on_right_click, [macro_action([mouse_click(HID_MOUSE_BTN_RIGHT)])])
+    )
+    tp.on_move.extend(_slot(on_move, [macro_action([mouse_move()])]))
+    tp.on_scroll.extend(_slot(on_scroll, [macro_action([scroll_move()])]))
     return w
 
 

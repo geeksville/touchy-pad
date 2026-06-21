@@ -4420,6 +4420,91 @@ multitouch). The board has native USB (GPIO19/20 are free), 16 MB flash,
 * `idf_component.yml` pins `esp_lcd_touch_gt911` to `^1.2.0` (the
   version in the project's managed-components cache at time of writing).
 
+## Stage 90: trackpad behaviours via Actions
+
+**Status: DONE.** The trackpad used to be *hardwired*: `trackpad_widget.cpp` called
+`usb_hid_mouse_click()` / `usb_hid_mouse_move()` / `usb_hid_mouse_scroll()`
+directly for 1/2/3-finger tap, one-finger drag, and two-finger scroll.
+Stage 90 moves all of that onto the existing **Action** mechanism (the
+same `repeated Action` lists `Button` uses), so every gesture is
+host-configurable (macros, host callbacks, or device actions).
+
+### Proto (`proto/widgets.proto` + `widgets.options`)
+
+* **`MouseMove` → `Move`.** Renamed (it now drives mouse *and* scroll
+  motion), dropped the `wheel` field, and made `dx` / `dy` `optional`.
+  When a `Move` inside a Trackpad `on_move` / `on_scroll` action leaves
+  `dx`/`dy` unset, the firmware substitutes the trackpad's **live
+  per-frame delta** for that axis.
+* **`MacroStep` gains `scroll_move` (tag 10, type `Move`).** `mouse_move`
+  (tag 7) stays = relative cursor motion via `usb_hid_mouse_move`;
+  `scroll_move` = wheel motion via `usb_hid_mouse_scroll`
+  (`dy` → vertical wheel, `dx` → horizontal pan). The old `wheel` field
+  (tag 3 on `MouseMove`) is retired.
+* **`Trackpad` gains five `repeated Action` fields:** `on_left_click`
+  (10), `on_middle_click` (11), `on_right_click` (12), `on_move` (13),
+  `on_scroll` (14). `widgets.options` caps each (heap `FT_POINTER`,
+  mirroring `Button.on_click`).
+* **`Widget.Version.CURRENT` 20 → 21** (Trackpad / Move wire change).
+
+### Firmware
+
+* **`macros.cpp` — ambient-delta inline runner.** Add
+  `struct MacroMoveCtx { int32_t dx; int32_t dy; }` (declared in
+  `macros.h`) and a *synchronous* executor `macros_run_inline(macro,
+  move_ctx)` that runs an `ActionMacro`'s steps inline on the calling
+  LVGL task with **no inter-step delays** (move/scroll fire ~60–100 Hz;
+  the async queue + 10 ms sticky delay would lag the fingers and churn
+  heap). `mouse_move` / `scroll_move` steps whose `Move` leaves an axis
+  unset pull that axis from the `MacroMoveCtx`. on_move / on_scroll
+  macros are therefore expected to be delay-free single steps.
+* **`widget_actions.{h,cpp}` — `widget_run_actions_inline(actions, count,
+  const MacroMoveCtx*)`.** Dispatches each action like `widget_run_action`
+  but routes `Action.macro` through the inline runner, so `ActionHost` /
+  `ActionDevice` still work inside on_move / on_scroll.
+* **`trackpad_widget.{h,cpp}`.** Store pointers to the five `on_*` arrays
+  + counts from the `touchy_Trackpad` (valid for the widget's lifetime —
+  same `g_active_screen` lifetime argument as `ActionSlot`). Replace the
+  three direct `usb_hid_*` calls: drag → `on_move` (inline, ambient
+  `{mx,my}`), scroll → `on_scroll` (inline, ambient `{h,v}` after the
+  `scroll_invert_*` sign handling), click → `on_left/middle/right_click`
+  via the existing **async** `widget_run_actions`. **Empty array = do
+  nothing** (no built-in fallback); the host always uploads sensible
+  defaults.
+* **`widget_builders.cpp` `build_trackpad`** passes the arrays through.
+
+### Host (Python)
+
+* **`api/macros.py`.** `mouse_move(dx=None, dy=None)` drops `wheel` and
+  emits `_proto.Move` (omitting unset fields); add
+  `scroll_move(dx=None, dy=None)`. Bare `mouse_move()` / `scroll_move()`
+  → empty `Move` = "use the trackpad's ambient delta".
+* **`api/screens.py` `trackpad()`** gains `on_left_click`,
+  `on_middle_click`, `on_right_click`, `on_move`, `on_scroll`
+  (`Iterable[Action] | None`). When a slot is left `None` the DSL fills
+  in the **standard default** for that gesture (left/right/middle
+  `mouse_click`, `mouse_move()`, `scroll_move()`), so out-of-the-box
+  behaviour is unchanged while remaining fully overridable.
+* **`pages/trackpad.py` + `proto/default_screen.json`.** Rely on the DSL
+  defaults so the provisioned trackpad page and the firmware's built-in
+  fallback screen keep working exactly as before.
+
+### Rust
+
+* prost regenerates `Move` / `scroll_move` from the symlinked proto; no
+  Rust source references `MouseMove` today, so only generated code moves.
+
+### Decisions (reviewed)
+
+1. **Empty `on_*` array ⇒ no-op** (Python guarantees defaults).
+2. on_move / on_scroll run through the **synchronous inline runner**.
+3. Clicks run through the **async** macro runner (matches `Button`).
+4. `scroll_move` keeps the existing axis + `scroll_invert_x/y` handling.
+
+## Stage 91: trackpad gestures
+
+(To be specified soon)
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

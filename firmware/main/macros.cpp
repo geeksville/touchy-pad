@@ -31,7 +31,7 @@ static const char *TAG = TOUCHY_TAG("macros");
 
 // Scratch buffer used by `macros_run` to deep-copy a queued macro via
 // nanopb encode + decode. Sized for the worst-case 16-step macro at the
-// largest possible per-step payload (MouseMove with 3 varints plus tags
+// largest possible per-step payload (Move with 2 varints plus tags
 // is < 16 bytes; KeyEvent likewise; plus a few bytes of oneof framing).
 // 512 bytes is ~5x the realistic high-water mark.
 #define MACRO_CLONE_SCRATCH  512
@@ -44,8 +44,11 @@ QueueHandle_t s_queue;
 TaskHandle_t  s_task;
 
 // Run a single step. Returns the new sticky-delay value after this step
-// completes (caller uses it for the next inter-step pause).
-uint32_t run_step(const touchy_MacroStep &step, uint32_t sticky_delay_ms)
+// completes (caller uses it for the next inter-step pause). `move_ctx`
+// (may be null) supplies the ambient delta for `mouse_move` / `scroll_move`
+// steps whose `Move` leaves an axis unset (Stage 90).
+uint32_t run_step(const touchy_MacroStep &step, uint32_t sticky_delay_ms,
+                  const MacroMoveCtx *move_ctx = nullptr)
 {
     switch (step.which_step) {
     case touchy_MacroStep_key_down_tag: {
@@ -86,11 +89,24 @@ uint32_t run_step(const touchy_MacroStep &step, uint32_t sticky_delay_ms)
     }
     case touchy_MacroStep_mouse_move_tag: {
         const auto &m = step.step.mouse_move;
-        // HID single-report deltas are int8; clamp.
-        int8_t dx = m.dx >  127 ?  127 : m.dx < -127 ? -127 : (int8_t)m.dx;
-        int8_t dy = m.dy >  127 ?  127 : m.dy < -127 ? -127 : (int8_t)m.dy;
-        int8_t w  = m.wheel > 127 ? 127 : m.wheel < -127 ? -127 : (int8_t)m.wheel;
-        usb_hid_mouse_buttons(0, dx, dy, w);
+        // dx/dy are optional: unset → use the ambient trackpad delta
+        // (Stage 90), else 0. HID single-report deltas are int8; clamp.
+        int32_t rx = m.has_dx ? m.dx : (move_ctx ? move_ctx->dx : 0);
+        int32_t ry = m.has_dy ? m.dy : (move_ctx ? move_ctx->dy : 0);
+        int8_t dx = rx >  127 ?  127 : rx < -127 ? -127 : (int8_t)rx;
+        int8_t dy = ry >  127 ?  127 : ry < -127 ? -127 : (int8_t)ry;
+        usb_hid_mouse_move(dx, dy);
+        break;
+    }
+    case touchy_MacroStep_scroll_move_tag: {
+        const auto &m = step.step.scroll_move;
+        // dy → vertical wheel, dx → horizontal pan. Same optional /
+        // ambient-delta semantics as mouse_move.
+        int32_t rv = m.has_dy ? m.dy : (move_ctx ? move_ctx->dy : 0);
+        int32_t rh = m.has_dx ? m.dx : (move_ctx ? move_ctx->dx : 0);
+        int8_t v = rv >  127 ?  127 : rv < -127 ? -127 : (int8_t)rv;
+        int8_t h = rh >  127 ?  127 : rh < -127 ? -127 : (int8_t)rh;
+        usb_hid_mouse_scroll(v, h);
         break;
     }
     case touchy_MacroStep_set_delay_ms_tag:
@@ -171,4 +187,18 @@ extern "C" bool macros_run(const touchy_ActionMacro *macro)
         return false;
     }
     return true;
+}
+
+extern "C" void macros_run_inline(const touchy_ActionMacro *macro,
+                                  const MacroMoveCtx *move_ctx)
+{
+    if (!macro || macro->steps_count == 0) return;
+    // Synchronous: no queue, no inter-step delay. Runs on the caller's
+    // task (the LVGL/touch path for trackpad on_move/on_scroll). The
+    // sticky-delay return value is ignored so delay_ms / set_delay_ms
+    // steps are no-ops here — these lists are expected to be a single
+    // mouse_move / scroll_move step.
+    for (pb_size_t i = 0; i < macro->steps_count; i++) {
+        run_step(macro->steps[i], MACRO_DEFAULT_STEP_DELAY_MS, move_ctx);
+    }
 }

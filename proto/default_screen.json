@@ -77,7 +77,62 @@
                         "path": "EASE_OUT",
                         "borderWidth": 4
                       },
-                      "scrollbarColor": 11393254
+                      "scrollbarColor": 11393254,
+                      "onLeftClick": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "mouseClick": 1
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "onMiddleClick": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "mouseClick": 4
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "onRightClick": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "mouseClick": 2
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "onMove": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "mouseMove": {}
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "onScroll": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "scrollMove": {}
+                              }
+                            ]
+                          }
+                        }
+                      ]
                     }
                   }
                 ]

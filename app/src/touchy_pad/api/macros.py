@@ -72,13 +72,38 @@ def mouse_click(buttons: int = HID_MOUSE_BTN_LEFT) -> _proto.MacroStep:
     return _proto.MacroStep(mouse_click=buttons)
 
 
-def mouse_move(dx: int = 0, dy: int = 0, wheel: int = 0) -> _proto.MacroStep:
-    """Send a single mouse-move report.
+def mouse_move(dx: int | None = None, dy: int | None = None) -> _proto.MacroStep:
+    """Send a single relative mouse-cursor move.
 
     Values are signed; the firmware clamps each component to the int8
-    range mandated by the boot-protocol mouse report.
+    range mandated by the boot-protocol mouse report. ``dx`` / ``dy``
+    left as ``None`` are omitted from the wire ``Move``; inside a
+    :func:`~touchy_pad.api.screens.trackpad` ``on_move`` action that
+    means "use the trackpad's live per-frame delta for that axis".
     """
-    return _proto.MacroStep(mouse_move=_proto.MouseMove(dx=dx, dy=dy, wheel=wheel))
+    move = _proto.Move()
+    if dx is not None:
+        move.dx = dx
+    if dy is not None:
+        move.dy = dy
+    return _proto.MacroStep(mouse_move=move)
+
+
+def scroll_move(dx: int | None = None, dy: int | None = None) -> _proto.MacroStep:
+    """Send a single relative scroll-wheel move.
+
+    ``dy`` drives the vertical wheel, ``dx`` the horizontal pan. Values
+    are signed and int8-clamped on the device. ``dx`` / ``dy`` left as
+    ``None`` are omitted from the wire ``Move``; inside a
+    :func:`~touchy_pad.api.screens.trackpad` ``on_scroll`` action that
+    means "use the trackpad's live per-frame scroll delta for that axis".
+    """
+    move = _proto.Move()
+    if dx is not None:
+        move.dx = dx
+    if dy is not None:
+        move.dy = dy
+    return _proto.MacroStep(scroll_move=move)
 
 
 def set_delay(ms: int) -> _proto.MacroStep:

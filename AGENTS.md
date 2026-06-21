@@ -26,8 +26,9 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, and 87 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, and 90 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 21`,
+`SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
 `PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:
 
@@ -233,6 +234,24 @@ Highlights worth remembering:
   for the next edge. Per-`(key, pressed)` last-path map skips redundant
   actions. `ActionHost` still reports the clickable widget's own
   `Widget.id`, so the per-key `ImageButton` id routes touch events.
+
+- **Stage 90 (trackpad gestures via Actions).** The trackpad's
+  hardwired `usb_hid_*` calls moved onto the Action mechanism: `Trackpad`
+  gained five `repeated Action` lists — `on_left_click` (1-finger tap),
+  `on_right_click` (2-finger), `on_middle_click` (3+-finger),
+  `on_move` (1-finger drag), `on_scroll` (2-finger drag). Empty list =
+  no-op; the Python DSL (`trackpad()` in `api/screens.py`) seeds sensible
+  USB-HID defaults so behaviour is unchanged but fully overridable. The
+  old `MouseMove` proto message was renamed **`Move`** (dropped `wheel`,
+  `dx`/`dy` now `optional`); `MacroStep` gained `scroll_move` (tag 10,
+  `Move`) alongside `mouse_move` (tag 7). A `Move` step with an unset
+  axis pulls the trackpad's **live per-frame delta** for that axis. Host
+  helpers: `macros.mouse_move()` / `macros.scroll_move()` (bare call =
+  ambient delta). Firmware: clicks run on the **async** macro runner
+  (`widget_run_actions`); the high-frequency move/scroll lists run
+  **synchronously inline** with no inter-step delay via
+  `macros_run_inline` / `widget_run_actions_inline`, threading the delta
+  through `MacroMoveCtx`. `Widget.Version` 20→21.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

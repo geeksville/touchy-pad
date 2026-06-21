@@ -20,6 +20,7 @@
 #pragma once
 
 #include "lvgl.h"
+#include "macros.h"
 #include "touchy.pb.h"
 #include "widgets.pb.h"
 #include "pb.h"
@@ -65,3 +66,13 @@ void widget_run_action(const touchy_Action &act,
 // `obj = NULL`, `widget_id = ""`, `code = LV_EVENT_CLICKED` and
 // `widget_value_none`.
 void widget_run_actions(const touchy_Action *actions, pb_size_t actions_count);
+
+// Stage 90 — run a list of Actions *synchronously and inline* on the
+// calling task, for the trackpad's high-frequency on_move / on_scroll
+// gestures. `ActionMacro`s run via `macros_run_inline` (no inter-step
+// delay); `move_ctx` (may be NULL) supplies the ambient delta for `Move`
+// steps with unset dx/dy. Host / device actions run as usual. The caller
+// must already hold the LVGL lock (the trackpad event path does).
+void widget_run_actions_inline(const touchy_Action *actions,
+                               pb_size_t actions_count,
+                               const MacroMoveCtx *move_ctx);
