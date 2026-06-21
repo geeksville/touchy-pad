@@ -90,6 +90,16 @@ def build(background_image: str | None = None) -> tuple[str, _proto.Widget]:
                 path=AnimPath.EASE_OUT,
                 border_width=4,
             ),
+            # Stage 91 — enable single-finger swipe detection so the device
+            # logs recognised swipes (no Actions bound yet; we just watch
+            # the ESP_LOGI output to validate the gesture engine). A flick
+            # of ~60 px within 300 ms triggers; consecutive swipes repeat
+            # every ~40 px / 200 ms while the finger keeps moving.
+            swipe_initial_distance=60,
+            swipe_initial_time=300,
+            swipe_consecutive_distance=40,
+            swipe_consecutive_time=200,
+            swipe_angle=30,
         ),
         col=0,
         row=0,

@@ -623,6 +623,49 @@ def test_trackpad_custom_gesture_action():
     assert tp.on_left_click[0].host.code == 42
 
 
+def test_trackpad_swipe_disabled_by_default():
+    """Stage 91: a bare trackpad leaves the swipe engine off (no fields,
+    no swipe action lists)."""
+    s = Screen("t")
+    s += trackpad("pad")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert not tp.HasField("swipe_initial_distance")
+    assert not tp.HasField("swipe_initial_time")
+    assert not tp.HasField("swipe_consecutive_distance")
+    assert not tp.HasField("swipe_consecutive_time")
+    assert not tp.HasField("swipe_angle")
+    assert len(tp.on_left_swipe) == 0
+    assert len(tp.on_right_swipe) == 0
+    assert len(tp.on_up_swipe) == 0
+    assert len(tp.on_down_swipe) == 0
+
+
+def test_trackpad_swipe_config_round_trip():
+    """Setting the swipe knobs + bindings round-trips through the wire."""
+    s = Screen("t")
+    s += trackpad(
+        "pad",
+        swipe_initial_distance=60,
+        swipe_initial_time=300,
+        swipe_consecutive_distance=40,
+        swipe_consecutive_time=200,
+        swipe_angle=30,
+        on_left_swipe=7,
+        on_down_swipe=macro_action([macros.mouse_move()]),
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert tp.swipe_initial_distance == 60
+    assert tp.swipe_initial_time == 300
+    assert tp.swipe_consecutive_distance == 40
+    assert tp.swipe_consecutive_time == 200
+    assert tp.swipe_angle == 30
+    assert tp.on_left_swipe[0].host.code == 7
+    # A bare Action (not a list) is accepted; the macro became a Move step.
+    assert tp.on_down_swipe[0].macro.steps[0].WhichOneof("step") == "mouse_move"
+
+
 def test_build_demo_screen_trackpad_has_ripples():
     """Demo widget page ships ripple eye-candy so users see the feature."""
     _, widgets = build_demo()

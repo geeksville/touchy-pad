@@ -4501,9 +4501,162 @@ host-configurable (macros, host callbacks, or device actions).
 3. Clicks run through the **async** macro runner (matches `Button`).
 4. `scroll_move` keeps the existing axis + `scroll_invert_x/y` handling.
 
-## Stage 91: trackpad gestures
+## Stage 91: trackpad swipe gestures
 
-(To be specified soon)
+**Status: DONE.** Single-finger *swipe* gestures (left / right / up /
+down flicks), bound to Action lists exactly like the Stage 90 gestures.
+A swipe is a fast directional flick; unlike `on_move` (which fires on
+every drag frame), a swipe fires **once** when a finger crosses a
+distance threshold within a time window, then optionally repeats while
+the flick continues. Behaviour is opt-in: the swipe Action lists default
+to **empty**, so existing trackpads are unchanged until a host binds one.
+
+### Recognition model
+
+A swipe is evaluated **per single-finger touch** (`count == 1`), in
+parallel with the existing one-finger drag → `on_move`. The whole swipe
+engine is **gated on `swipe_initial_distance` being set**: if the proto
+leaves it unset the trackpad skips swipe detection entirely (no state
+tracking, no per-frame work), so swipes are strictly opt-in and the
+default trackpad pays nothing. From the touch's
+initial coordinate `(sx, sy)` at time `s_ms`, on each frame compute the
+travel `(dx, dy) = (x - sx, y - sy)`, the Euclidean distance `d`, and the
+elapsed time `t = now - s_ms`. A swipe is recognised when **all three**
+hold:
+
+1. **Distance** — `d >= swipe_initial_distance` (px).
+2. **Time** — that distance was reached within `t <= swipe_initial_time`
+   (ms). If `d` crosses the distance threshold but only *after* the time
+   window expired (a slow drag), re-anchor `(sx, sy, s_ms)` to the
+   current sample so a later quick flick can still register (rolling
+   window). This is what keeps a slow cursor-drag from ever latching a
+   swipe.
+3. **Angle** — the travel vector lies within `swipe_angle` degrees of one
+   axis. The dominant axis picks the gesture family: `|dx| >= |dy|` → X
+   (left/right by `sign(dx)`), else → Y (up/down by `sign(dy)`). If the
+   travel is too diagonal (within neither axis's cone) it is not a swipe.
+
+On recognition we fire the matching list — `on_left_swipe`,
+`on_right_swipe`, `on_up_swipe`, `on_down_swipe` — through the **Stage 90
+inline runner** (`widget_run_actions_inline`) with `MacroMoveCtx{dx, dy}`
+set to the relative travel since the anchor, so a `Move` step inside a
+swipe action reports the swipe distance (a bare `macros.mouse_move()` /
+`scroll_move()` picks it up). An `ESP_LOGI` line is emitted per fired
+swipe.
+
+**Consecutive swipes (optional).** If `swipe_consecutive_distance` is set,
+then after the initial recognition the engine re-anchors `(sx, sy, s_ms)`
+to the recognition point, **locks the axis/direction**, and swaps the
+thresholds to `swipe_consecutive_distance` / `swipe_consecutive_time`.
+While the finger keeps moving in the locked direction, it keeps emitting
+the *same* swipe event each time it clears the consecutive distance
+within the consecutive time — a continuous stream for one user motion.
+Condition 3 is only evaluated against the locked axis. If
+`swipe_consecutive_distance` is unset, exactly one event fires per touch.
+
+### Proto (`proto/widgets.proto` + `widgets.options`)
+
+Extend `message Trackpad` (next free tag is 15):
+
+* `optional uint32 swipe_initial_distance   = 15;` — px. **Presence is
+  the master switch:** unset → swipe detection is disabled entirely;
+  set → swipes are active and this is the distance threshold.
+* `optional uint32 swipe_initial_time       = 16;` — ms; unset → default.
+* `optional uint32 swipe_consecutive_distance = 17;` — px; **unset =
+  single event per touch** (no repeat).
+* `optional uint32 swipe_consecutive_time   = 18;` — ms; unset → default.
+* `optional uint32 swipe_angle              = 19;` — half-cone half-angle
+  in degrees around an axis; unset → default (~30°).
+* `repeated Action on_left_swipe  = 20;`
+* `repeated Action on_right_swipe = 21;`
+* `repeated Action on_up_swipe    = 22;`
+* `repeated Action on_down_swipe  = 23;`
+
+`widgets.options`: cap the four new `repeated Action` fields with
+`type:FT_POINTER` (mirroring the Stage 90 `on_move` / `on_scroll` entries).
+
+Bump **`Widget.Version.CURRENT` 21 → 22** (additive, but it's a Trackpad
+wire change).
+
+### Firmware (`trackpad_widget.{h,cpp}`)
+
+* **Config + tuning.** In the constructor, set `_swipe_enabled =
+  cfg.has_swipe_initial_distance`. When false, the engine is compiled-in
+  but short-circuits on the first line of the per-frame check (no swipe
+  state is even seeded). When true, borrow the four `on_*_swipe` array
+  pointers + counts from `touchy_Trackpad` (same lifetime argument as the
+  Stage 90 lists) and copy the five tuning scalars, applying
+  header-defined defaults (`…_INITIAL_TIME`, `…_ANGLE`) for any of the
+  *other* four left unset (`swipe_initial_distance` itself is always
+  present when enabled).
+* **Swipe state.** Add per-touch members reset on all-fingers-up:
+  `_swipe_anchor_x/y`, `_swipe_anchor_ms`, `_swipe_done` (single-shot
+  guard), `_swipe_locked` + `_swipe_axis_h` + `_swipe_dir_sign` (set once
+  consecutive mode latches). Anchor is seeded when `count` goes `0 → 1`
+  (alongside the existing `_fingers[0].start_*` capture).
+* **Engine.** Inside the existing `if (count == 1 && … _session_max_fingers
+  == 1)` single-finger branch (the block that already emits `on_move`),
+  bail immediately when `!_swipe_enabled`; otherwise run the
+  three-condition check above against the current vs. anchor sample. On
+  recognition: `widget_run_actions_inline(list, n,
+  &MacroMoveCtx{dx, dy})`, `ESP_LOGI(TAG, "swipe %s …")`, then either
+  re-anchor + lock (consecutive) or set `_swipe_done` (single). Reuse the
+  `millis()` helper already in the file.
+* **Coexistence.** Swipe detection is **additive** — it does not suppress
+  `on_move`. Since the swipe lists default to empty, the default trackpad
+  is byte-for-byte unchanged; a user who binds swipes accepts that a
+  flick may also drag the cursor (they can clear `on_move` if they want a
+  pure swipe surface).
+* **Angle test.** Avoid `atan2`/float trig in the hot loop: compare
+  `|dx|` vs `|dy| * tan(swipe_angle)` (precompute the tangent ratio as a
+  fixed-point scalar at construction) to decide whether the vector is
+  within the dominant axis's cone.
+
+### Host (Python — `api/screens.py`, `api/macros.py`)
+
+* `trackpad()` gains keyword args `swipe_initial_distance`,
+  `swipe_initial_time`, `swipe_consecutive_distance`,
+  `swipe_consecutive_time`, `swipe_angle` (each `int | None`, written
+  only when not `None`) and `on_left_swipe`, `on_right_swipe`,
+  `on_up_swipe`, `on_down_swipe` (each `Iterable[Action] | int | None`,
+  run through `_normalise_actions`). **Unlike** the Stage 90 click/move
+  lists these default to **empty** (no `_USE_DEFAULT` seeding) so adding
+  swipes is purely opt-in.
+* No new macro helpers needed — swipe actions reuse `mouse_move()` /
+  `scroll_move()` / `macro_action()` / host codes. A swipe-to-keystroke
+  is just `on_left_swipe=macro_action([macros.key_tap(...)])`.
+
+### Rust
+
+* prost regenerates the new fields from the symlinked proto. Optionally
+  add `trackpad`-builder pass-throughs in `touchy-pad` if/when a Rust
+  caller needs swipes; the OpenDeck plugin doesn't use the trackpad, so
+  no functional Rust change is required for the firmware/Python feature.
+
+### Default screen / docs
+
+* No change to `proto/default_screen.json` or `pages/trackpad.py` — they
+  rely on DSL defaults, and swipe defaults are empty.
+* Add a Python round-trip test (the four lists + five tuning scalars) and
+  a "disabled by default" assertion, mirroring the Stage 90 tests.
+
+### Decisions (for review)
+
+1. **Swipe is additive to `on_move`** (does not suppress cursor drag);
+   empty defaults keep current behaviour. *(Alternative: latch a swipe
+   and suppress that frame's `on_move` — more "modal", more surprising.)*
+2. **Single finger only** for v1. Multi-finger
+   swipes are a later stage if wanted.
+3. **Swipe lists default empty** (opt-in), tuning scalars default in
+   firmware. *(Alternative: seed default swipe→arrow-key macros — rejected
+   as too opinionated.)*
+4. **`swipe_initial_distance` presence is the master enable.** The whole
+   feature is off (zero per-frame cost) unless the host sets that one
+   field; the four swipe Action lists are meaningless without it.
+5. **Reuse the Stage 90 inline runner + `MacroMoveCtx`** for swipe Move
+   reporting; clicks-style async is not needed since swipes are
+   high-frequency in consecutive mode.
+6. **Fixed-point angle test** (no float trig in the per-frame loop).
 
 # Old/Existing projects
 

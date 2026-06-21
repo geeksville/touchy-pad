@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 #include <new>
 
 static const char *TAG = TOUCHY_TAG("trackpad");
@@ -170,6 +171,38 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
     _on_scroll        = cfg.on_scroll;
     _on_scroll_n      = cfg.on_scroll_count;
 
+    // Stage 91 — swipe engine. Master switch is the presence of
+    // `swipe_initial_distance`; everything else has a sensible default.
+    _swipe_enabled = cfg.has_swipe_initial_distance;
+    if (_swipe_enabled) {
+        _swipe_initial_distance = cfg.swipe_initial_distance;
+        _swipe_initial_time =
+            cfg.has_swipe_initial_time ? cfg.swipe_initial_time
+                                       : DEFAULT_SWIPE_INITIAL_TIME;
+        _swipe_has_consecutive = cfg.has_swipe_consecutive_distance;
+        _swipe_consecutive_distance =
+            cfg.has_swipe_consecutive_distance ? cfg.swipe_consecutive_distance
+                                               : 0;
+        _swipe_consecutive_time =
+            cfg.has_swipe_consecutive_time ? cfg.swipe_consecutive_time
+                                           : _swipe_initial_time;
+        uint32_t angle =
+            cfg.has_swipe_angle ? cfg.swipe_angle : DEFAULT_SWIPE_ANGLE;
+        if (angle > 89) angle = 89;  // keep tan finite
+        // One-time float trig at construction (not in the hot loop) →
+        // fixed-point tangent ×256 for the per-frame integer cone test.
+        _swipe_tan_q8 = (uint32_t)(tanf((float)angle * 3.14159265f / 180.0f)
+                                   * 256.0f + 0.5f);
+        _on_left_swipe    = cfg.on_left_swipe;
+        _on_left_swipe_n  = cfg.on_left_swipe_count;
+        _on_right_swipe   = cfg.on_right_swipe;
+        _on_right_swipe_n = cfg.on_right_swipe_count;
+        _on_up_swipe      = cfg.on_up_swipe;
+        _on_up_swipe_n    = cfg.on_up_swipe_count;
+        _on_down_swipe    = cfg.on_down_swipe;
+        _on_down_swipe_n  = cfg.on_down_swipe_count;
+    }
+
     // The widget *is* the LVGL container; caller sizes/styles it via the
     // host DSL's Rect / Style. The container is transparent so sibling
     // widgets drawn earlier in the same grid cell (background fill, hint
@@ -280,6 +313,17 @@ void TrackpadWidget::_process()
         _centroid_n           = count;
     }
 
+    // ── Stage 91: seed the swipe anchor on a fresh first-finger touch ─
+    if (_swipe_enabled && _prev_count == 0 && count >= 1) {
+        _swipe_anchor_x    = static_cast<int16_t>(pts[0].x);
+        _swipe_anchor_y    = static_cast<int16_t>(pts[0].y);
+        _swipe_anchor_ms   = now;
+        _swipe_done        = false;
+        _swipe_locked      = false;
+        _swipe_locked_h    = false;
+        _swipe_locked_sign = 0;
+    }
+
     // ── Recolor all live touch ripples when the finger count changes ─
     // Without this, landing the 2nd finger would correctly spawn an
     // orange (right-click) ripple under itself but the 1st finger's
@@ -352,6 +396,11 @@ void TrackpadWidget::_process()
             widget_run_actions_inline(_on_move, _on_move_n, &ctx);
             log_line_post("drag %+d,%+d", mx, my);
         }
+
+        // Stage 91 — swipe detection runs in parallel with the drag above
+        // (additive; it does not suppress on_move). No-op unless enabled.
+        _swipe_process(static_cast<int16_t>(pts[0].x),
+                       static_cast<int16_t>(pts[0].y), now);
 
         _fingers[0].last_x = static_cast<int16_t>(pts[0].x);
         _fingers[0].last_y = static_cast<int16_t>(pts[0].y);
@@ -540,6 +589,10 @@ void TrackpadWidget::_process()
         _centroid_n          = 0;
         _centroid_start_sum_x = _centroid_start_sum_y = 0;
         _centroid_last_sum_x  = _centroid_last_sum_y  = 0;
+        // Stage 91 — reset the per-touch swipe window.
+        _swipe_done        = false;
+        _swipe_locked      = false;
+        _swipe_locked_sign = 0;
         for (int i = 0; i < MAX_FINGERS; i++) _fingers[i] = FingerState{};
         // Take down the scrollbar (if it was up). Animation is a quick
         // fade-out; the bar deletes itself when the opacity anim ends.
@@ -569,6 +622,108 @@ void TrackpadWidget::_clickButton(int finger_count)
     log_line_post("%s (%d finger%s)", name, finger_count,
                   finger_count > 1 ? "s" : "");
     ESP_LOGI(TAG, "%s", name);
+}
+
+void TrackpadWidget::_emit_swipe(bool axis_h, int8_t sign, int16_t dx, int16_t dy)
+{
+    const touchy_Action *actions = nullptr;
+    pb_size_t            n        = 0;
+    const char         *name     = "?";
+    if (axis_h) {
+        if (sign > 0) { actions = _on_right_swipe; n = _on_right_swipe_n; name = "right"; }
+        else          { actions = _on_left_swipe;  n = _on_left_swipe_n;  name = "left";  }
+    } else {
+        if (sign > 0) { actions = _on_down_swipe;  n = _on_down_swipe_n;  name = "down";  }
+        else          { actions = _on_up_swipe;    n = _on_up_swipe_n;    name = "up";    }
+    }
+    // Report the relative swipe travel as the ambient Move delta, run
+    // inline (same path as on_move). Empty list → no-op, but we still log.
+    int8_t cx = dx >  127 ? 127 : dx < -127 ? -127 : (int8_t)dx;
+    int8_t cy = dy >  127 ? 127 : dy < -127 ? -127 : (int8_t)dy;
+    MacroMoveCtx ctx{cx, cy};
+    widget_run_actions_inline(actions, n, &ctx);
+    log_line_post("swipe %s %+d,%+d", name, dx, dy);
+    ESP_LOGI(TAG, "swipe %s dx=%d dy=%d", name, (int)dx, (int)dy);
+}
+
+void TrackpadWidget::_swipe_process(int16_t x, int16_t y, uint32_t now)
+{
+    if (!_swipe_enabled || _swipe_done) return;
+
+    int32_t dx = x - _swipe_anchor_x;
+    int32_t dy = y - _swipe_anchor_y;
+    uint32_t t = now - _swipe_anchor_ms;
+
+    if (!_swipe_locked) {
+        // ── Initial recognition ──────────────────────────────────────
+        int32_t dist2 = dx * dx + dy * dy;
+        int32_t need  = (int32_t)_swipe_initial_distance;
+        if (dist2 < need * need) return;  // distance threshold not met yet
+
+        if (t > _swipe_initial_time) {
+            // Distance reached but too slow → roll the window forward so
+            // a later quick flick can still register (a slow drag never
+            // latches a swipe).
+            _swipe_anchor_x  = x;
+            _swipe_anchor_y  = y;
+            _swipe_anchor_ms = now;
+            return;
+        }
+
+        // ── Angle / dominant-axis test (integer, fixed-point tan ×256) ─
+        int32_t adx = dx < 0 ? -dx : dx;
+        int32_t ady = dy < 0 ? -dy : dy;
+        bool axis_h = adx >= ady;
+        // Within the dominant axis's cone? off-axis*256 <= on-axis*tan.
+        bool in_cone = axis_h
+            ? (ady * 256 <= adx * (int32_t)_swipe_tan_q8)
+            : (adx * 256 <= ady * (int32_t)_swipe_tan_q8);
+        if (!in_cone) return;  // too diagonal — not a swipe
+
+        int8_t sign = axis_h ? (dx > 0 ? 1 : -1) : (dy > 0 ? 1 : -1);
+        _emit_swipe(axis_h, sign, (int16_t)dx, (int16_t)dy);
+
+        if (_swipe_has_consecutive) {
+            // Re-anchor at the recognition point and lock the direction;
+            // subsequent events use the consecutive thresholds.
+            _swipe_locked      = true;
+            _swipe_locked_h    = axis_h;
+            _swipe_locked_sign = sign;
+            _swipe_anchor_x    = x;
+            _swipe_anchor_y    = y;
+            _swipe_anchor_ms   = now;
+        } else {
+            _swipe_done = true;  // single event per touch
+        }
+        return;
+    }
+
+    // ── Consecutive mode: only the locked axis matters ───────────────
+    int32_t along = _swipe_locked_h ? dx : dy;
+    along *= _swipe_locked_sign;  // travel in the locked direction (signed)
+    int32_t need = (int32_t)_swipe_consecutive_distance;
+    if (along < need) {
+        // Not far enough yet. If the consecutive window expired without
+        // clearing the distance, roll the anchor forward in time so the
+        // user can resume (keeps a paused-then-resumed flick alive).
+        if (t > _swipe_consecutive_time) {
+            _swipe_anchor_x  = x;
+            _swipe_anchor_y  = y;
+            _swipe_anchor_ms = now;
+        }
+        return;
+    }
+    if (t > _swipe_consecutive_time) {
+        // Cleared the distance but too slowly → re-anchor, no event.
+        _swipe_anchor_x  = x;
+        _swipe_anchor_y  = y;
+        _swipe_anchor_ms = now;
+        return;
+    }
+    _emit_swipe(_swipe_locked_h, _swipe_locked_sign, (int16_t)dx, (int16_t)dy);
+    _swipe_anchor_x  = x;
+    _swipe_anchor_y  = y;
+    _swipe_anchor_ms = now;
 }
 
 uint32_t TrackpadWidget::_color_for_count(uint8_t n) const

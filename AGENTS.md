@@ -26,8 +26,8 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, and 90 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 21`,
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, and 91 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 22`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
 `PreferencesFile.Version.CURRENT == 4`.
 Highlights worth remembering:
@@ -252,6 +252,26 @@ Highlights worth remembering:
   **synchronously inline** with no inter-step delay via
   `macros_run_inline` / `widget_run_actions_inline`, threading the delta
   through `MacroMoveCtx`. `Widget.Version` 20→21.
+
+- **Stage 91 (single-finger swipe gestures).** `Trackpad` gained four
+  `repeated Action` lists — `on_left_swipe` / `on_right_swipe` /
+  `on_up_swipe` / `on_down_swipe` — plus five `optional uint32` tuning
+  knobs: `swipe_initial_distance` (the **master switch** — swipe
+  recognition is entirely off unless this is set, so zero per-frame cost
+  when absent), `swipe_initial_time` (ms window for the first flick;
+  unset → 300), `swipe_consecutive_distance`/`swipe_consecutive_time`
+  (set both to enable repeat-fire while the finger keeps travelling along
+  the locked axis; unset → single-shot), and `swipe_angle` (cone
+  half-angle in deg; unset → 30). Swipe detection is **additive** to
+  `on_move` (cursor drag still happens) and the four lists default empty
+  so behaviour is unchanged unless opted in. Firmware engine lives in
+  `firmware/main/widgets/trackpad_widget.{h,cpp}` (`_swipe_process` /
+  `_emit_swipe`): the angle test is an integer cone using a
+  construction-time `tanf`→`_swipe_tan_q8` (tan×256) fixed-point value;
+  emission reuses the Stage 90 `widget_run_actions_inline` +
+  `MacroMoveCtx`. Each fire also `ESP_LOGI`s `swipe <dir> dx=.. dy=..`,
+  which is how the swipe-enabled default `pages/trackpad.py` (no Actions
+  bound) is validated on hardware. `Widget.Version` 21→22.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

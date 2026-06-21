@@ -47,6 +47,12 @@ public:
     // enough to actually see at touch-down.
     static constexpr int16_t  SCROLLBAR_INIT_LEN = 24;
 
+    // Stage 91 — swipe-gesture tuning defaults. Only used for the
+    // *secondary* knobs; `swipe_initial_distance` has no default because
+    // its presence is the master enable (see `_swipe_enabled`).
+    static constexpr uint32_t DEFAULT_SWIPE_INITIAL_TIME = 300;  // ms
+    static constexpr uint32_t DEFAULT_SWIPE_ANGLE        = 30;   // degrees
+
     // Construct the widget as a child of `parent`. The caller is
     // expected to size/style it via the usual `apply_rect` /
     // `apply_style` pass after construction.
@@ -131,6 +137,49 @@ private:
     pb_size_t            _on_move_n         = 0;
     const touchy_Action *_on_scroll        = nullptr;
     pb_size_t            _on_scroll_n       = 0;
+
+    // Stage 91 — single-finger swipe gesture engine. The whole feature is
+    // gated on `_swipe_enabled` (set iff the proto carries
+    // `swipe_initial_distance`); when false none of the state below is
+    // touched and the per-frame check bails immediately.
+    bool                _swipe_enabled              = false;
+    uint32_t            _swipe_initial_distance     = 0;
+    uint32_t            _swipe_initial_time         = DEFAULT_SWIPE_INITIAL_TIME;
+    bool                _swipe_has_consecutive      = false;
+    uint32_t            _swipe_consecutive_distance = 0;
+    uint32_t            _swipe_consecutive_time     = DEFAULT_SWIPE_INITIAL_TIME;
+    // tan(angle) as a fixed-point ratio (×256) so the per-frame cone test
+    // stays integer-only: a vector is "within the X cone" when
+    // |dy|*256 <= |dx|*_swipe_tan_q8 (and symmetrically for Y).
+    uint32_t            _swipe_tan_q8               = 0;
+    const touchy_Action *_on_left_swipe   = nullptr;
+    pb_size_t            _on_left_swipe_n  = 0;
+    const touchy_Action *_on_right_swipe  = nullptr;
+    pb_size_t            _on_right_swipe_n = 0;
+    const touchy_Action *_on_up_swipe     = nullptr;
+    pb_size_t            _on_up_swipe_n    = 0;
+    const touchy_Action *_on_down_swipe   = nullptr;
+    pb_size_t            _on_down_swipe_n  = 0;
+
+    // Per-touch swipe state (reset on all-fingers-up). The anchor is the
+    // point/time the current swipe evaluation window started from; it
+    // rolls forward on a too-slow drag and re-anchors after each
+    // recognised (consecutive) swipe.
+    int16_t  _swipe_anchor_x   = 0;
+    int16_t  _swipe_anchor_y   = 0;
+    uint32_t _swipe_anchor_ms  = 0;
+    bool     _swipe_done       = false;  // single-shot guard (no consecutive)
+    bool     _swipe_locked     = false;  // consecutive mode: axis/dir fixed
+    bool     _swipe_locked_h   = false;  // locked axis: true = X (horizontal)
+    int8_t   _swipe_locked_sign = 0;     // locked direction: +1 / -1
+
+    // Run the swipe engine for the current single-finger sample at
+    // widget-input coords (`x`, `y`) at time `now`. No-op unless
+    // `_swipe_enabled`.
+    void _swipe_process(int16_t x, int16_t y, uint32_t now);
+    // Fire the directional swipe action list + log, given the travel
+    // `(dx, dy)` since the anchor. `axis_h`/`sign` pick the direction.
+    void _emit_swipe(bool axis_h, int8_t sign, int16_t dx, int16_t dy);
 
     // Per-instance tap-vs-drag hold threshold in ms, sourced from
     // `Trackpad.tap_max_ms` (or `DEFAULT_TAP_MAX_MS` if unset).

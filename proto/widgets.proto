@@ -738,6 +738,34 @@ message Trackpad {
     repeated Action on_right_click  = 12;  // 2-finger tap
     repeated Action on_move         = 13;  // one-finger drag
     repeated Action on_scroll       = 14;  // two-finger drag
+
+    // Stage 91 — single-finger *swipe* (directional flick) gestures.
+    //
+    // The whole swipe engine is gated on `swipe_initial_distance`:
+    // unset → swipe detection is disabled entirely (zero per-frame
+    // cost). When set, a swipe is recognised when a single finger
+    // travels at least `swipe_initial_distance` px within
+    // `swipe_initial_time` ms, moving within `swipe_angle` degrees of an
+    // axis. The dominant axis + sign pick the direction (left/right/
+    // up/down) and the matching `on_*_swipe` list runs via the same
+    // synchronous inline runner as `on_move` — a `Move` step with unset
+    // dx/dy picks up the relative swipe travel.
+    //
+    // If `swipe_consecutive_distance` is set, the gesture repeats: after
+    // the initial recognition the engine re-anchors at the recognition
+    // point, locks the axis/direction, and keeps emitting the same swipe
+    // each time the finger clears `swipe_consecutive_distance` px within
+    // `swipe_consecutive_time` ms — a continuous stream for one motion.
+    // Unset → exactly one event per touch.
+    optional uint32 swipe_initial_distance     = 15;  // px — master switch
+    optional uint32 swipe_initial_time         = 16;  // ms; unset → default
+    optional uint32 swipe_consecutive_distance = 17;  // px; unset → single
+    optional uint32 swipe_consecutive_time     = 18;  // ms; unset → default
+    optional uint32 swipe_angle                = 19;  // deg; unset → default
+    repeated Action on_left_swipe   = 20;
+    repeated Action on_right_swipe  = 21;
+    repeated Action on_up_swipe     = 22;
+    repeated Action on_down_swipe   = 23;
 }
 
 // Reusable touch-feedback ripple. Animates a circle from radius 0 →
@@ -836,7 +864,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 21;
+        CURRENT         = 22;
     }
     Version version = 6;
 

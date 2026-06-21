@@ -998,6 +998,15 @@ def trackpad(
     on_right_click=_USE_DEFAULT,
     on_move=_USE_DEFAULT,
     on_scroll=_USE_DEFAULT,
+    swipe_initial_distance: int | None = None,
+    swipe_initial_time: int | None = None,
+    swipe_consecutive_distance: int | None = None,
+    swipe_consecutive_time: int | None = None,
+    swipe_angle: int | None = None,
+    on_left_swipe=None,
+    on_right_swipe=None,
+    on_up_swipe=None,
+    on_down_swipe=None,
 ) -> _proto.Widget:
     """Multitouch trackpad surface (device-side HID mouse).
 
@@ -1037,6 +1046,20 @@ def trackpad(
     gesture entirely — the firmware treats an empty list as a no-op.
     Inside ``on_move`` / ``on_scroll`` a ``Move`` step with unset
     ``dx``/``dy`` uses the trackpad's live per-frame delta.
+
+    Stage 91 — single-finger **swipe** (directional flick) gestures. The
+    whole swipe engine is gated on ``swipe_initial_distance``: leave it
+    ``None`` and swipe detection is off (the default). Set it (px) to
+    enable swipes; a flick is recognised when a single finger travels
+    that far within ``swipe_initial_time`` (ms) while staying within
+    ``swipe_angle`` degrees of an axis. The direction routes to
+    ``on_left_swipe`` / ``on_right_swipe`` / ``on_up_swipe`` /
+    ``on_down_swipe`` (each a single ``Action`` / host-code ``int`` or an
+    iterable; **empty / unset = no-op**, these have no default bindings).
+    Set ``swipe_consecutive_distance`` / ``swipe_consecutive_time`` to
+    repeat the same swipe while the finger keeps moving; leave
+    ``swipe_consecutive_distance`` ``None`` for one event per touch. A
+    ``Move`` step inside a swipe action reports the relative swipe travel.
     """
     w = _widget(id, rect=rect, style=style, animations=animations)
     tp = w.trackpad
@@ -1069,6 +1092,23 @@ def trackpad(
     )
     tp.on_move.extend(_slot(on_move, [macro_action([mouse_move()])]))
     tp.on_scroll.extend(_slot(on_scroll, [macro_action([scroll_move()])]))
+
+    # Stage 91 — swipe tuning + bindings. All opt-in: writing
+    # `swipe_initial_distance` is what enables the device-side engine.
+    if swipe_initial_distance is not None:
+        tp.swipe_initial_distance = swipe_initial_distance
+    if swipe_initial_time is not None:
+        tp.swipe_initial_time = swipe_initial_time
+    if swipe_consecutive_distance is not None:
+        tp.swipe_consecutive_distance = swipe_consecutive_distance
+    if swipe_consecutive_time is not None:
+        tp.swipe_consecutive_time = swipe_consecutive_time
+    if swipe_angle is not None:
+        tp.swipe_angle = swipe_angle
+    tp.on_left_swipe.extend(_normalise_actions(on_left_swipe))
+    tp.on_right_swipe.extend(_normalise_actions(on_right_swipe))
+    tp.on_up_swipe.extend(_normalise_actions(on_up_swipe))
+    tp.on_down_swipe.extend(_normalise_actions(on_down_swipe))
     return w
 
 

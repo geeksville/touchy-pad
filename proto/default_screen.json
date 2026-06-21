@@ -132,7 +132,12 @@
                             ]
                           }
                         }
-                      ]
+                      ],
+                      "swipeInitialDistance": 60,
+                      "swipeInitialTime": 300,
+                      "swipeConsecutiveDistance": 40,
+                      "swipeConsecutiveTime": 200,
+                      "swipeAngle": 30
                     }
                   }
                 ]
