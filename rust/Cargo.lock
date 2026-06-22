@@ -1416,7 +1416,7 @@ dependencies = [
 
 [[package]]
 name = "touchy-demo"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "touchy-opendeck"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "touchy-pad"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-trait",
  "base64",
