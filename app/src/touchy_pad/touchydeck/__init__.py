@@ -32,6 +32,6 @@ to pull in ``streamcontroller-streamdeck``.
 from __future__ import annotations
 
 from .deck import TouchyDeck
-from .discovery import find_touchy_decks, install, uninstall
+from .discovery import find_touchy_decks, install
 
-__all__ = ["TouchyDeck", "find_touchy_decks", "install", "uninstall"]
+__all__ = ["TouchyDeck", "find_touchy_decks", "install"]

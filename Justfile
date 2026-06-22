@@ -626,6 +626,26 @@ sc_venv := sc_dir + "/.venv"
 sc_pip  := sc_venv + "/bin/pip"
 sc_py   := sc_venv + "/bin/python3"
 
+streamdeck_lib_dir := justfile_directory() + "/tools/streamcontroller-python-elgato-streamdeck"
+touchy_lib_dir    := justfile_directory() + "/app"
+
+# Build our hacked up streamdeck lib - because not yet in pypi.
+# Installs it in editable mode into the StreamController venv.
+# Creates (or recreates) the venv first if it doesn't exist or was
+# built on another machine with stale shebangs.
+streamcontroller-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! "{{sc_pip}}" --version > /dev/null 2>&1; then
+        echo "Creating StreamController venv…"
+        rm -rf "{{sc_venv}}"
+        python3 -m venv "{{sc_venv}}"
+    fi
+    cd {{streamdeck_lib_dir}}
+    {{sc_pip}} install -e {{streamdeck_lib_dir}}
+    # Temporarily also install the touchy lib here (not yet using plugin)
+    {{sc_pip}} install -e {{touchy_lib_dir}}
+        
 # Create the StreamController venv and install requirements if needed,
 # then launch StreamController via the touchy_bootstrap shim so any
 # attached TouchyPads (or, with --sim, an in-process simulated one)
@@ -640,16 +660,12 @@ sc_py   := sc_venv + "/bin/python3"
 # Flags forwarded as env vars to touchy_bootstrap:
 #   --sim          : spin up an in-process sim device (TOUCHY_SIM=1)
 #   --sim-headless : with --sim, skip the PySide6 SimWindow
-streamcontroller-run *ARGS:
+streamcontroller-run *ARGS: streamcontroller-build
     #!/usr/bin/env bash
     set -euo pipefail
     # Ensure the StreamController submodule is initialized and updated
     # to the latest pr-touchypad branch.
     git submodule update --init --remote tools/StreamController
-    if [ ! -f "{{sc_pip}}" ]; then
-        echo "Creating StreamController venv…"
-        python3 -m venv {{sc_venv}}
-    fi
     stamp="{{sc_venv}}/.requirements_installed"
     if [ ! -f "$stamp" ] || [ "{{sc_dir}}/requirements.txt" -nt "$stamp" ]; then
         echo "Installing StreamController requirements…"
@@ -672,7 +688,7 @@ streamcontroller-run *ARGS:
             *) forward_args+=("$arg") ;;
         esac
     done
-    cd {{sc_dir}} && PATH="$CLEAN_PATH" {{sc_py}} touchy_bootstrap.py "${forward_args[@]}"
+    cd {{sc_dir}} && {{sc_py}} touchy_bootstrap.py "${forward_args[@]}"
 
 # Run OpenDeck in Tauri dev mode (hot-reloading frontend + live Rust backend).
 # Requires Rust and Deno to be installed (see .devcontainer/Containerfile).
