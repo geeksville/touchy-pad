@@ -1,11 +1,12 @@
 # TODO
 
 ## Next
+* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
+* [ ] update autopage and do steam background
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] add photo of the small board
 * [ ] change recommended board in hardware.md
 * [ ] explain plans w.r.t. 3d printing and knobs on the screen
-* [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] write a hackster.io article for buzz.  Reference old Meshtastic article.
 * [ ] Post here https://www.reddit.com/r/esp32
 
