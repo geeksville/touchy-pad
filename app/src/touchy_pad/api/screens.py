@@ -992,7 +992,7 @@ def trackpad(
     touch_ripple: _proto.RippleAnimation | None = None,
     tap_ripple: _proto.RippleAnimation | None = None,
     scrollbar_color: int | None = None,
-    tap_max_ms: int | None = None,
+    tap_time: int | None = None,
     on_left_click=_USE_DEFAULT,
     on_middle_click=_USE_DEFAULT,
     on_right_click=_USE_DEFAULT,
@@ -1019,6 +1019,10 @@ def trackpad(
     twist_consecutive_time: int | None = None,
     on_cw_twist=None,
     on_ccw_twist=None,
+    tap_distance: int | None = None,
+    hold_time: int | None = None,
+    on_hold=None,
+    on_hold_release=None,
 ) -> _proto.Widget:
     """Multitouch trackpad surface (device-side HID mouse).
 
@@ -1044,7 +1048,7 @@ def trackpad(
 
     ``scrollbar_color`` (0xRRGGBB), if set, enables a thin progress bar
     that grows along the active scroll axis when a two-finger scroll
-    starts and fades out when all fingers lift. ``tap_max_ms`` overrides
+    starts and fades out when all fingers lift. ``tap_time`` overrides
     the tap-vs-drag hold threshold (default 200 ms on-device).
 
     Stage 90 — each gesture runs a host-supplied :class:`_proto.Action`
@@ -1101,6 +1105,21 @@ def trackpad(
     reported in Relative X, so a ``Move`` step with unset ``dx`` inside the
     action picks it up. Pair with
     :func:`~touchy_pad.api.macros.consumer_key` to bind e.g. volume keys.
+
+    Stage 95 — single-finger **press-and-hold** (long-press) gesture.
+    Gated on ``hold_time``: leave it ``None`` and press-and-hold
+    detection is off (the default). Set it (ms) to enable holds; a hold
+    is recognised when a single finger stays within ``tap_distance`` px
+    of its touchdown point for at least ``tap_time + hold_time`` ms. On
+    recognition ``on_hold`` fires once; ``on_move`` keeps firing on
+    every drag frame throughout the touch (not suppressed). The hold
+    ends on finger-up (``on_hold_release``) or when a second finger
+    lands (abandoned silently). ``tap_distance`` (when set) also
+    retunes the tap-vs-drag discriminator — it replaces the on-device
+    ``TAP_MAX_MOVE`` constant everywhere. Bind drag-n-drop as
+    ``on_hold=macro_action([mouse_button_down()])``,
+    ``on_move=macro_action([mouse_move()])``,
+    ``on_hold_release=macro_action([mouse_button_up()])``.
     """
     w = _widget(id, rect=rect, style=style, animations=animations)
     tp = w.trackpad
@@ -1118,8 +1137,8 @@ def trackpad(
         tp.tap_ripple.CopyFrom(tap_ripple)
     if scrollbar_color is not None:
         tp.scrollbar_color = scrollbar_color
-    if tap_max_ms is not None:
-        tp.tap_max_ms = tap_max_ms
+    if tap_time is not None:
+        tp.tap_time = tap_time
 
     def _slot(value, default):
         return _normalise_actions(default if value is _USE_DEFAULT else value)
@@ -1176,6 +1195,16 @@ def trackpad(
         tp.twist_consecutive_time = twist_consecutive_time
     tp.on_cw_twist.extend(_normalise_actions(on_cw_twist))
     tp.on_ccw_twist.extend(_normalise_actions(on_ccw_twist))
+
+    # Stage 95 — press-and-hold tuning + bindings. Opt-in: writing
+    # `hold_time` enables the device-side engine. `tap_distance` (when
+    # set) also retunes the tap-vs-drag discriminator.
+    if tap_distance is not None:
+        tp.tap_distance = tap_distance
+    if hold_time is not None:
+        tp.hold_time = hold_time
+    tp.on_hold.extend(_normalise_actions(on_hold))
+    tp.on_hold_release.extend(_normalise_actions(on_hold_release))
     return w
 
 

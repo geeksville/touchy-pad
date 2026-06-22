@@ -31,7 +31,7 @@ public:
     // a comfortable scroll rate without overshooting on quick flicks.
     static constexpr float    SCROLL_SCALE  = 0.1f;
     // Default tap-vs-drag hold threshold (ms). Overridable per-instance
-    // via `Trackpad.tap_max_ms`.
+    // via `Trackpad.tap_time`.
     static constexpr uint32_t DEFAULT_TAP_MAX_MS = 200;
     static constexpr int16_t  TAP_MAX_MOVE  = 12;
     static constexpr uint8_t  MAX_FINGERS   = 3;
@@ -262,8 +262,36 @@ private:
     void _emit_twist(int32_t delta);
 
     // Per-instance tap-vs-drag hold threshold in ms, sourced from
-    // `Trackpad.tap_max_ms` (or `DEFAULT_TAP_MAX_MS` if unset).
+    // `Trackpad.tap_time` (or `DEFAULT_TAP_MAX_MS` if unset).
     uint32_t _tap_max_ms = DEFAULT_TAP_MAX_MS;
+
+    // Stage 95 — press-and-hold (long-press) gesture. Gated on
+    // `hold_time` presence (`_hold_enabled`); when disabled the engine
+    // short-circuits on the first check and no hold state is tracked.
+    // `tap_distance` (when set) replaces `TAP_MAX_MOVE` for both the
+    // tap-vs-drag centroid check and the hold radius; unset →
+    // `TAP_MAX_MOVE` (unchanged behaviour).
+    bool     _hold_enabled = false;
+    uint32_t _hold_time    = 0;
+    int32_t  _tap_distance = TAP_MAX_MOVE;  // px; default from the constant
+    const touchy_Action *_on_hold         = nullptr;
+    pb_size_t            _on_hold_n       = 0;
+    const touchy_Action *_on_hold_release = nullptr;
+    pb_size_t            _on_hold_release_n = 0;
+
+    // Per-touch hold state (reset on all-fingers-up). The anchor is the
+    // coordinate/time the current hold evaluation window started from.
+    float    _hold_anchor_x  = 0;
+    float    _hold_anchor_y  = 0;
+    uint32_t _hold_anchor_ms = 0;
+    bool     _hold_cancelled  = false;  // finger left the radius → invalid
+    bool     _hold_recognised = false;  // dwell reached → on_hold fired
+
+    // Run the hold engine for the current single-finger position
+    // (`x`, `y`) at time `now`. No-op unless `_hold_enabled`.
+    void _hold_process(float x, float y, uint32_t now);
+    // Fire the on_hold action list + log.
+    void _emit_hold();
 
     // Ripple animation configs (copied from the proto Trackpad message).
     // `_has_*` mirrors the proto `has_*_ripple` flag so we can fall back

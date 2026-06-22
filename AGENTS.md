@@ -26,8 +26,8 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, and 94 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 24`,
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
+`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 25`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
 `PreferencesFile.Version.CURRENT == 5`.
 Highlights worth remembering:
@@ -357,6 +357,23 @@ Highlights worth remembering:
   CLI `touchy pref backlight-level <0-100>`; Rust
   `Touchy::set_backlight_level(u32)`. Auto-sleep still uses the same
   manager (`backlight_set(0)` to sleep, `backlight_set(s_level)` to wake).
+
+- **Stage 95 (press-and-hold / tap-hold gesture).** Single-finger
+  long-press: hold still within `tap_distance` px for
+  `tap_time + hold_time` ms → `on_hold` fires once; `on_move` keeps
+  firing on every drag frame throughout (never suppressed); finger-up
+  → `on_hold_release`; second finger → abandoned silently. Gated on
+  `hold_time` presence (zero per-frame cost when unset), mirroring
+  Stage 91/92/93. `tap_max_ms` (tag 9) was **renamed** `tap_time`
+  (same tag/default 200 ms, pure rename — no wire bump for that alone);
+  `tap_distance` (new, tag 36) **replaces `TAP_MAX_MOVE` everywhere**
+  (both the tap-vs-drag centroid check and the hold radius read
+  `_tap_distance`; unset → `TAP_MAX_MOVE` default). Two new Action
+  lists: `on_hold` (tag 40, inline runner, `{0,0}`) and
+  `on_hold_release` (tag 42, async runner). `Widget.Version` 24→25.
+  Worked example in `pages/trackpad.py`: `tap_time=150`,
+  `hold_time=300`, drag-n-drop (`on_hold=mouse_button_down()`,
+  `on_move=mouse_move()`, `on_hold_release=mouse_button_up()`).
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

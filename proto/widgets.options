@@ -48,6 +48,8 @@ touchy.Trackpad.on_zoom_in             type:FT_POINTER
 touchy.Trackpad.on_zoom_out            type:FT_POINTER
 touchy.Trackpad.on_cw_twist            type:FT_POINTER
 touchy.Trackpad.on_ccw_twist           type:FT_POINTER
+touchy.Trackpad.on_hold                type:FT_POINTER
+touchy.Trackpad.on_hold_release        type:FT_POINTER
 touchy.ActionMacro.steps               type:FT_POINTER
 touchy.Transition.props                type:FT_POINTER
 touchy.Widget.animations               type:FT_POINTER

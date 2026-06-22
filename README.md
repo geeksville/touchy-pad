@@ -64,6 +64,7 @@ The touchpad has an ever growing list of features:
   * one finger tap == left click
   * two finger tap == right click
   * three finger tap == middle click
+  * one finger 'tap and hold' starts a left-click-drag operation.
   * two finger drag is x/y scrollwheel movement
   * two finger pinch to zoom in/out
   * swipe left/right/up/down

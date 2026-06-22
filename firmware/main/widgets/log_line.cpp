@@ -38,7 +38,7 @@ extern "C" void log_line_post(const char *fmt, ...)
     vsnprintf(s_last_line, sizeof(s_last_line), fmt, args);
     va_end(args);
 
-    ESP_LOGI(TAG, "%s", s_last_line);
+    ESP_LOGD(TAG, "%s", s_last_line);
 
     for (LogLine *w : registry()) {
         w->_update(s_last_line);

@@ -743,6 +743,41 @@ def test_trackpad_twist_config_round_trip():
     assert tp.on_ccw_twist[0].host.code == 22
 
 
+def test_trackpad_hold_disabled_by_default():
+    """Stage 95: a bare trackpad leaves the press-and-hold engine off
+    (no hold_time, no hold action lists)."""
+    s = Screen("t")
+    s += trackpad("pad")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert not tp.HasField("hold_time")
+    assert not tp.HasField("tap_distance")
+    assert len(tp.on_hold) == 0
+    assert len(tp.on_hold_release) == 0
+
+
+def test_trackpad_hold_config_round_trip():
+    """Setting the hold knobs + bindings round-trips through the wire."""
+    s = Screen("t")
+    s += trackpad(
+        "pad",
+        tap_time=150,
+        tap_distance=20,
+        hold_time=300,
+        on_hold=macro_action([macros.mouse_button_down()]),
+        on_hold_release=macro_action([macros.mouse_button_up()]),
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    tp = _children(decoded.active)[0].trackpad
+    assert tp.tap_time == 150
+    assert tp.tap_distance == 20
+    assert tp.hold_time == 300
+    step = tp.on_hold[0].macro.steps[0]
+    assert step.WhichOneof("step") == "mouse_button_down"
+    step = tp.on_hold_release[0].macro.steps[0]
+    assert step.WhichOneof("step") == "mouse_button_up"
+
+
 def test_build_demo_screen_trackpad_has_ripples():
     """Demo widget page ships ripple eye-candy so users see the feature."""
     _, widgets = build_demo()

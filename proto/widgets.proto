@@ -733,8 +733,10 @@ message Trackpad {
     // Maximum hold time, in milliseconds, for a touch to still be
     // counted as a tap (versus a drag) when all fingers are released.
     // Default: 200 ms. Range is host-defined; very large values let
-    // long-presses still register as taps.
-    optional uint32 tap_max_ms = 9;
+    // long-presses still register as taps. Also reused by Stage 95
+    // press-and-hold as the `tap_time` component of the hold threshold
+    // (`tap_time + hold_time`).
+    optional uint32 tap_time = 9;
 
     // Stage 90 — gesture → Action bindings. The trackpad recognises a
     // gesture device-side and runs the matching action list (in order),
@@ -837,6 +839,25 @@ message Trackpad {
     optional uint32 twist_consecutive_time  = 33;  // ms; unset → default
     repeated Action on_cw_twist     = 34;  // clockwise (positive)
     repeated Action on_ccw_twist    = 35;  // counter-clockwise (negative)
+
+    // Stage 95 — single-finger press-and-hold (long-press) gesture.
+    //
+    // Gated on `hold_time`: unset → press-and-hold detection is off
+    // entirely (zero per-frame cost). When set, a hold is recognised when
+    // a single finger stays within `tap_distance` px of its touchdown
+    // point for at least `tap_time + hold_time` ms. On recognition the
+    // `on_hold` list fires once; `on_move` keeps firing on every drag
+    // frame throughout the touch (not suppressed). The hold ends on
+    // finger-up (`on_hold_release`) or when a second finger lands.
+    //
+    // `tap_distance` (when set) also retunes the existing tap-vs-drag
+    // discriminator — it replaces the compiled TAP_MAX_MOVE constant
+    // everywhere, so one field governs both the tap radius and the hold
+    // radius. Unset → TAP_MAX_MOVE default (unchanged behaviour).
+    optional uint32 tap_distance     = 36;  // px; unset → default (TAP_MAX_MOVE)
+    optional uint32 hold_time        = 38;  // ms — master switch
+    repeated Action on_hold          = 40;  // fired once on recognition
+    repeated Action on_hold_release  = 42;  // fired on finger-up after a hold
 }
 
 // Reusable touch-feedback ripple. Animates a circle from radius 0 →
@@ -935,7 +956,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 24;
+        CURRENT         = 25;
     }
     Version version = 6;
 

@@ -155,7 +155,23 @@ TrackpadWidget::TrackpadWidget(esp_lcd_touch_handle_t touch, lv_obj_t *parent,
         _has_scrollbar   = true;
         _scrollbar_color = cfg.scrollbar_color;
     }
-    if (cfg.has_tap_max_ms) _tap_max_ms = cfg.tap_max_ms;
+    if (cfg.has_tap_time) _tap_max_ms = cfg.tap_time;
+
+    // Stage 95 — `tap_distance` (when set) replaces TAP_MAX_MOVE for both
+    // the tap-vs-drag centroid check and the press-and-hold radius.
+    if (cfg.has_tap_distance) _tap_distance = cfg.tap_distance;
+
+    // Stage 95 — press-and-hold engine. Master switch is the presence of
+    // `hold_time`; `tap_time` (the renamed `tap_max_ms`) is the additive
+    // bias component of the hold threshold (`tap_time + hold_time`).
+    _hold_enabled = cfg.has_hold_time;
+    if (_hold_enabled) {
+        _hold_time         = cfg.hold_time;
+        _on_hold           = cfg.on_hold;
+        _on_hold_n         = cfg.on_hold_count;
+        _on_hold_release   = cfg.on_hold_release;
+        _on_hold_release_n = cfg.on_hold_release_count;
+    }
 
     // Stage 90 — borrow the gesture Action lists. These pointers index
     // into the active screen's decoded proto (FT_POINTER heap), which
@@ -366,6 +382,17 @@ void TrackpadWidget::_process()
         _swipe_locked_sign = 0;
     }
 
+    // ── Stage 95: seed the press-and-hold anchor on a fresh first-finger
+    // touch. The hold engine is gated on `hold_time` presence; when
+    // disabled no state is tracked.
+    if (_hold_enabled && _prev_count == 0 && count >= 1) {
+        _hold_anchor_x   = static_cast<float>(pts[0].x);
+        _hold_anchor_y   = static_cast<float>(pts[0].y);
+        _hold_anchor_ms  = now;
+        _hold_cancelled  = false;
+        _hold_recognised = false;
+    }
+
     // ── Stage 92: seed the zoom anchor when two fingers become present ─
     // (1→2 or 3→2). The span is order-invariant, so a GT911 slot swap is
     // harmless. Re-seeding on 3→2 simply restarts zoom for the new pair.
@@ -377,6 +404,13 @@ void TrackpadWidget::_process()
         _zoom_done        = false;
         _zoom_locked      = false;
         _zoom_dir_sign    = 0;
+    }
+
+    // ── Stage 95: a second finger abandons any in-progress hold
+    // silently (no on_hold_release). The two-finger pipeline takes over.
+    if (_hold_enabled && count >= 2 && _prev_count < 2) {
+        _hold_cancelled  = true;
+        _hold_recognised = false;
     }
 
     // ── Stage 93: seed the twist anchor when two fingers become present ─
@@ -446,7 +480,7 @@ void TrackpadWidget::_process()
         int32_t centroid_move =
             std::abs(_centroid_last_sum_x - _centroid_start_sum_x) +
             std::abs(_centroid_last_sum_y - _centroid_start_sum_y);
-        if (centroid_move > static_cast<int32_t>(TAP_MAX_MOVE) * _centroid_n) {
+        if (centroid_move > static_cast<int32_t>(_tap_distance) * _centroid_n) {
             _fingers[0].dragging = true;
         }
 
@@ -470,6 +504,12 @@ void TrackpadWidget::_process()
         // (additive; it does not suppress on_move). No-op unless enabled.
         _swipe_process(static_cast<int16_t>(pts[0].x),
                        static_cast<int16_t>(pts[0].y), now);
+
+        // Stage 95 — press-and-hold detection runs in parallel with the
+        // drag above (additive; it does not suppress on_move). No-op
+        // unless enabled.
+        _hold_process(static_cast<float>(pts[0].x),
+                      static_cast<float>(pts[0].y), now);
 
         _fingers[0].last_x = static_cast<int16_t>(pts[0].x);
         _fingers[0].last_y = static_cast<int16_t>(pts[0].y);
@@ -497,11 +537,11 @@ void TrackpadWidget::_process()
         _centroid_last_sum_y = static_cast<int32_t>(pts[0].y) + pts[1].y;
         // Threshold scales with `_centroid_n` because we are comparing
         // sums (not averages) of N fingers; per-finger budget stays at
-        // TAP_MAX_MOVE.
+        // `_tap_distance`.
         int32_t cdx = _centroid_last_sum_x - _centroid_start_sum_x;
         int32_t cdy = _centroid_last_sum_y - _centroid_start_sum_y;
         int32_t centroid_move = std::abs(cdx) + std::abs(cdy);
-        if (centroid_move > static_cast<int32_t>(TAP_MAX_MOVE) * _centroid_n) {
+        if (centroid_move > static_cast<int32_t>(_tap_distance) * _centroid_n) {
             _fingers[0].dragging = true;
             _fingers[1].dragging = true;
             _scrolling = true;
@@ -625,11 +665,23 @@ void TrackpadWidget::_process()
 
     // ── All fingers lifted → check for tap ───────────────────────────
     if (_prev_count > 0 && count == 0) {
+        // Stage 95 — if a press-and-hold was recognised and not cancelled,
+        // fire on_hold_release before the tap check. A recognised hold
+        // is not a tap (the dwell exceeded the tap threshold), so the
+        // tap path below is skipped naturally: the hold's dwell time
+        // (`tap_time + hold_time`) is always ≥ `_tap_max_ms` in practice,
+        // and even if it weren't, the host binds on_hold_release for the
+        // lift semantics it wants.
+        if (_hold_enabled && _hold_recognised && !_hold_cancelled) {
+            widget_run_actions(_on_hold_release, _on_hold_release_n);
+            log_line_post("hold release");
+            ESP_LOGI(TAG, "hold release");
+        }
         // Slot-order-invariant tap check: compare centroid sum at last
         // peak-count frame to centroid sum at the moment peak count
         // was first established. The threshold scales with the number
         // of fingers contributing to the sums (per-finger budget =
-        // TAP_MAX_MOVE).
+        // `_tap_distance`).
         //
         // Hold-time still uses per-finger `start_ms` (slot identity
         // doesn't matter for time): if any finger was down too long
@@ -638,7 +690,7 @@ void TrackpadWidget::_process()
             std::abs(_centroid_last_sum_x - _centroid_start_sum_x) +
             std::abs(_centroid_last_sum_y - _centroid_start_sum_y);
         bool is_tap = _centroid_n > 0 &&
-            centroid_move <= static_cast<int32_t>(TAP_MAX_MOVE) * _centroid_n;
+            centroid_move <= static_cast<int32_t>(_tap_distance) * _centroid_n;
         if (is_tap) {
             for (int i = 0; i < _session_max_fingers && i < MAX_FINGERS; i++) {
                 uint32_t held = now - _fingers[i].start_ms;
@@ -688,6 +740,9 @@ void TrackpadWidget::_process()
         _twist_done     = false;
         _twist_locked   = false;
         _twist_dir_sign = 0;
+        // Stage 95 — reset the per-touch hold window.
+        _hold_cancelled  = false;
+        _hold_recognised = false;
         for (int i = 0; i < MAX_FINGERS; i++) _fingers[i] = FingerState{};
         // Take down the scrollbar (if it was up). Animation is a quick
         // fade-out; the bar deletes itself when the opacity anim ends.
@@ -998,6 +1053,45 @@ void TrackpadWidget::_twist_process(float angle, uint32_t now)
     _emit_twist(delta);
     _twist_anchor_deg = angle;
     _twist_anchor_ms  = now;
+}
+
+void TrackpadWidget::_emit_hold()
+{
+    // Fire the on_hold Action list inline with no motion (the hold
+    // recognition itself carries no delta; subsequent motion flows
+    // through on_move). Empty list → no-op, but we still log.
+    MacroMoveCtx ctx{0, 0};
+    widget_run_actions_inline(_on_hold, _on_hold_n, &ctx);
+    log_line_post("hold");
+    ESP_LOGI(TAG, "hold");
+}
+
+void TrackpadWidget::_hold_process(float x, float y, uint32_t now)
+{
+    if (!_hold_enabled || _hold_cancelled) return;
+
+    // Distance from the touchdown anchor.
+    float dx = x - _hold_anchor_x;
+    float dy = y - _hold_anchor_y;
+    float d  = sqrtf(dx * dx + dy * dy);
+
+    // Once recognised the finger is free to move (drag-n-drop): the
+    // radius bound only applies during the dwell phase, matching the
+    // spec ("the relative data will be reported thereafter"). Before
+    // recognition, leaving the radius cancels the hold for this touch.
+    if (!_hold_recognised) {
+        if (d > static_cast<float>(_tap_distance)) {
+            _hold_cancelled = true;
+            return;
+        }
+        uint32_t t = now - _hold_anchor_ms;
+        if (t >= _tap_max_ms + _hold_time) {
+            _hold_recognised = true;
+            _emit_hold();
+        }
+    }
+    // Once recognised, there's nothing more to do here — on_move (already
+    // fired in the caller's drag block) handles the drag-n-drop motion.
 }
 
 uint32_t TrackpadWidget::_color_for_count(uint8_t n) const

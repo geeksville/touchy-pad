@@ -78,6 +78,7 @@
                         "borderWidth": 4
                       },
                       "scrollbarColor": 11393254,
+                      "tapTime": 150,
                       "onLeftClick": [
                         {
                           "macro": {
@@ -186,6 +187,29 @@
                             "steps": [
                               {
                                 "consumerKey": 234
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "holdTime": 300,
+                      "onHold": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "mouseButtonDown": 1
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "onHoldRelease": [
+                        {
+                          "macro": {
+                            "steps": [
+                              {
+                                "mouseButtonUp": 0
                               }
                             ]
                           }

@@ -5294,6 +5294,273 @@ therefore in two buckets:
 5. **`Version` bump to V5** because a new persisted field is added; older
    files (no `backlight_level`) load fine and fall back to the 100
    default.
+ 
+## Stage 95: press-and-hold (tap-hold) gesture
+
+**Status: DONE.**
+
+A single-finger **press-and-hold** gesture: touch the pad, hold still
+within a small radius for a configured dwell time, and the device fires
+a `PRESS_AND_HOLD` event — then keeps reporting it (and, optionally,
+relative motion) until the finger lifts or a second finger lands. This
+is the classic "long-press / right-drag / drag-n-drop hold" primitive
+that the Stage 90–93 gesture family is missing. It is the temporal
+analogue of the Stage 91 swipe: same master-switch gating, same
+opt-in-empty-defaults discipline, same inline-runner + `MacroMoveCtx`
+reporting. The recognition model is adapted from the Cirque/Genus
+"Press and Hold" register description quoted in the original request.
+
+### Recognition model
+
+A press-and-hold is evaluated **per single-finger touch** (`count == 1`
+and `_session_max_fingers == 1`), in parallel with the existing
+one-finger drag → `on_move` and the Stage 91 swipe. The whole engine is
+**gated on `hold_time` being set**: if the proto leaves it unset the
+trackpad skips press-and-hold detection entirely (no state tracking, no
+per-frame work), so the feature is strictly opt-in and the default
+trackpad pays nothing.
+
+From the touch's initial coordinate `(sx, sy)` at time `s_ms`, on each
+frame compute the travel `d = |(x,y) − (sx,sy)|` and the elapsed time
+`t = now − s_ms`. A press-and-hold is recognised when **both** hold:
+
+1. **Distance bound** — during the dwell phase (before recognition) the
+   finger must stay within `tap_distance` px of its touchdown point
+   (`d <= tap_distance`). If it leaves the radius before recognition,
+   the gesture is **cancelled** for the rest of this touch. Once
+   recognised, the finger is free to move — that's the drag-n-drop case
+   (matching the spec: "the relative data will be reported
+   thereafter"). This is the "same register that defines the bounds for
+   the single tap gesture" from the spec — `tap_distance` is shared
+   with tap-vs-drag discrimination (see "Relationship to existing tap
+   detection" below).
+2. **Time** — `t >= hold_time` (ms). `hold_time` is the **master
+   switch**: unset → the engine is off entirely.
+
+On recognition we fire the `on_hold` Action list once through the
+**Stage 90 inline runner** (`widget_run_actions_inline`) with
+`MacroMoveCtx{0, 0}` (no motion yet), and emit an `ESP_LOGI`. The
+engine then enters the **held** state:
+
+* **Relative motion (drag-n-drop).** `on_move` fires on every drag
+  frame exactly as it does for an ordinary one-finger drag — before,
+  during, and after recognition. The hold engine **does not suppress
+  `on_move`**: moves are sent to the host ASAP throughout the touch.
+  The "left mouse press is held during the drag" behaviour is **not**
+  baked into the firmware — it is driven dynamically by the Actions the
+  host generates in `trackpad.py`: the host binds `on_hold` to
+  `mouse_button_down()`, `on_move` to `mouse_move()` (the button is
+  already down from `on_hold`), and `on_hold_release` to
+  `mouse_button_up()`. (There is intentionally **no
+  `hold_repeat_time`** — once in the held state, motion is the only
+  event of interest, and it already flows through `on_move` on every
+  frame it occurs.)
+* **Termination.** The held state ends when (a) the finger lifts
+  (fires `on_hold_release` if set), or (b) a second finger lands
+  (the spec: "or if a second touch is registered"). On (b) the hold
+  is abandoned silently — the two-finger gesture pipeline (scroll /
+  zoom / twist) takes over for the rest of the session.
+
+### Relationship to existing tap detection
+
+The firmware already has a tap-vs-drag discriminator: `_tap_max_ms`
+plus the centroid `TAP_MAX_MOVE` constant. The proto field that
+configures the time half was `tap_max_ms` (tag 9, default 200 ms);
+**Stage 95 renames it to `tap_time`** (same tag 9, same semantics for
+the tap path) so the same field doubles as the `tap_time` component of
+the hold threshold. This is a pure rename — no wire-format change
+beyond the field name, and the on-device default stays 200 ms.
+
+* `tap_distance` is a **new** Stage 95 field that **replaces**
+  `TAP_MAX_MOVE` everywhere. The tap-vs-drag discriminator and the
+  press-and-hold engine both read it: when set, it is the tap/hold
+  radius bound; when unset, both fall back to the compiled
+  `TAP_MAX_MOVE` constant (unchanged default). So a host that sets
+  `tap_distance` retunes both gestures with one field; a host that
+  leaves it unset gets today's behaviour. `TAP_MAX_MOVE` becomes the
+  default for `tap_distance`, not a separate code path.
+* `tap_time` is the **renamed** `tap_max_ms` field (tag 9). Per the
+  spec the hold threshold is `tap_time + hold_time`; in practice we
+  treat `hold_time` as the master switch and `tap_time` as an additive
+  bias (default 200 ms, the existing tap threshold). Setting only
+  `hold_time` is sufficient and is the documented happy path; `tap_time`
+  lets a host express the threshold as "tap window + extra hold". The
+  worked example (`pages/trackpad.py`) sets `tap_time=150`,
+  `hold_time=300` (so the hold fires at 450 ms).
+
+### Proto (`proto/widgets.proto` + `widgets.options`)
+
+* **Rename** `Trackpad.tap_max_ms` (tag 9) → `tap_time` (same tag 9,
+  same default 200 ms). This is a field-name-only change — the wire
+  format is unchanged, but all generated bindings, firmware, and host
+  code must be regenerated/updated (`just build-proto`). No
+  `Widget.Version` bump for the rename alone (the tag and type are
+  unchanged).
+
+Extend `message Trackpad` (next free tag is 36):
+
+```proto
+// Stage 95 — single-finger press-and-hold (long-press) gesture.
+//
+// Gated on `hold_time`: unset → press-and-hold detection is off
+// entirely (zero per-frame cost). When set, a hold is recognised when
+// a single finger stays within `tap_distance` px of its touchdown
+// point for at least `tap_time + hold_time` ms. On recognition the
+// `on_hold` list fires once; `on_move` keeps firing on every drag
+// frame throughout the touch (not suppressed). The hold ends on
+// finger-up (`on_hold_release`) or when a second finger lands.
+//
+// `tap_distance` (when set) also retunes the existing tap-vs-drag
+// discriminator — it replaces the compiled TAP_MAX_MOVE constant
+// everywhere, so one field governs both the tap radius and the hold
+// radius. Unset → TAP_MAX_MOVE default (unchanged behaviour).
+optional uint32 tap_distance     = 36;  // px; unset → default (TAP_MAX_MOVE)
+optional uint32 hold_time        = 38;  // ms — master switch
+repeated Action on_hold          = 40;  // fired once on recognition
+repeated Action on_hold_release  = 42;  // fired on finger-up after a hold
+```
+
+`widgets.options`: cap the two new `repeated Action` fields with
+`type:FT_POINTER` (mirroring the Stage 90–93 `on_*` entries).
+
+Bump **`Widget.Version.CURRENT` 24 → 25** (additive, but it's a Trackpad
+wire change).
+
+### Firmware (`trackpad_widget.{h,cpp}`)
+
+* **Config + tuning.** In the constructor, set `_hold_enabled =
+  cfg.has_hold_time`. When false the engine short-circuits on the first
+  check; when true, copy `tap_distance` (default `TAP_MAX_MOVE`),
+  `tap_time` (the renamed `tap_max_ms` field, default
+  `DEFAULT_TAP_MAX_MS` = 200 ms — already read into `_tap_max_ms` by
+  the existing tap path, so the hold engine reads the same member),
+  `hold_time` (always present when enabled), and borrow the two
+  `on_hold*` array pointers + counts (valid for the widget's lifetime,
+  like the Stage 90–93 arrays).
+* **`tap_distance` replaces `TAP_MAX_MOVE` everywhere.** Add a
+  `_tap_distance` member (default `TAP_MAX_MOVE`), populated from
+  `cfg.has_tap_distance ? cfg.tap_distance : TAP_MAX_MOVE` in the
+  constructor. The existing tap-vs-drag centroid check (and the
+  press-and-hold radius check) read `_tap_distance` instead of the raw
+  `TAP_MAX_MOVE` constant, so a host that sets `tap_distance` retunes
+  both gestures with one field. Unset → `TAP_MAX_MOVE` (unchanged).
+* **Hold state.** Add per-touch members reset on all-fingers-up:
+  `_hold_anchor_x/y`, `_hold_anchor_ms`, `_hold_cancelled` (finger left
+  the radius), `_hold_recognised` (dwell reached). Seed the anchor when
+  `count` goes `0 → 1` (alongside the existing `_fingers[0].start_*`
+  and the Stage 91 swipe anchor seed).
+* **Engine (`_hold_process` / `_emit_hold`).** Inside the existing
+  `count == 1 && _session_max_fingers == 1` branch, **before** the
+  `on_move` block, bail immediately when
+  `!_hold_enabled || _hold_cancelled`. Otherwise:
+  1. If `!_hold_recognised`: compute `d` from the anchor. If
+     `d > tap_distance` → set `_hold_cancelled = true` (the touch is
+     now an ordinary drag; the hold engine stops tracking it, `on_move`
+     runs normally). Otherwise, if `t >= tap_time + hold_time` →
+     `_hold_recognised = true`, `_emit_hold("hold")`.
+  2. If `_hold_recognised`: fall through to the existing `on_move`
+     block, which fires on every drag frame throughout the touch
+     (before, during, and after recognition). No repeat fire — motion
+     is the only post-recognition event. The finger is now free to
+     leave the radius (drag-n-drop).
+* **`on_move` is never suppressed.** The single-finger drag block runs
+  unchanged regardless of hold state, so moves reach the host ASAP.
+  When hold is disabled or cancelled, behaviour is unchanged.
+* **Release.** In the all-fingers-lifted block, if `_hold_recognised`
+  and not `_hold_cancelled`, run `on_hold_release` via the async runner
+  (low-frequency, like clicks). Then reset all `_hold_*` state.
+* **Second-finger termination.** When `count` transitions `1 → 2`
+  while `_hold_recognised`, abandon the hold silently (reset
+  `_hold_*`; do **not** fire `on_hold_release` — the spec says the
+  gesture just stops). The two-finger pipeline takes over.
+* **Coexistence.** Press-and-hold is **additive** to `on_move` and
+  `on_left_swipe`. Since `on_hold*` default empty, the default trackpad
+  is byte-for-byte unchanged. A host that wants a pure hold-then-drag
+  surface binds `on_hold` (mouse-down) + `on_move` (mouse-move) +
+  `on_hold_release` (mouse-up).
+
+### Host (Python — `api/screens.py`, `api/macros.py`)
+
+* `trackpad()` renames its `tap_max_ms` kwarg → `tap_time` (same
+  semantics, default 200 ms) and gains `hold_time`
+  (each `int | None`, written only when not `None`) plus `on_hold`,
+  `on_hold_release` (each `Iterable[Action] | int | None`, run through
+  `_normalise_actions`). **Like** the Stage 91–93 lists these default
+  to **empty** (no `_USE_DEFAULT` seeding) so adding press-and-hold is
+  purely opt-in. Post-recognition motion reuses the existing `on_move`
+  kwarg — no separate `on_hold_move`.
+* No new macro helpers needed — hold actions reuse `mouse_button_down()`
+  / `mouse_button_up()` / `mouse_move()` / `macro_action()` / host
+  codes. The "left mouse press is held during the drag" behaviour is
+  driven dynamically by the Actions the host generates: a drag-n-drop
+  hold is
+  `on_hold=macro_action([macros.mouse_button_down()])`,
+  `on_move=macro_action([macros.mouse_move()])` (the button is already
+  down from `on_hold`, so each move step just emits a relative move
+  with the button held),
+  `on_hold_release=macro_action([macros.mouse_button_up()])`.
+
+### Rust
+
+* prost regenerates the new fields from the symlinked proto. No
+  functional Rust change is required for the firmware/Python feature;
+  optionally add a `trackpad`-builder pass-through if/when a Rust
+  caller needs it. The OpenDeck plugin doesn't use the trackpad.
+
+### Default screen / docs / tests
+
+* No change to `proto/default_screen.json`. As with Stage 91–93, enable
+  press-and-hold on `pages/trackpad.py` with `tap_time=150`,
+  `hold_time=300`, and bind the drag-n-drop worked example:
+  `on_hold=macro_action([macros.mouse_button_down()])`,
+  `on_move=macro_action([macros.mouse_move()])`,
+  `on_hold_release=macro_action([macros.mouse_button_up()])` — so a
+  long press holds the left button, a subsequent drag moves the
+  pointer (button still held), and lifting releases. Validated on
+  hardware via the `hold …` logs.
+* Add a Python round-trip test (the two lists + two tuning scalars
+  `tap_distance` / `hold_time`, plus the renamed `tap_time` kwarg) and
+  a "disabled by default" assertion, mirroring the Stage 93 tests.
+
+### Decisions (for review)
+
+1. **Press-and-hold is additive to `on_move` and `on_left_swipe`**
+   (does not suppress either); empty defaults keep current behaviour.
+2. **`hold_time` presence is the master enable** (zero per-frame cost
+   when unset), mirroring Stage 91/92/93.
+3. **`tap_distance` is a new Stage 95 field that replaces `TAP_MAX_MOVE`
+   everywhere** — both the tap-vs-drag centroid check and the
+   press-and-hold radius read it. Unset → `TAP_MAX_MOVE` default
+   (unchanged behaviour). `tap_time` is the **renamed** `tap_max_ms`
+   field (tag 9, default 200 ms), reused as the `tap_time` component of
+   the hold threshold.
+4. **Hold threshold = `tap_time + hold_time`** per the spec, with
+   `tap_time` defaulting to 200 ms (the existing tap threshold) and
+   `hold_time` as the master switch. The worked example uses
+   `tap_time=150`, `hold_time=300` (450 ms).
+5. **Two lists** (`on_hold` / `on_hold_release`) plus the existing
+   `on_move` — no separate `on_hold_move`. Post-recognition motion
+   reuses `on_move` so a host binds drag-n-drop as mouse-down (on_hold)
+   + mouse-move (on_move) + mouse-up (on_hold_release).
+6. **`on_move` is never suppressed** — moves fire on every drag frame
+   throughout the touch (before, during, and after recognition) so
+   they reach the host ASAP. If the finger leaves the radius before
+   recognition, the hold is cancelled and the touch continues as an
+   ordinary drag.
+7. **No `hold_repeat_time`** — once in the held state, motion is the
+   only event of interest and it already flows through `on_move` on
+   every frame it occurs. Auto-repeat of a held key is out of scope.
+8. **Second finger abandons the hold silently** (no `on_hold_release`),
+   matching the spec ("or if a second touch is registered").
+9. **Reuse the Stage 90 inline runner + `MacroMoveCtx`** for `on_hold`
+   (no motion, `{0,0}`); `on_hold_release` uses the async runner
+   (low-frequency, like clicks). `on_move` keeps its existing inline
+   path.
+
+### Open questions
+
+*(None outstanding — `tap_distance` defaults to `TAP_MAX_MOVE`, `tap_time`
+is the renamed `tap_max_ms`, and `on_move` is never suppressed.)*
 
 # Old/Existing projects
 

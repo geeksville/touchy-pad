@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from .. import _proto
 from ..api import hid_keys
-from ..api.macros import VOLUME_DOWN, VOLUME_UP, consumer_key, key_tap
+from ..api.macros import (
+    VOLUME_DOWN,
+    VOLUME_UP,
+    consumer_key,
+    key_tap,
+    mouse_button_down,
+    mouse_button_up,
+    mouse_move,
+)
 from ..api.screens import (
     AnimPath,
     Layer,
@@ -127,6 +135,18 @@ def build(background_image: str | None = None) -> tuple[str, _proto.Widget]:
             twist_consecutive_time=100,
             on_cw_twist=macro_action([consumer_key(VOLUME_UP)]),
             on_ccw_twist=macro_action([consumer_key(VOLUME_DOWN)]),
+            # Stage 95 — enable single-finger press-and-hold (long-press)
+            # detection. A hold is recognised when a finger stays within
+            # tap_distance px for tap_time + hold_time ms (150 + 300 = 450 ms).
+            # Bound to drag-n-drop: on_hold presses the left mouse button,
+            # on_move moves the pointer (button already held), and
+            # on_hold_release releases it. The device also logs each
+            # recognised hold via ESP_LOGI for hardware validation.
+            tap_time=150,
+            hold_time=300,
+            on_hold=macro_action([mouse_button_down()]),
+            on_move=macro_action([mouse_move()]),
+            on_hold_release=macro_action([mouse_button_up()]),
         ),
         col=0,
         row=0,
