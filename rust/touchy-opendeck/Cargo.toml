@@ -14,7 +14,7 @@ name = "touchy-opendeck"
 path = "src/main.rs"
 
 [dependencies]
-touchy-pad = { path = "../touchy-pad", version = "0.2", features = ["serial"] }
+touchy-pad = { path = "../touchy-pad", features = ["serial"] }
 openaction = "2"
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "io-util", "signal"] }
 anyhow.workspace = true
