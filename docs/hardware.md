@@ -215,6 +215,8 @@ Board id: `squixl`, IDF target `esp32s3`. The firmware uses the 16 MB partition 
 
 ## MakerFabs MaTouch 4.3" (`matouch_43`)
 
+![MaTouch](images/matouch-43.jpg)
+
 The [MakerFabs MaTouch 4.3"](https://www.makerfabs.com/esp32-s3-parallel-tft-with-touch-4-3-inch.html) is an ESP32-S3 board with an 800×480 IPS display and GT911 capacitive multitouch. Costs around $30 USD.
 
 **Full USB HID** — GPIO 19/20 are not used by the display or touch interface, so the ESP32-S3's native USB-OTG port is fully available for mouse + keyboard emulation.
