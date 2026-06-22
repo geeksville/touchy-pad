@@ -24,9 +24,11 @@ Thread safety
 -------------
 ``TouchyClient`` is single-shot per RPC: there's no internal lock, so
 concurrent calls from the read thread and the caller would corrupt the
-request/response stream. We serialise every RPC through the base class'
-``self.update_lock`` (an ``RLock`` it already holds for its own
-state-update paths).
+request/response stream. We serialise every client-level RPC through
+the base class' ``self.update_lock`` (an ``RLock`` it already holds for
+its own state-update paths). High-level :class:`~touchy_pad.api.Touchy`
+methods (``user_screen_save``, ``set_image_button_slot``) are safe to
+call from either thread without the lock.
 """
 
 from __future__ import annotations
@@ -50,9 +52,10 @@ else:
     _IMPORT_ERROR = None
 
 if TYPE_CHECKING:
-    from ..client import TouchyClient
+    from ..api import Touchy
 
 from .._proto import LvEventCode as _LvEventCode
+from ..api import ImageCache
 from ..usb_ids import PID as _TOUCHY_PID
 from ..usb_ids import VID as _TOUCHY_VID
 from . import layout as _layout
@@ -75,8 +78,7 @@ class _FakeTransportDevice:
     keep ``StreamDeck.open()`` / ``.connected()`` from blowing up.
     """
 
-    def __init__(self, client: TouchyClient, serial: str) -> None:
-        self._client = client
+    def __init__(self, serial: str) -> None:
         self._serial = serial
         self._open = True
 
@@ -114,10 +116,17 @@ class _FakeTransportDevice:
 class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
     """``StreamDeck`` subclass backed by a Touchy-Pad device.
 
-    Construct with an already-connected :class:`TouchyClient`. Call
-    :meth:`open` (inherited from ``StreamDeck``) to start the read
-    thread and push the initial empty key grid, then drive it like any
+    Construct with an already-connected :class:`~touchy_pad.api.Touchy`.
+    Call :meth:`open` (inherited from ``StreamDeck``) to start the read
+    thread and push the initial key-grid page, then drive it like any
     other StreamDeck (``set_key_callback``, ``set_key_image``, etc.).
+
+    Stage 100: the grid is pushed as a *user-screen* page body (rendered
+    inside the default chrome's ``page`` ref), key images are deduped
+    through a content-addressed :class:`~touchy_pad.api.ImageCache`, and
+    repaints happen in place via image-slot swaps (Stage 86) — so the
+    grid never flashes and a key the user is pressing keeps its touch
+    state.
 
     Grid geometry is derived from the device's reported display size
     (``SysBoardInfoResponse.display_{width,height}``): we lay out as
@@ -150,7 +159,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
 
     def __init__(
         self,
-        client: TouchyClient,
+        pad: Touchy,
         *,
         cols: int | None = None,
         rows: int | None = None,
@@ -162,12 +171,17 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
                 "install touchy-pad[streamdeck] to use TouchyDeck"
             ) from _IMPORT_ERROR
 
-        # When cols/rows weren't pinned by the caller, query the device
-        # for its panel resolution and lay out as many native-size keys
-        # as fit. Doing this *before* super().__init__() means the base
-        # class sees the right KEY_COUNT when it builds its caches.
+        # When cols/rows weren't pinned by the caller, lay out as many
+        # native-size keys as fit the device's panel. `touchy_open`
+        # populates `pad.board_info`, so it's available without an extra
+        # RPC.
         if cols is None or rows is None:
-            info = client.sys_board_info_get()
+            info = pad.board_info
+            if info is None:
+                raise ValueError(
+                    "TouchyDeck auto-grid requires pad.board_info; open the "
+                    "device via touchy_pad.api.touchy_open() or pass cols=/rows="
+                )
             auto_cols, auto_rows = self._auto_grid(info.display_width, info.display_height)
             if cols is None:
                 cols = auto_cols
@@ -186,21 +200,38 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         self.KEY_PIXEL_WIDTH = self.STREAMDECK_KEY_PIXELS
         self.KEY_PIXEL_HEIGHT = self.STREAMDECK_KEY_PIXELS
 
-        self._client = client
-        self._serial = serial or f"touchy-{id(client):x}"
-        self._screen_pushed = False
+        self._pad = pad
+        self._serial = serial or f"touchy-{id(pad):x}"
+        self._page_pushed = False
         self._brightness_pct = 100
+
+        # Content-addressed image cache (Stage 100): each distinct icon
+        # uploads once; repaints become a cheap in-place image-slot swap.
+        # max_dim caps icons at the key pixel size so the device never
+        # stores an oversized source.
+        self._cache = ImageCache(pad, max_dim=self.STREAMDECK_KEY_PIXELS)
+        # Cached blank-image path — seeded on first _push_page() and
+        # reused to clear keys.
+        self._blank_path: str | None = None
 
         # Per-key pressed state. Mutated by `_read_control_states` as it
         # drains the event queue; the base read loop diffs against its
         # own copy to emit edges.
         self._key_state: list[bool] = [False] * self.KEY_COUNT
+        # Keys the user is currently holding (Stage 86). Updated on
+        # PRESSED/RELEASED edges *before* the base read loop fires the
+        # user callback (which may call set_key_image), so the slot we
+        # paint matches the held state.
+        self._pressed_keys: set[int] = set()
+        # Last image asset path written to each (key, pressed-slot), so a
+        # repaint with unchanged content skips re-issuing the action.
+        self._last_slot_path: dict[tuple[int, bool], str] = {}
         # Set True whenever an edge mutates _key_state so the next
         # `_read_control_states` returns a snapshot instead of None
         # (None makes the base sleep ~1/poll_rate).
         self._state_dirty = threading.Event()
 
-        super().__init__(_FakeTransportDevice(client, self._serial))
+        super().__init__(_FakeTransportDevice(self._serial))
 
     # -- helpers ----------------------------------------------------------
 
@@ -239,7 +270,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         makes the base read loop sleep instead of busy-polling).
         """
         try:
-            evt = self._rpc(self._client.event_consume)
+            evt = self._rpc(self._pad.client.event_consume)
         except Exception:  # pragma: no cover - device-side I/O failures
             _LOG.exception("touchydeck: event_consume failed")
             return None
@@ -276,6 +307,13 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         if self._key_state[key] == pressed:
             return None
         self._key_state[key] = pressed
+        # Record the press state *before* the base read loop fires the
+        # user callback (which may call set_key_image), so the image
+        # slot we paint matches the held state (Stage 86).
+        if pressed:
+            self._pressed_keys.add(key)
+        else:
+            self._pressed_keys.discard(key)
         # Snapshot — the base class diffs vs its own last_key_states and
         # fires key_callback on edges, so returning the full list is the
         # contract even when only one cell changed.
@@ -286,17 +324,33 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         _LOG.debug("_reset_key_stream: no-op")
 
     def reset(self) -> None:  # noqa: D401 - base-class API
-        """Push the grid screen and clear cached key state."""
-        _LOG.debug("reset: pushing %dx%d grid screen", self.KEY_COLS, self.KEY_ROWS)
-        screen = _layout.build_screen(cols=self.KEY_COLS, rows=self.KEY_ROWS)
-        self._rpc(
-            self._client.file_save,
-            _layout.SCREEN_PATH,
-            screen.to_bytes(),
-        )
-        self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
+        """Push the key-grid page and clear cached key state.
+
+        Stage 100: the grid is pushed as a *user screen* page body
+        (rendered inside the default chrome's ``page`` ref) instead of a
+        standalone screen that replaces the boot chrome. Every cell
+        starts at one shared blank-image path (seeded through the
+        content-addressed cache); per-key artwork arrives later via
+        in-place image-slot swaps.
+        """
+        self._push_page()
         self._key_state = [False] * self.KEY_COUNT
-        self._screen_pushed = True
+        self._pressed_keys.clear()
+        self._last_slot_path.clear()
+
+    def _push_page(self) -> None:
+        """Upload the grid page body and bring it to the front."""
+        # Seed the blank image once so every key has a valid released
+        # image before any artwork arrives, and so a "clear" repaint has
+        # a stable path to point at.
+        if self._blank_path is None:
+            self._blank_path = self._cache.set_cached_image(_layout.BLANK_BIN)
+            _LOG.debug("touchydeck: seeded blank at %s", self._blank_path)
+        page = _layout.build_page(self.KEY_COLS, self.KEY_ROWS, blank_path=self._blank_path)
+        _LOG.debug("touchydeck: pushing %dx%d grid page", self.KEY_COLS, self.KEY_ROWS)
+        self._pad.user_screen_save(_layout.PAGE_NAME, page)
+        self._pad.show_user_screen(_layout.PAGE_NAME)
+        self._page_pushed = True
 
     def set_brightness(self, percent: int) -> None:  # noqa: D401 - base-class API
         """Stash the requested brightness; real backlight control is TBD.
@@ -313,39 +367,44 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
         if percent == 0:
             # Best-effort screen sleep; ignored if RPC fails.
             try:
-                self._rpc(self._client.screen_sleep_timeout, 0)
+                self._rpc(self._pad.client.screen_sleep_timeout, 0)
             except Exception:  # pragma: no cover
                 _LOG.debug("touchydeck: screen_sleep_timeout(0) failed", exc_info=True)
         else:
             try:
-                self._rpc(self._client.screen_wake)
+                self._rpc(self._pad.client.screen_wake)
             except Exception:  # pragma: no cover
                 _LOG.debug("touchydeck: screen_wake failed", exc_info=True)
 
     def set_key_image(self, key: int, image: bytes | None) -> None:  # noqa: D401 - base-class API
-        """Upload ``image`` (PNG bytes) to cell ``key`` and refresh the screen.
+        """Paint ``image`` (PNG bytes, or ``None`` to clear) onto cell ``key``.
 
-        ``image=None`` is treated as "clear" — there's no on-device
-        delete in the public API yet, so we just skip the upload; the
-        existing asset (if any) stays until the next call.
+        Stage 100: the image bytes are deduplicated through the
+        content-addressed cache (uploaded at most once per distinct
+        icon), then the matching image *slot* — pressed while the user
+        is holding the key, released otherwise — is repointed in place
+        via the Stage-86 image-slot swap. No widget rebuild, so the grid
+        doesn't flash and a key the user is pressing keeps its touch
+        state. ``image=None`` repaints the key with the blank placeholder.
         """
-        _LOG.debug("set_key_image: key=%d, image=%s", key, "present" if image else "None")
         if key < 0 or key >= self.KEY_COUNT:
             raise IndexError(f"key {key} out of range (0..{self.KEY_COUNT - 1})")
-        if image is None:
+        if not self._page_pushed:
+            self._push_page()  # Push the grid page if we haven't already
+        data = _layout.BLANK_BIN if image is None else bytes(image)
+        _LOG.debug(
+            "set_key_image: key=%d, image=%s",
+            key,
+            "blank" if image is None else f"{len(data)} bytes",
+        )
+        path = self._cache.set_cached_image(data)
+        pressed = key in self._pressed_keys
+        # Skip re-issuing the action when that slot already shows this
+        # asset (e.g. a duplicate repaint, or the blank we seeded).
+        if self._last_slot_path.get((key, pressed)) == path:
             return
-        path = _layout.asset_path_for(key)
-        # `file_save` auto-converts PNG/JPEG/etc. → LVGL .bin and rewrites
-        # the path's extension to .bin, matching the asset path the
-        # layout already references.
-        self._rpc(self._client.file_save, path, bytes(image))
-        # Re-load the screen so LVGL picks up the freshly-written asset.
-        # NOTE: this flashes the whole grid. A widget-targeted refresh
-        # RPC would be friendlier; tracked separately.
-        if not self._screen_pushed:
-            self.reset()  # Push the screen layout if we haven't already
-        # No longer needed, the device now auto redraws image files that are updated
-        # self._rpc(self._client.screen_load, _layout.SCREEN_PATH)
+        self._pad.set_image_button_slot(_layout.key_widget_id(key), pressed, path)
+        self._last_slot_path[(key, pressed)] = path
 
     def set_key_color(self, key: int, r: int, g: int, b: int) -> None:  # noqa: D401 - base-class API
         """Solid-colour key fill — not implemented for Touchy yet."""
@@ -380,7 +439,7 @@ class TouchyDeck(StreamDeck):  # type: ignore[misc,valid-type]
     def get_firmware_version(self) -> str:  # noqa: D401 - base-class API
         _LOG.debug("get_firmware_version: querying device")
         try:
-            v = self._rpc(self._client.sys_board_info_get)
+            v = self._rpc(self._pad.client.sys_board_info_get)
         except Exception:  # pragma: no cover
             return "unknown"
         return getattr(v, "firmware_version_str", "") or str(getattr(v, "firmware_version", 0))

@@ -5562,6 +5562,71 @@ wire change).
 *(None outstanding — `tap_distance` defaults to `TAP_MAX_MOVE`, `tap_time`
 is the renamed `tap_max_ms`, and `on_move` is never suppressed.)*
 
+## Stage 100: Python image cache + TouchyDeck user-screen port
+
+**Status: planned/in-progress.**
+
+Port the Python `touchy_pad.touchydeck` StreamController shim from its
+"standalone screen + per-key file rewrite + whole-grid reload" model
+(the bitrotted old way) to the architecture the Rust `touchy-opendeck`
+plugin already uses:
+
+1. **User screen, not standalone screen.** The key grid is pushed via
+   `Touchy.user_screen_save(PAGE_NAME, body)` + `show_user_screen(...)`,
+   so it renders *inside* the default chrome's `widget_ref(id="page")`
+   body instead of replacing the boot screen. No more `file_save` of a
+   full `Screen` + `screen_load`.
+2. **In-place per-key repaint via image-slot swap (Stage 86).** Each
+   cell starts at one shared blank-image path; repainting a key swaps
+   its `released` / `pressed` image slot in place via
+   `ActionChangeWidgetRef(IMAGE_BUTTON_RELEASED/PRESSED)`. No widget
+   rebuild → the whole grid no longer flashes and a key the user is
+   pressing keeps its touch state and still emits RELEASE.
+3. **Content-addressed image cache.** A new public
+   `touchy_pad.api.image_cache.ImageCache` uploads each *distinct* icon
+   bytes exactly once per session, keyed by a 128-bit content hash, to
+   `T:host/icache/<hash>.bin` (the transient `T:` drive). LRU eviction
+   at 128 entries; the first call wipes the cache root. Mirrors the
+   Rust `image_cache::ImageCache` (Stage 85/87).
+
+### Decisions (locked)
+
+- `TouchyDeck` holds a `touchy_pad.api.Touchy` (not a raw
+  `TouchyClient`), so it can call `user_screen_save` /
+  `set_image_button_slot`. `discovery.py` builds the `Touchy`.
+- `ImageCache` is **caller-owned** (`ImageCache(pad, max_dim=...)`),
+  matching Rust and keeping the `Touchy` surface small.
+- Hashing uses stdlib `hashlib.blake2b(digest_size=16)` (no new dep;
+  the Python and Rust caches never share files so identical path names
+  are not required).
+- `set_brightness` is **not** wired to the Stage-94 backlight pref in
+  this stage — it stays wake/sleep best-effort. A follow-up stage can
+  promote it.
+
+### New public API surface
+
+- `touchy_pad.api.image_cache.ImageCache` — `set_cached_image(data) ->
+  path`, plus `len()` / `clear()` helpers.
+- `touchy_pad.api.screens.set_image_button_slot_action(widget_id,
+  pressed, path) -> Action` — DSL helper, next to
+  `change_widget_ref_action`.
+- `touchy_pad.api.Touchy.set_image_button_slot(widget_id, pressed,
+  path) -> None` — thin wrapper over `run_actions`, mirroring
+  `show_user_screen`.
+
+### Files touched
+
+- `app/src/touchy_pad/api/image_cache.py` (new)
+- `app/src/touchy_pad/api/screens.py` (helper)
+- `app/src/touchy_pad/api/device.py` (`Touchy.set_image_button_slot`)
+- `app/src/touchy_pad/api/__init__.py` (export `ImageCache`)
+- `app/src/touchy_pad/touchydeck/layout.py` (rewrite: `build_page`)
+- `app/src/touchy_pad/touchydeck/deck.py` (rewrite: page push +
+  cache + slot-swap repaint)
+- `app/src/touchy_pad/touchydeck/discovery.py` (build `Touchy`)
+- `app/tests/test_image_cache.py` (new)
+- `app/tests/test_touchydeck.py` (extend)
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from ..api.device import Touchy
 from ..client import TouchyClient
 from ..transport import DeviceNotFoundError, UsbTransport
 from .deck import TouchyDeck
@@ -20,6 +21,23 @@ if TYPE_CHECKING:
     from StreamDeck.DeviceManager import register_controllers_factory  # noqa: F401
 
 _LOG = logging.getLogger(__name__)
+
+
+def _touchy_from_client(client: TouchyClient) -> Touchy:
+    """Wrap a connected client in a :class:`Touchy` (no event thread).
+
+    The deck polls ``event_consume`` itself (the StreamDeck base class
+    drives a read thread), so we deliberately do **not** start
+    :class:`Touchy`'s background event thread — it would race the deck's
+    own polling on the same client. ``board_info`` is populated so the
+    deck can auto-size its grid without an extra RPC.
+    """
+    info = None
+    try:
+        info = client.sys_board_info_get()
+    except Exception:  # noqa: BLE001
+        _LOG.debug("touchydeck: sys_board_info_get during discovery failed", exc_info=True)
+    return Touchy(client, start_event_thread=False, board_info=info)
 
 
 def find_touchy_decks() -> list[TouchyDeck]:
@@ -53,7 +71,8 @@ def find_touchy_decks() -> list[TouchyDeck]:
     if transport is not None:
         try:
             client = TouchyClient(transport)
-            decks.append(TouchyDeck(client))
+            pad = _touchy_from_client(client)
+            decks.append(TouchyDeck(pad))
         except Exception:
             _LOG.exception("touchydeck: failed to instantiate TouchyDeck for USB device")
             try:
@@ -68,7 +87,8 @@ def find_touchy_decks() -> list[TouchyDeck]:
     if sim_transport is not None:
         try:
             sim_client = TouchyClient(sim_transport)
-            decks.append(TouchyDeck(sim_client, serial=sim_transport.serial))
+            sim_pad = _touchy_from_client(sim_client)
+            decks.append(TouchyDeck(sim_pad, serial=sim_transport.serial))
         except Exception:
             _LOG.exception("touchydeck: failed to instantiate TouchyDeck for sim device")
 

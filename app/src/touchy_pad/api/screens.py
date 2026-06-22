@@ -509,6 +509,48 @@ def prev_widget_action(target_id: str, directory: str) -> _proto.Action:
     )
 
 
+def set_image_button_slot_action(
+    widget_id: str,
+    pressed: bool,
+    path: str,
+) -> _proto.Action:
+    """Repoint one image *slot* of an on-screen ``ImageButton`` in place (Stage 86).
+
+    Unlike :func:`change_widget_ref_action` (which swaps the whole widget
+    a ``WidgetRef`` points at), this addresses an ``ImageButton`` by its
+    own :attr:`Widget.id` and swaps exactly one of its image slots —
+    ``pressed`` (``IMAGE_BUTTON_PRESSED``) or released
+    (``IMAGE_BUTTON_RELEASED``) — to *path*. The widget itself is **not**
+    rebuilt, so a key the user is currently pressing keeps its touch
+    state and still emits a release event. This is the primitive the
+    StreamDeck-style repaints (``TouchyDeck.set_key_image`` / the Rust
+    OpenDeck plugin) use to update key artwork without flashing the grid.
+
+    Parameters
+    ----------
+    widget_id:
+        ``Widget.id`` of the ``ImageButton`` whose slot should change.
+        Must be the button's *own* id, not a parent ``WidgetRef`` id.
+    pressed:
+        ``True`` → rebind the pressed-image slot; ``False`` → rebind the
+        released-image slot.
+    path:
+        Full drive-prefixed path to the new image asset
+        (e.g. ``"T:host/icache/<hash>.bin"``).
+
+    The change is RAM-only; reloading the screen reverts the slot to the
+    image it was originally encoded with.
+    """
+    Behavior = _proto.ActionChangeWidgetRef.Behavior  # noqa: N86
+    behavior = Behavior.IMAGE_BUTTON_PRESSED if pressed else Behavior.IMAGE_BUTTON_RELEASED
+    if not widget_id:
+        raise ValueError("set_image_button_slot_action requires widget_id=")
+    if not path:
+        raise ValueError("set_image_button_slot_action requires path=")
+    msg = _proto.ActionChangeWidgetRef(behavior=behavior, path=path, target_id=widget_id)
+    return device_action(_proto.ActionDevice(change_widget_ref=msg))
+
+
 def _normalise_actions(actions) -> list[_proto.Action]:
     """Coerce DSL action input into a list of :class:`_proto.Action`.
 

@@ -177,6 +177,18 @@ class Touchy:
 
     # -- lifecycle ----------------------------------------------------------
 
+    @property
+    def client(self) -> TouchyClient:
+        """The underlying :class:`~touchy_pad.client.TouchyClient`.
+
+        Exposed for advanced uses that need a client-level RPC not yet
+        surfaced on :class:`Touchy` (e.g. the StreamDeck-compat shim
+        polls ``event_consume`` itself rather than using the background
+        event thread). Most callers should use the high-level methods on
+        this class instead.
+        """
+        return self._client
+
     def close(self) -> None:
         """Stop the background event thread and close the USB transport."""
         self._stop.set()
@@ -519,6 +531,36 @@ class Touchy:
         path = user_screen_path(name) if drive == "F" else f"R:host/uscr/{name}.pb"
         logger.debug("show_user_screen: %s", path)
         self._client.run_actions([change_widget_ref_action("page", path)])
+
+    def set_image_button_slot(
+        self,
+        widget_id: str,
+        pressed: bool,
+        path: str,
+    ) -> None:
+        """Repoint one image slot of an on-screen ``ImageButton`` in place (Stage 86).
+
+        Swaps exactly one of the button's image slots — ``pressed`` or
+        released — to *path* without rebuilding the widget, so a key the
+        user is currently holding keeps its touch state and still emits a
+        release event. This is the primitive behind StreamDeck-style key
+        repaints (``TouchyDeck.set_key_image`` / the Rust OpenDeck plugin):
+        each distinct icon is uploaded once to a cache, then a key's
+        artwork is updated by pointing its slot at the cached path.
+
+        *widget_id* is the ``Widget.id`` of the ``ImageButton`` (its own
+        id, not a parent ``WidgetRef``). *pressed* selects the slot
+        (``True`` → pressed image, ``False`` → released image). *path* is
+        a full drive-prefixed asset path
+        (e.g. ``"T:host/icache/<hash>.bin"``).
+
+        Mirrors the Rust ``Touchy::set_image_button_slot``. See also
+        :func:`touchy_pad.api.screens.set_image_button_slot_action`.
+        """
+        from .screens import set_image_button_slot_action
+
+        logger.debug("set_image_button_slot: %s pressed=%s -> %s", widget_id, pressed, path)
+        self._client.run_actions([set_image_button_slot_action(widget_id, pressed, path)])
 
     # -- event dispatch ----------------------------------------------------
 

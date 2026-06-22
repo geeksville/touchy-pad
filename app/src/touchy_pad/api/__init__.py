@@ -43,6 +43,7 @@ from .device import (
     touchy_get_pad_ids,
     touchy_open,
 )
+from .image_cache import ImageCache
 from .macros import (
     HID_MOUSE_BTN_LEFT,
     HID_MOUSE_BTN_MIDDLE,
@@ -103,6 +104,7 @@ from .screens import (
     rect,
     ripple_animation,
     row,
+    set_image_button_slot_action,
     slider,
     spacer,
     style,
@@ -155,6 +157,7 @@ __all__ = [
     "change_widget_ref_action",
     "next_widget_action",
     "prev_widget_action",
+    "set_image_button_slot_action",
     "button",
     "label",
     "slider",
@@ -180,6 +183,8 @@ __all__ = [
     "SCREENS_DIR",
     "USER_SCREENS_DIR",
     "DEFAULT_SCREEN_PATH",
+    # Content-addressed image cache (Stage 100).
+    "ImageCache",
     # Macros.
     "key_down",
     "key_up",
