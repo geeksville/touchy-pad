@@ -6,3 +6,6 @@
 	path = tools/OpenDeck
 	url = https://github.com/nekename/OpenDeck.git
 
+[submodule "tools/plugins"]
+	path = tools/plugins
+	url = https://github.com/geeksville/plugins
