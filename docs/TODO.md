@@ -1,26 +1,16 @@
 # TODO
 
-## Alpha 5
-Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
-
-* [ ] update readme based on this progress... trackpad is 'finished'
+## Next
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] add photo of the small board
 * [ ] change recommended board in hardware.md
 * [ ] explain plans w.r.t. 3d printing and knobs on the screen
-* [x] properly warn user if selected gif/file is too large to use (based on ram size)
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
-* [ ] publish the opendeck plugin
-* [x] progress on [user widgets](user-widgets.md) (not yet user visible, but closer to a 'stable' API)
-* [x] cleanup screens.py constants
-* [x] Give user friendly error msg if firmware or py code is too old
-* [x] when using ch341 uart try to use 460800 for better speeds
-* [x] support turn, back, forward, up, zoom, twist gestures natively.  be careful to not confuse with drags.  add various slope/min-dist/max-time thresholds.
-* [x] allow setting brightness by putting that GPIO on a hw PWM output
 * [ ] write a hackster.io article for buzz.  Reference old Meshtastic article.
 * [ ] Post here https://www.reddit.com/r/esp32
 
 # Alpha n
+Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
 * [ ] finish [user widgets](user-widgets.md) 
 * [ ] make 'streamdeck like' knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
@@ -127,6 +117,24 @@ OpenDeck screen build 100% reliable and super fast.
 
 * [x] make opendeck much faster by storing images via hashed names. thus allowing quick button switching by just swapping WidgetRefs
 * [x] rust logs in opendeck are not seeing device log messages
+
+## 0.3.1 beta
+Main features/fixes:
+* [x] The 'trackpad' widget is now feature-complete!
+* [x] support turn, back, forward, up, zoom, twist gestures natively.  be careful to not confuse with drags.  add various slope/min-dist/max-time thresholds.
+* [x] allow setting brightness by putting that GPIO on a hw PWM output
+* [x] @chmouel added support for jc4827w543r board
+* [x] [@ckirmse](https://github.com/ckirmse) added support for:
+  * MakerFabs MaTouch 4.3" (`matouch_43`)
+  * SQUiXL by Unexpected Maker.
+  * He also added the PWM based LED controller - which made it much easier to add variable backlight brightness to all the boards.
+* [x] update readme based on this progress... trackpad is 'finished'
+* [x] properly warn user if selected gif/file is too large to use (based on ram size)
+* [x] publish the opendeck plugin
+* [x] progress on [user widgets](user-widgets.md) (not yet user visible, but closer to a 'stable' API)
+* [x] cleanup screens.py constants
+* [x] Give user friendly error msg if firmware or py code is too old
+* [x] when using ch341 uart try to use 460800 for better speeds
 
 # Rejected ideas
 
