@@ -3,7 +3,7 @@
 ## Alpha 5
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
-* [ ] update readme based on this progress...
+* [ ] update readme based on this progress... trackpad is 'finished'
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] add photo of the small board
 * [ ] change recommended board in hardware.md

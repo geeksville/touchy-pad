@@ -138,14 +138,14 @@ jobs:
           # as the top-level directory.
           mkdir -p rust/target
           ( cd plugin_staging && \
-            zip -r "${GITHUB_WORKSPACE}/rust/target/com.geeksville.touchypad.sdPlugin.zip" \
+            zip -r "${GITHUB_WORKSPACE}/rust/target/com.geeksville.touchypad.zip" \
               com.geeksville.touchypad.sdPlugin )
           echo "Zip contents:"
-          unzip -l rust/target/com.geeksville.touchypad.sdPlugin.zip
+          unzip -l rust/target/com.geeksville.touchypad.zip
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
-          path: rust/target/com.geeksville.touchypad.sdPlugin.zip
+          path: rust/target/com.geeksville.touchypad.zip
           if-no-files-found: error
