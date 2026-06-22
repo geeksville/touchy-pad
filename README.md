@@ -42,7 +42,7 @@ Disclaimer: This project is young, but moving at a fast pace.  You can already u
 ## [OpenDeck](https://github.com/nekename/OpenDeck) plugin
 This project includes a [plugin](rust/touchy-opendeck/) for OpenDeck.  It allows you to use a touchy-pad as a 'StreamDeck' like device (that costs only $15!).
 
-The plugin is young and not yet in the OpenDeck 'store' so you need to [download](https://github.com/geeksville/touchy-pad/releases/latest) a ZIP file if you want to install it.  Download com.geeksville.touchypad.sdPlugin.zip into a temp directory then inside of OpenDeck go to plugins and choose install-from-zip.  You'll end up with something like:
+The plugin is young and not yet in the OpenDeck 'store' so you need to [download](https://github.com/geeksville/touchy-pad/releases/latest) a ZIP file if you want to install it.  Download com.geeksville.touchypad.zip into a temp directory then inside of OpenDeck go to plugins and choose install-from-zip.  You'll end up with something like:
 
 ![opendeck install](docs/images/opendeck-plugins.png).
 
