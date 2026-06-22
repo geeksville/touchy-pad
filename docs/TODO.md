@@ -1,6 +1,7 @@
 # TODO
 
 ## Next
+* [ ] add udev instructions (or possibly automate?)
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] update autopage and do steam background
 * [ ] add a which hw/why guide (psram etc...)
