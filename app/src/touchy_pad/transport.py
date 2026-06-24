@@ -18,6 +18,7 @@ import struct
 import threading
 from abc import ABC, abstractmethod
 
+from .errors import TouchyError
 from .usb_ids import PID, VENDOR_INTERFACE_CLASS, VID
 
 # Wire framing (Stage 64.3): a self-synchronising frame used by *every*
@@ -53,6 +54,17 @@ def _crc8(data: bytes) -> int:
 
 class TransportError(Exception):
     """Raised on USB I/O failures or framing violations."""
+
+
+class TransportPermissionError(TouchyError):
+    """Raised when an operation is not permitted, e.g., probably bad udev rules."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(
+            message="Insufficient permissions see "
+            "https://github.com/geeksville/touchy-pad/blob/main/docs/udev.md "
+            f"to fix ({path})",
+        )
 
 
 class DeviceNotFoundError(TransportError):
@@ -340,10 +352,6 @@ def _install_host_dev_fallback() -> None:
             fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
         except FileNotFoundError as e:
             raise TransportError(f"device node not found under {_HOST_DEV_USB_ROOT}: {path}") from e
-        except PermissionError as e:
-            raise TransportError(
-                f"permission denied opening {path}; check udev rules / group"
-            ) from e
 
         self.handle = _lb._libusb_device_handle()
         self.devid = dev.devid
@@ -496,6 +504,8 @@ class UsbTransport(Transport):
         # read/write paths skip the broken descriptor query.
         try:
             cfg = dev.get_active_configuration()
+        except PermissionError as e:
+            raise TransportPermissionError(e.filename) from e
         except usb.core.USBError:
             try:
                 dev.set_configuration()

@@ -1,9 +1,11 @@
 # TODO
 
 ## Next
+* [ ] show friendly error messages in py and rust plugin for device permissions errors, point to webpage
 * [ ] add udev instructions (or possibly automate?)
+* [ ] update autopage and do steam background and sys info pages (cpu %, gpu %, temp, frame rate, graph)
+* [ ] finish [user widgets](user-widgets.md) 
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
-* [ ] update autopage and do steam background
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] add photo of the small board
 * [ ] change recommended board in hardware.md
@@ -14,7 +16,6 @@
 # Alpha n
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
 
-* [ ] finish [user widgets](user-widgets.md) 
 * [ ] make 'streamdeck like' knobs/dials with gesture overlays (share code with trackpad) ccw/cw/left/up etc...
 * [ ] use gestures for left/right screen switching instead of buttons at top.
 * [ ] Implement multitouch HID to support multitouch native apps
