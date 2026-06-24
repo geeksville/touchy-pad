@@ -401,3 +401,9 @@ def _invoke_esptool(
         if code != 0:
             console.print(f"[red]esptool failed (exit {code})[/red]")
             sys.exit(code)
+    except esptool.util.FatalError as e:
+        console.print(f"[red]esptool fatal error: {e}[/red]")
+        console.print(
+            "[yellow]You might need to follow the instructions at: https://github.com/geeksville/touchy-pad/blob/main/docs/udev.md[/yellow]"
+        )
+        sys.exit(1)
