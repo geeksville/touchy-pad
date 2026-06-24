@@ -15,7 +15,7 @@ from touchy_pad._proto import (
     SysBoardInfoResponse,
 )
 from touchy_pad.api import MINIMUM_FIRMWARE_VERSION, ImageCache, touchy_open
-from touchy_pad.transport import Transport
+from touchy_pad.api._transport import Transport
 
 
 class _FakeTransport(Transport):

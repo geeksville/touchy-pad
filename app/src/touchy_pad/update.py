@@ -183,7 +183,7 @@ def _bootloader_visible() -> bool:
     created, even though they show up in /sys and /host/dev), which is
     exactly the case we hit when the user enters bootloader mode by
     holding BOOT and replugging mid-command. See the matching
-    ``_install_host_dev_fallback`` workaround in ``transport.py`` —
+    ``_install_host_dev_fallback`` workaround in ``api/_transport.py`` —
     same root cause (the sandboxed /dev/bus/usb), different libusb code
     path.
 

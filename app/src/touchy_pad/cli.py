@@ -11,8 +11,8 @@ from pathlib import Path
 
 import click
 
-from .client import TouchyClient, TouchyError
-from .transport import DeviceNotFoundError, Transport
+from .api import TouchyClient, TouchyError
+from .api._transport import DeviceNotFoundError, Transport
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ def cli(
         force=True,  # Override any existing configuration
     )
     # Suppress noisy RPC trace logs even in debug mode
-    logging.getLogger("touchy_pad.client.rpc").setLevel(logging.INFO)
+    logging.getLogger("touchy_pad.api.client.rpc").setLevel(logging.INFO)
 
     ctx.ensure_object(dict)
     sim_modes = [bool(sim_remote is not None), sim_headless, sim_gui]
@@ -155,7 +155,7 @@ def cli(
     #   see it.
 
     if sim_remote is not None:
-        from .transport_net import DEFAULT_SIM_PORT, TcpTransport, parse_sim_url
+        from .api._transport_net import DEFAULT_SIM_PORT, TcpTransport, parse_sim_url
 
         if sim_remote:
             host, tcp_port = parse_sim_url(sim_remote)
@@ -302,7 +302,7 @@ def _make_transport() -> Transport | None:
     # protocol over it instead of auto-discovering a USB device.
     port = ctx.obj.get("port")
     if port:
-        from .transport_serial import SerialTransport
+        from .api._transport_serial import SerialTransport
 
         return SerialTransport(port)
     return None
@@ -425,8 +425,8 @@ def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int |
     By default opens a Qt window viewing the simulated screen. Pass
     ``--headless`` for CI / SSH use.
     """
+    from .api._transport_net import DEFAULT_SIM_PORT
     from .sim.server import SimServer
-    from .transport_net import DEFAULT_SIM_PORT
 
     if bind != "127.0.0.1":
         logger.warning(

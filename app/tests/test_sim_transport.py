@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import pathlib
 
-from touchy_pad import TouchyClient, _proto
+from touchy_pad import _proto
+from touchy_pad.api import TouchyClient
 from touchy_pad.api.screens import build_demo
 from touchy_pad.sim.transport import SimDeviceTransport, make_tempdir_transport
 

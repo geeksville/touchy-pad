@@ -2,14 +2,14 @@
 
 Wraps :class:`~touchy_pad.sim.device.SimDevice` with the same
 command-OUT / response-IN queue model as the real USB transport, so
-:class:`touchy_pad.TouchyClient` can use either interchangeably.
+:class:`touchy_pad.api.TouchyClient` can use either interchangeably.
 
 Implementation: two ``queue.Queue`` channels plus one worker thread
 that drains the command queue, dispatches via :meth:`SimDevice.handle_command`,
 and pushes the reply onto the response queue.
 
 No framing is required (queues carry discrete messages), so this is
-significantly simpler than :class:`~touchy_pad.transport.UsbTransport`.
+significantly simpler than :class:`~touchy_pad.api._transport.UsbTransport`.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 from queue import Empty, Queue
 
 from .. import _proto
-from ..transport import Transport, TransportError
+from ..api._transport import Transport, TransportError
 from .device import SimDevice
 from .fs import SimFs, default_cache_root
 

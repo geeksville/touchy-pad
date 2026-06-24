@@ -48,7 +48,7 @@ to populate a persistent layer.  Per-layer layouts are independent:
 On the wire and on the device filesystem, images are stored in LVGL's
 native `.bin` format (12-byte header + pixel planes; RGB565A8 by
 default, so transparency is supported). The Python host package
-(`touchy_pad.client.TouchyClient.file_save`) auto-converts any
+(`touchy_pad.api.TouchyClient.file_save`) auto-converts any
 Pillow-readable input — BMP, PNG, JPEG, GIF, WebP — to that format
 before upload, so callers can pass arbitrary image bytes:
 

@@ -4,13 +4,13 @@ The simulator (``touchy simulator``) exposes the same protobuf
 command/response protocol over a TCP socket that the firmware exposes
 over USB bulk endpoints. Framing on the wire is *identical*: a 4-byte
 little-endian length prefix followed by the nanopb payload (see
-:mod:`touchy_pad.transport`).
+:mod:`touchy_pad.api._transport`).
 
 This module provides:
   * :data:`DEFAULT_SIM_PORT` — the agreed-upon TCP port.
   * :data:`SIM_URL_ENV` — the env-var name used as a fallback for
     discovery (``TOUCHY_SIM_URL``).
-  * :class:`TcpTransport` — a :class:`~touchy_pad.transport.Transport`
+  * :class:`TcpTransport` — a :class:`~touchy_pad.api._transport.Transport`
     that speaks the wire format above to a remote / in-process
     :class:`~touchy_pad.sim.server.SimServer`.
   * :func:`parse_sim_url` — split a ``host[:port]`` /
@@ -27,7 +27,7 @@ import os
 import socket
 import time
 
-from .transport import (
+from ._transport import (
     TransportError,
     _StreamFramedTransport,
 )

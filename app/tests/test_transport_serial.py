@@ -15,8 +15,8 @@ import pytest
 
 serial = pytest.importorskip("serial")
 
-from touchy_pad.transport import _FrameDecoder, _pack  # noqa: E402
-from touchy_pad.transport_serial import BAUD_RATE, SerialTransport  # noqa: E402
+from touchy_pad.api._transport import _FrameDecoder, _pack  # noqa: E402
+from touchy_pad.api._transport_serial import BAUD_RATE, SerialTransport  # noqa: E402
 
 if not hasattr(os, "openpty"):  # pragma: no cover - platform dependent
     pytest.skip("openpty unavailable on this platform", allow_module_level=True)
@@ -105,7 +105,7 @@ class _FakePort:
 def test_discover_keeps_known_vid_pid(monkeypatch, tmp_path) -> None:
     from serial.tools import list_ports
 
-    from touchy_pad import transport_serial as ts
+    from touchy_pad.api import _transport_serial as ts
 
     accessible = tmp_path / "ttyUSB0"
     accessible.write_bytes(b"")
@@ -125,7 +125,7 @@ def test_discover_keeps_known_vid_pid(monkeypatch, tmp_path) -> None:
 def test_discover_drops_unknown_vid_pid(monkeypatch, tmp_path) -> None:
     from serial.tools import list_ports
 
-    from touchy_pad import transport_serial as ts
+    from touchy_pad.api import _transport_serial as ts
 
     p = tmp_path / "ttyOther"
     p.write_bytes(b"")
@@ -144,7 +144,7 @@ def test_discover_drops_unknown_vid_pid(monkeypatch, tmp_path) -> None:
 def test_discover_drops_inaccessible_node(monkeypatch, tmp_path) -> None:
     from serial.tools import list_ports
 
-    from touchy_pad import transport_serial as ts
+    from touchy_pad.api import _transport_serial as ts
 
     monkeypatch.setattr(
         list_ports,
@@ -159,7 +159,7 @@ def test_discover_drops_inaccessible_node(monkeypatch, tmp_path) -> None:
 def test_discover_host_dev_fallback(monkeypatch, tmp_path) -> None:
     from serial.tools import list_ports
 
-    from touchy_pad import transport_serial as ts
+    from touchy_pad.api import _transport_serial as ts
 
     fake_host_dev = tmp_path / "host-dev"
     fake_host_dev.mkdir()

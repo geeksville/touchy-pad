@@ -11,7 +11,9 @@ import queue
 
 import pytest
 
-from touchy_pad import TouchyClient, Transport, _proto
+from touchy_pad import _proto
+from touchy_pad.api import TouchyClient, TouchyError
+from touchy_pad.api._transport import Transport
 
 
 class LoopbackTransport(Transport):
@@ -309,8 +311,6 @@ def test_event_consume_returns_event(make_client):
 
 
 def test_device_error_raises_touchy_error(make_client):
-    from touchy_pad.client import TouchyError
-
     def server(cmd, _t):
         return _proto.Response(code=_proto.RESULT_INVALID_ARG)
 

@@ -7,16 +7,16 @@ import threading
 
 import pytest
 
-from touchy_pad.client import TouchyClient
-from touchy_pad.sim.server import SimServer, SimServerTransport
-from touchy_pad.transport import TransportError
-from touchy_pad.transport_net import (
+from touchy_pad.api import TouchyClient
+from touchy_pad.api._transport import TransportError
+from touchy_pad.api._transport_net import (
     DEFAULT_SIM_PORT,
     SIM_URL_ENV,
     TcpTransport,
     parse_sim_url,
     sim_url_from_env,
 )
+from touchy_pad.sim.server import SimServer, SimServerTransport
 
 # ---------------------------------------------------------------------------
 # parse_sim_url

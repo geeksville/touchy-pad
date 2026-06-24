@@ -56,8 +56,8 @@ if TYPE_CHECKING:
 
 from .._proto import LvEventCode as _LvEventCode
 from ..api import ImageCache
-from ..usb_ids import PID as _TOUCHY_PID
-from ..usb_ids import VID as _TOUCHY_VID
+from ..api._usb_ids import PID as _TOUCHY_PID
+from ..api._usb_ids import VID as _TOUCHY_VID
 from . import layout as _layout
 
 _LOG = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ class _FakeTransportDevice:
     # these as callables on the device object (the StreamDeck base
     # class and probe tools call them like ``deck.device.vendor_id()``).
     # Values match the Touchy-Pad USB descriptor (see
-    # ``touchy_pad.usb_ids``).
+    # ``touchy_pad.api._usb_ids``).
     def vendor_id(self) -> int:
         return _TOUCHY_VID
 

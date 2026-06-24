@@ -57,10 +57,10 @@ persists only the field you set.
 
 ## Python library
 
-`TouchyClient` in `touchy_pad.client` is the high-level API:
+`TouchyClient` in `touchy_pad.api` is the high-level API:
 
 ```python
-from touchy_pad.client import TouchyClient
+from touchy_pad.api import TouchyClient
 
 with TouchyClient.open() as c:
     v = c.sys_version_get()

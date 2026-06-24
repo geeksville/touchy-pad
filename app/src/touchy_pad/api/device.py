@@ -31,10 +31,11 @@ from typing import Union
 from google.protobuf.message import Message as _PbMessage
 
 from .. import _proto
-from ..client import TouchyClient
 from ..paths import DYNAMIC_IMAGE_DIR, screen_path
-from ..transport import PID, VID, Transport
 from . import _events, images_dynamic, protobuf
+from ._transport import Transport
+from ._usb_ids import PID, VID
+from .client import TouchyClient
 from .screens import Screen as _DslScreen
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,7 @@ def touchy_get_pad_ids() -> list[str]:
     # after native USB so callers that want "the first device" still pick
     # native hardware first.
     try:
-        from ..transport_serial import discover_serial_ports
+        from ._transport_serial import discover_serial_ports
     except Exception:  # noqa: BLE001 - pyserial optional
         pass
     else:
@@ -179,7 +180,7 @@ class Touchy:
 
     @property
     def client(self) -> TouchyClient:
-        """The underlying :class:`~touchy_pad.client.TouchyClient`.
+        """The underlying :class:`~touchy_pad.api.client.TouchyClient`.
 
         Exposed for advanced uses that need a client-level RPC not yet
         surfaced on :class:`Touchy` (e.g. the StreamDeck-compat shim
@@ -617,7 +618,7 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
     ``transport`` is an internal escape hatch used by tests — production
     code should leave it ``None``.
 
-    Raises :class:`touchy_pad.transport.DeviceNotFoundError` when no
+    Raises :class:`touchy_pad.api._transport.DeviceNotFoundError` when no
     matching device is attached, and :class:`IncompatibleFirmwareError`
     when the device reports a firmware version older than
     :data:`MINIMUM_FIRMWARE_VERSION`.
@@ -631,7 +632,7 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
     if transport is None:
         # Stage 83 — explicit "uart:<path>" selector opens that serial port.
         if serial is not None and serial.startswith("uart:"):
-            from ..transport_serial import SerialTransport
+            from ._transport_serial import SerialTransport
 
             transport = SerialTransport(serial[len("uart:") :])
         else:
@@ -655,7 +656,7 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
                 # any host-side consumer (Rust client, OpenDeck plugin,
                 # ad-hoc script) transparently picks up an out-of-process
                 # simulator just by exporting the env var.
-                from ..transport_net import TcpTransport, sim_url_from_env
+                from ._transport_net import TcpTransport, sim_url_from_env
 
                 sim_url = sim_url_from_env()
                 if sim_url is not None:
@@ -670,7 +671,7 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
                     if real is None:
                         # Re-raise the USB-specific error (DeviceNotFoundError)
                         # the way callers expect when nothing is attached.
-                        from ..transport import UsbTransport
+                        from ._transport import UsbTransport
 
                         transport = UsbTransport()
                     else:
@@ -706,14 +707,14 @@ def _open_first_real_device() -> Transport | None:
     or re-raise a USB-specific not-found error).
     """
     try:
-        from ..transport import UsbTransport
+        from ._transport import UsbTransport
 
         return UsbTransport()
     except Exception:
         pass
 
     try:
-        from ..transport_serial import SerialTransport, discover_serial_ports
+        from ._transport_serial import SerialTransport, discover_serial_ports
     except Exception:  # noqa: BLE001 - pyserial optional
         return None
 

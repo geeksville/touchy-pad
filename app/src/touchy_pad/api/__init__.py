@@ -2,8 +2,12 @@
 
 This package is the supported entry point for application code.
 Everything in here is part of the stable API; everything outside
-this package (``touchy_pad.client``, ``touchy_pad._proto``, …) is
-considered internal and may change without notice.
+this package (``touchy_pad._proto``, the simulator, the CLI, …) is
+considered internal and may change without notice. The wire transports
+(``UsbTransport``, ``TcpTransport``, …) live here too as private
+``_transport*`` modules — they are not re-exported because application
+code should use :func:`touchy_open` / :class:`TouchyClient` instead of
+constructing a transport by hand.
 
 Typical usage::
 
@@ -36,6 +40,7 @@ from ..paths import (
     USER_SCREENS_DIR,
 )
 from . import hid_keys, images, lvgl_image, protobuf
+from .client import TouchyClient
 from .device import (
     MINIMUM_FIRMWARE_VERSION,
     IncompatibleFirmwareError,
@@ -43,6 +48,7 @@ from .device import (
     touchy_get_pad_ids,
     touchy_open,
 )
+from .errors import TouchyError
 from .image_cache import ImageCache
 from .macros import (
     HID_MOUSE_BTN_LEFT,
@@ -123,6 +129,8 @@ from .sim_registry import (
 __all__ = [
     # Device lifecycle.
     "Touchy",
+    "TouchyClient",
+    "TouchyError",
     "touchy_open",
     "touchy_get_pad_ids",
     "IncompatibleFirmwareError",

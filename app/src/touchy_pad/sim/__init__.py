@@ -2,7 +2,7 @@
 
 A 100%-Python stand-in for the ESP32 firmware that speaks the same
 host-API protocol (see ``docs/host-api.md``) over an in-process
-:class:`~touchy_pad.transport.Transport`. Enables app development
+:class:`~touchy_pad.api._transport.Transport`. Enables app development
 without device hardware.
 
 Two modes:
@@ -16,7 +16,7 @@ Two modes:
 
 Typical use::
 
-    from touchy_pad import TouchyClient
+    from touchy_pad.api import TouchyClient
     from touchy_pad.sim import SimDeviceTransport
 
     with TouchyClient(SimDeviceTransport(headless=True)) as pad:

@@ -7,8 +7,7 @@ import time
 
 import pytest
 
-from touchy_pad.api import Touchy, touchy_open
-from touchy_pad.client import TouchyClient
+from touchy_pad.api import Touchy, TouchyClient, touchy_open
 from touchy_pad.sim.transport import make_tempdir_transport
 from touchy_pad.touchydeck import TouchyDeck
 from touchy_pad.touchydeck.layout import (

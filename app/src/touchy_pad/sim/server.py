@@ -6,7 +6,7 @@ Stage 63 — the in-process queue-backed sim still exists for unit tests
 modes) goes through this class so the *exact same* length-prefixed
 nanopb framing exercised by the USB bulk endpoints is exercised by the
 sim too. That makes the host's PNG→LVGL ``.bin`` conversion, the
-:class:`~touchy_pad.transport_net.TcpTransport`, and the Rust client
+:class:`~touchy_pad.api._transport_net.TcpTransport`, and the Rust client
 all reach the sim by the same code paths they'd reach hardware.
 
 One TCP connection at a time, mirroring USB exclusivity. Concurrent
@@ -22,8 +22,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .. import _proto
-from ..transport import _FrameDecoder, _pack
-from ..transport_net import DEFAULT_SIM_PORT, TcpTransport
+from ..api._transport import _FrameDecoder, _pack
+from ..api._transport_net import DEFAULT_SIM_PORT, TcpTransport
 from .device import SimDevice
 from .fs import SimFs, default_cache_root
 
@@ -37,7 +37,7 @@ class SimServer:
     ----------
     host, port:
         Bind address. Defaults to loopback on
-        :data:`~touchy_pad.transport_net.DEFAULT_SIM_PORT`. Pass
+        :data:`~touchy_pad.api._transport_net.DEFAULT_SIM_PORT`. Pass
         ``port=0`` to let the OS pick (handy for tests); read the
         chosen port back from :attr:`port`.
     serial:

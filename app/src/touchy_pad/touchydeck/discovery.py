@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from ..api import TouchyClient
+from ..api._transport import DeviceNotFoundError, UsbTransport
 from ..api.device import Touchy
-from ..client import TouchyClient
-from ..transport import DeviceNotFoundError, UsbTransport
 from .deck import TouchyDeck
 
 if TYPE_CHECKING:

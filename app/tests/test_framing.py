@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from touchy_pad.transport import (
+from touchy_pad.api._transport import (
     _MAGIC,
     _MAX_FRAME,
     TransportError,

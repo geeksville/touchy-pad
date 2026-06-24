@@ -404,7 +404,7 @@ def host_action(
       yourself with ``pad.on_host_event(code, callback)``. An ``on_event=``
       callback may still be supplied to bind it to that explicit code.
 
-    The host-side :class:`touchy_pad.TouchyClient` dispatches incoming
+    The host-side :class:`touchy_pad.api.TouchyClient` dispatches incoming
     ``LvEvent``\\s on ``host_code``; the callback receives the full
     :class:`_proto.LvEvent` (inspect ``user_data``, ``value``,
     ``checked``, ...).

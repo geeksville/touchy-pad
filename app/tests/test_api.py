@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from touchy_pad import Transport, _proto
+from touchy_pad import _proto
 from touchy_pad.api import (
     MINIMUM_FIRMWARE_VERSION,
     IncompatibleFirmwareError,
@@ -25,6 +25,7 @@ from touchy_pad.api import (
     protobuf,
     touchy_open,
 )
+from touchy_pad.api._transport import Transport
 
 # ---------------------------------------------------------------------------
 # loopback transport — copy of test_client.LoopbackTransport with a

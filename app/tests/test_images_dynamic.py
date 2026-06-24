@@ -7,8 +7,7 @@ import re
 
 import pytest
 
-from touchy_pad import TouchyClient
-from touchy_pad.api import touchy_open
+from touchy_pad.api import TouchyClient, touchy_open
 from touchy_pad.api.screens import ImageSource, image, image_button
 from touchy_pad.sim.transport import make_tempdir_transport
 

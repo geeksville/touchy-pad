@@ -4,7 +4,7 @@
 and produces serialized :class:`touchy.Response` protobufs, mirroring
 what the firmware does in ``firmware/main/host_api.cpp``. Coupled with
 :class:`~touchy_pad.sim.transport.SimDeviceTransport` it lets the
-existing :class:`touchy_pad.TouchyClient` talk to a Python sim instead
+existing :class:`touchy_pad.api.TouchyClient` talk to a Python sim instead
 of real hardware.
 
 The sim deliberately implements only the subset of behavior needed for

@@ -125,7 +125,7 @@ build), with an automatic fallback to **RGB565A8** when the source
 image actually contains non-opaque pixels — the host emits a single
 `WARNING` on `touchy_pad.api.lvgl_image` to flag the slow path.
 Hosts do **not** need to know any of this. The Python package
-(`touchy_pad.client.TouchyClient.file_save`) auto-detects any
+(`touchy_pad.api.TouchyClient.file_save`) auto-detects any
 Pillow-readable image (BMP, PNG, JPEG, GIF, WebP) by its magic bytes,
 converts it to LVGL `.bin`, **and rewrites the destination path's
 extension to `.bin`** before transmitting. So

@@ -170,7 +170,7 @@ class ImageCache:
         """Normalise *data* to device-ready bytes and return ``(bytes, suffix)``.
 
         Mirrors the conversion logic in
-        :meth:`~touchy_pad.client.TouchyClient.file_save` so that a cached
+        :meth:`~touchy_pad.api.client.TouchyClient.file_save` so that a cached
         asset is byte-identical to a direct ``file_save`` of the same
         input (and thus interchangeable as a widget image path):
 

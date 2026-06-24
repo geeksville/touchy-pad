@@ -18,8 +18,8 @@ import struct
 import threading
 from abc import ABC, abstractmethod
 
+from ._usb_ids import PID, VENDOR_INTERFACE_CLASS, VID
 from .errors import TouchyError
-from .usb_ids import PID, VENDOR_INTERFACE_CLASS, VID
 
 # Wire framing (Stage 64.3): a self-synchronising frame used by *every*
 # transport (USB bulk, TCP sim, serial):

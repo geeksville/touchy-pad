@@ -2,7 +2,7 @@
 
 The official Python entry point for application code is
 `touchy_pad.api`. Everything outside this package (e.g.
-`touchy_pad.client`, `touchy_pad._proto`) is considered internal and
+`touchy_pad._proto`, the simulator, the CLI) is considered internal and
 may change without notice.
 
 Auto-generated per-class / per-function reference docs live under

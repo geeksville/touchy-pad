@@ -10,7 +10,8 @@ import logging
 
 import pytest
 
-from touchy_pad import TouchyClient, _proto
+from touchy_pad import _proto
+from touchy_pad.api import TouchyClient
 from touchy_pad.sim.transport import make_tempdir_transport
 
 

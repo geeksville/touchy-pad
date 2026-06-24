@@ -8,7 +8,7 @@ from __future__ import annotations
 
 # Read from the generated protobuf so this stays in sync with the firmware
 # automatically.  Source of truth: the Constants enum in proto/touchy.proto.
-from ._proto.touchy_pb2 import Constants as _C
+from .._proto.touchy_pb2 import Constants as _C
 
 VID: int = _C.Value("USB_VID")  # 0x303A — Espressif-assigned vendor ID
 PID: int = _C.Value("USB_PID")  # 0x8369 — touchy-pad product ID

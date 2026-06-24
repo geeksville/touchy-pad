@@ -87,7 +87,7 @@ def is_gif(data: bytes) -> bool:
 def looks_like_supported_image(data: bytes) -> bool:
     """Return True if *data* looks like a BMP / PNG / JPEG / GIF / WebP file.
 
-    Used by :meth:`touchy_pad.TouchyClient.file_save` to decide whether
+    Used by :meth:`touchy_pad.api.TouchyClient.file_save` to decide whether
     to transparently route the bytes through :func:`to_lvgl_bin` before
     uploading them to the device. Already-converted LVGL ``.bin`` files
     are passed through unchanged.
@@ -123,7 +123,7 @@ def rewrite_to_bin_path(path: str) -> str:
     *named* ``*.bin`` on the device — otherwise LVGL hands the bytes
     to the BMP / PNG / JPEG decoders, which reject them.
 
-    Both :meth:`touchy_pad.TouchyClient.file_save` and the screen DSL's
+    Both :meth:`touchy_pad.api.TouchyClient.file_save` and the screen DSL's
     asset-path handling call this helper so an ``asset="images/foo.png"``
     on the host transparently lines up with ``images/foo.bin`` on flash.
     Paths whose extension we don't recognise are returned unchanged.

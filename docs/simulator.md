@@ -173,7 +173,7 @@ apply to the in-process sim that `touchy simulator` owns.
 ### Python — out-of-process server + client
 
 ```python
-from touchy_pad import TouchyClient
+from touchy_pad.api import TouchyClient
 from touchy_pad.sim.server import make_tempdir_server_transport
 
 with make_tempdir_server_transport() as transport:

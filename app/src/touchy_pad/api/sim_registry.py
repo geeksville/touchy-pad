@@ -53,7 +53,7 @@ def create_sim_device(
 
     When ``network=True`` (Stage 63), the returned transport is a
     :class:`~touchy_pad.sim.server.SimServerTransport`: a
-    :class:`~touchy_pad.transport_net.TcpTransport` wrapping an
+    :class:`~touchy_pad.api._transport_net.TcpTransport` wrapping an
     in-process :class:`~touchy_pad.sim.server.SimServer` bound to an
     ephemeral loopback port. Exercises the same length-prefixed nanopb
     framing as the real USB transport. ``.device`` and ``.serial``

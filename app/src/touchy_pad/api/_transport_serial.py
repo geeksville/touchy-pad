@@ -3,7 +3,7 @@
 This lets the host talk to a device that exposes the protocol over a
 serial port (a USB-CDC ACM port, or a real UART on boards without native
 USB such as the future CYD2USB). It uses the same self-synchronising
-frame as every other transport (see :mod:`touchy_pad.transport`):
+frame as every other transport (see :mod:`touchy_pad.api._transport`):
 
     MAGIC(2) | LEN(u16 LE) | payload | CRC8(1)
 
@@ -22,8 +22,8 @@ import logging
 import os
 from pathlib import Path
 
-from .transport import TransportError, _StreamFramedTransport
-from .usb_ids import UART_BRIDGE_VID_PIDS
+from ._transport import TransportError, _StreamFramedTransport
+from ._usb_ids import UART_BRIDGE_VID_PIDS
 
 _log = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ def discover_serial_ports() -> list[str]:
     """Stage 83 — return device paths of UART-bridge Touchys on the host.
 
     Walks :func:`serial.tools.list_ports.comports` and keeps every port
-    whose ``(vid, pid)`` is in :data:`touchy_pad.usb_ids.UART_BRIDGE_VID_PIDS`.
+    whose ``(vid, pid)`` is in :data:`touchy_pad.api._usb_ids.UART_BRIDGE_VID_PIDS`.
     Inaccessible nodes (no ``dialout`` / ``uucp`` group membership) are
     dropped silently — they would just fail at open time.
 
