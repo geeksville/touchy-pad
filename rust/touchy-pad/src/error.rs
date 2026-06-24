@@ -18,6 +18,16 @@ pub enum TouchyError {
 	#[error("USB I/O error: {0}")]
 	Usb(String),
 
+	/// The user account lacks permission to open the USB device — most
+	/// commonly a missing or unapplied udev rule on Linux. Mirrors the
+	/// Python `TransportPermissionError` and points the user at the
+	/// same fix-up instructions.
+	#[error("insufficient permissions to open USB device ({path}); see https://github.com/geeksville/touchy-pad/blob/main/docs/udev.md to fix")]
+	UsbPermission {
+		/// The device node / identifier the open was attempted on.
+		path: String,
+	},
+
 	/// A bulk read returned an unexpected number of bytes, or a frame
 	/// header advertised an impossible length.
 	#[error("framing error: {0}")]

@@ -113,10 +113,7 @@ async fn sim_tcp_board_info() {
 	// Drain stderr so wait_with_output() doesn't block on the pipe buffer.
 	let output = child.wait_with_output().ok();
 	if result.is_err() {
-		let stderr = output
-			.as_ref()
-			.map(|o| String::from_utf8_lossy(&o.stderr).into_owned())
-			.unwrap_or_default();
+		let stderr = output.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_default();
 		eprintln!("sim stderr:\n{stderr}");
 	}
 	result.expect("rust ↔ python sim TCP roundtrip");

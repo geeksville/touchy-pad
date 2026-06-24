@@ -68,12 +68,12 @@ impl UsbTransport {
 					match try_open_via_host_dev(info).await {
 						Some(Ok(d)) => d,
 						Some(Err(fe)) => return Err(fe),
-						None => return Err(TouchyError::Usb(format!("open: {e}"))),
+						None => return Err(usb_open_err(info, e)),
 					}
 				}
 				#[cfg(not(target_os = "linux"))]
 				{
-					return Err(TouchyError::Usb(format!("open: {e}")));
+					return Err(usb_open_err(info, e));
 				}
 			}
 		};
@@ -217,11 +217,32 @@ async fn try_open_via_host_dev(info: &DeviceInfo) -> Option<Result<nusb::Device>
 
 	let file = match OpenOptions::new().read(true).write(true).custom_flags(libc::O_CLOEXEC).open(&path) {
 		Ok(f) => f,
+		Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+			// Missing/bad udev rule — surface the friendly fix-up hint
+			// (mirrors the Python `TransportPermissionError`).
+			return Some(Err(TouchyError::UsbPermission { path }));
+		}
 		Err(e) => return Some(Err(TouchyError::Usb(format!("opening fallback node {path}: {e}")))),
 	};
 	let fd: OwnedFd = file.into();
 	match nusb::Device::from_fd(fd).await {
 		Ok(d) => Some(Ok(d)),
 		Err(e) => Some(Err(TouchyError::Usb(format!("Device::from_fd({path}): {e}")))),
+	}
+}
+
+/// Map a failed [`DeviceInfo::open`] error onto a [`TouchyError`].
+///
+/// A permission-denied failure (typically a missing/bad udev rule on
+/// Linux) becomes [`TouchyError::UsbPermission`], which carries the
+/// friendly fix-up hint that points at `docs/udev.md` — mirroring the
+/// Python `TransportPermissionError`. Everything else is wrapped as a
+/// generic [`TouchyError::Usb`] preserving nusb's message.
+fn usb_open_err(info: &DeviceInfo, e: nusb::Error) -> TouchyError {
+	if e.kind() == nusb::ErrorKind::PermissionDenied {
+		let path = format!("VID:PID {:#06x}:{:#06x}", info.vendor_id(), info.product_id());
+		TouchyError::UsbPermission { path }
+	} else {
+		TouchyError::Usb(format!("open: {e}"))
 	}
 }
