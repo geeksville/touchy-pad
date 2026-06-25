@@ -95,9 +95,7 @@ sudo bash bin/install-rules.sh
 - **Confirm your groups:** run `groups` in a terminal; `plugdev` should appear
   in the list.
 - **The `plugdev` group doesn't exist on my system?** Some distributions (e.g.
-  Arch) don't create it by default. Create it first, or change `GROUP="plugdev"`
-  in the rule to a group you're already in (commonly `uucp`, `dialout`, or
-  `users`):
+  Arch) don't create it by default. Create it first.
   ```bash
   sudo groupadd plugdev
   sudo usermod -aG plugdev "$USER"
