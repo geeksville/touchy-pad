@@ -276,20 +276,6 @@ possibly render kde plasmoids https://store.kde.org/browse?cat=705&tag=plasmoid
 https://userbase.kde.org/Plasma/Plasmoids 
 https://medium.com/@linuxrootroom/what-is-plasmoid-in-kde-plasma-desktop-939717e498f0 
 
-### steam cover art
-
-Nope. There isn't a magical, all-in-one package that snoops on your active windows and hits up Valve's servers for high-res JPEGs. You're asking for a Frankenstein library that crosses OS-level window management with web API scraping.
-
-But this is Python, so you can easily duct-tape two tools together to do exactly this:
-
-Spot the Game: Use pygetwindow (or win32gui on Windows) to grab the text title of whatever window is currently in the foreground.
-
-Fetch the Data: Feed that window title into a wrapper like python-steam-api to search the Steam store and extract the game's unique AppID.
-
-Once you have the AppID, you don't even need a library to get the art. Steam's content delivery network uses completely predictable URLs. Just plug the ID into this link and grab it with the requests library:
-
-https://steamcdn-a.akamaihd.net/steam/apps/<APP_ID>/library_600x900.jpg
-
 ### mangohud
 
 MangoHud doesn't expose a fancy API, D-Bus interface, or a magical JSON socket for you to live-query its metrics. It's a selfish overlay that hooks directly into the Vulkan/OpenGL swapchain and keeps its performance secrets strictly on your screen.

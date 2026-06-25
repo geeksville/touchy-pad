@@ -620,7 +620,7 @@ void image_button_src_init(ImageButtonSrc &dst, const touchy_Image &im)
     }
     delete dsc;
     if (why && *why) {
-        ESP_LOGD(TAG, "image_button %s: not optimal (%s); using file read",
+        ESP_LOGW(TAG, "image_button %s: not optimal (%s); using file read",
                  im.path, why);
     }
     std::string lv_path = to_lvgl_path(im.path);
