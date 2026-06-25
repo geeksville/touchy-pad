@@ -129,6 +129,14 @@ VOLUME_UP = 0x00E9
 VOLUME_DOWN = 0x00EA
 MUTE = 0x00E2
 PLAY_PAUSE = 0x00CD
+# Clipboard / editing (Usage Page 0x0C, section "Application Launch / Control")
+COPY = 0x010C  # AC Copy
+CUT = 0x011B  # AC Cut
+PASTE = 0x010D  # AC Paste
+UNDO = 0x021A  # AC Undo
+REDO = 0x0279  # AC Redo
+SELECT_ALL = 0x0220  # AC Select All
+FIND = 0x0221  # AC Find
 
 
 def consumer_key(usage: int) -> _proto.MacroStep:
