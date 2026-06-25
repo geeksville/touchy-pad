@@ -2,7 +2,7 @@
 	"Name": "Touchy-Pad",
 	"Description": "Use a Touchy-Pad LCD touch device as an OpenDeck device.",
 	"Author": "Geeksville",
-	"Version": "0.3.2",
+	"Version": "0.3.3",
 	"Icon": "icons/plugin",
 	"Category": "Touchy-Pad",
 	"Actions": [],
