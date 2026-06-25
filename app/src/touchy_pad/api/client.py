@@ -54,7 +54,7 @@ def _check(response: _proto.Response) -> _proto.Response:
 
 
 class TouchyClient:
-    """High-level interface to a connected Touchy-Pad device.
+    """Low-level interface to a connected Touchy-Pad device.
 
     Construct via :meth:`open` (uses :class:`UsbTransport`) or pass any
     custom :class:`Transport` (e.g. a loopback for tests).
