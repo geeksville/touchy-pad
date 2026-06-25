@@ -11,7 +11,18 @@ USER root
 # libxcb is needed for Qt6
 RUN dnf update -y && dnf install -y \
         python3 python3-pip python3-tkinter sudo git flatpak libxcb curl just git protobuf-compiler \
-        gcc make cairo-devel cairo-gobject-devel pkg-config python3-devel gobject-introspection-devel
+        gcc make cairo-devel cairo-gobject-devel pkg-config python3-devel gobject-introspection-devel \
+        kdotool
+
+# kdotool drives the host's KWin (Wayland) by loading a KWin script over the
+# session bus; KWin writes its result to a temp file that kdotool then reads
+# back. The container's /tmp is a private tmpfs, so that file would be invisible
+# ("Could not open /tmp/kdotool-*"). /run/user/1000 is bind-mounted from the
+# host, so wrap kdotool to round-trip its temp file there. Scoped to kdotool so
+# we don't redirect every tool's TMPDIR onto the small runtime tmpfs.
+RUN mv /usr/bin/kdotool /usr/bin/kdotool.real \
+ && printf '%s\n' '#!/bin/sh' 'exec env TMPDIR="${XDG_RUNTIME_DIR:-/run/user/1000}" /usr/bin/kdotool.real "$@"' > /usr/bin/kdotool \
+ && chmod +x /usr/bin/kdotool
 
 # Install the github CLI
 RUN dnf install dnf5-plugins

@@ -54,9 +54,11 @@
 		"source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",        
 		// on github CI.
 		{
-			// was ${env:XAUTHORITY} but that file keeps changing, so just mount a temp file and have fix-xauth.sh update it
+			// was /tmp/.docker.xauth but /tmp is a tmpfs inside the container and
+			// therefore invisible to the host's podman daemon (breaks run-on-host.sh).
+			// /run/user/1000 is bind-mounted from the host, so podman can see it.
 			"source": "${localEnv:HOME}/myxauth.lnk",
-			"target": "/tmp/.docker.xauth",
+			"target": "/run/user/1000/.docker.xauth",
 			"type": "bind"
 		},
         // let container see host dbus, so that flatpak can work inside
@@ -74,7 +76,15 @@
 		"ATUIN_HOST_NAME": "dc_${localWorkspaceFolderBasename}" // unique atuin history per project
 		// Needed for X11 forwarding
 		"DISPLAY": "${localEnv:DISPLAY}",
-		"XAUTHORITY": "/tmp/.docker.xauth",        
+		"XAUTHORITY": "/run/user/1000/.docker.xauth",        
+		// Reach the host's systemd user session bus (Wayland host). /run/user/1000
+		// is bind-mounted from the host and the bus socket is world-rw, so dbus
+		// tools (kdotool, flatpak, etc.) work directly in the container without the
+		// run-on-host.sh re-spawn (which can't traverse the 0700 runtime dir under
+		// rootless podman).
+		"XDG_RUNTIME_DIR": "/run/user/1000",
+		"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+		"WAYLAND_DISPLAY": "wayland-0",
 	},
 	"remoteUser": "vscode",
 	"postCreateCommand": "bash .devcontainer/fedora/post-create.sh",
