@@ -281,7 +281,7 @@ def to_lvgl_bin(
             # only filesystems that support the zero-copy mmap fast path.
             # F: (flash) never mmaps, so RGB565A8 there is fine silently.
             if dest_path is None or dest_path.upper().startswith(("R:", "T:")):
-                _log.debug(
+                _log.warning(
                     "image has non-opaque alpha (%dx%d, mode=%s); falling back "
                     "to RGB565A8 — this asset will miss the on-device mmap "
                     "fast path",

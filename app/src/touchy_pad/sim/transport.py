@@ -121,6 +121,12 @@ class SimDeviceTransport(Transport):
         # hang the client's __exit__.
         self._worker.join(timeout=2.0)
 
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+        td = getattr(self, "_tempdir", None)
+        if td is not None:
+            td.cleanup()
+
     # -- worker -----------------------------------------------------------
 
     def _run(self) -> None:

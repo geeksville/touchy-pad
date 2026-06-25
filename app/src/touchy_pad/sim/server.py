@@ -266,6 +266,12 @@ class SimServerTransport(TcpTransport):
         finally:
             self._server.close()
 
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+        td = getattr(self, "_tempdir", None)
+        if td is not None:
+            td.cleanup()
+
 
 def make_tempdir_server_transport(**kwargs: object) -> SimServerTransport:
     """Convenience: a :class:`SimServerTransport` with a fresh temp fs root."""
