@@ -236,6 +236,7 @@ def style(
     recolor_opa: int | None = None,
     transform_width: int | None = None,
     transition: _proto.Transition | None = None,
+    shadow_width: int | None = None,
 ) -> _proto.Style:
     """Cosmetic overrides; unset fields fall back to theme defaults.
 
@@ -288,6 +289,8 @@ def style(
         s.recolor_opa = recolor_opa
     if transform_width is not None:
         s.transform_width = transform_width
+    if shadow_width is not None:
+        s.shadow_width = shadow_width
     if transition is not None:
         s.transition.CopyFrom(transition)
     return s
