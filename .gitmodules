@@ -12,3 +12,6 @@
 [submodule "tools/streamcontroller-python-elgato-streamdeck"]
 	path = tools/streamcontroller-python-elgato-streamdeck
 	url = https://github.com/geeksville/streamcontroller-python-elgato-streamdeck.git
+[submodule "tools/autopage"]
+	path = tools/autopage
+	url = https://github.com/geeksville/autopage.git
