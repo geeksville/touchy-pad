@@ -19,26 +19,13 @@
 				"ms-vscode.cpptools",
 				"ms-python.python",
 				"ms-vscode.cmake-tools",
-				"rust-lang.rust-analyzer",
-				"skellock.just"
+				"rust-lang.rust-analyzer"
 			]
 		}
 	},
 	"forwardPorts": [
 		8008
 	],
-	"containerEnv": {
-		// If you don't want to expose the host's IPC namespace for security reasons, you can force the GUI app to render over the socket without 
-		// shared memory. It's slightly slower, but it prevents the memory corruption crash.
-		"QT_X11_NO_MITSHM": "1",
-		"GDK_CORE_DEVICE_EVENTS": "1",
-
-		// Provide wayland display info to the container so that GUI apps can use it if they want (instead of X11 forwarding over the mounted /tmp/.X11-unix sockets). This is needed to prevent freezing on Fedora Wayland when using XWayland, but also allows native Wayland support for apps that can use it.
-		"WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
-  		"XDG_RUNTIME_DIR": "/tmp",
-  		"QT_QPA_PLATFORM": "wayland",
-  		"GDK_BACKEND": "wayland"
-	},
 	"mounts": [
 		"source=/dev/,target=/host/dev/,type=bind,consistency=consistent",
 		"source=/run/user/1000,target=/run/user/1000,type=bind",
@@ -76,12 +63,7 @@
 			"type": "bind"
 		},
         // let container see host dbus, so that flatpak can work inside
-        "source=/run/dbus,target=/run/dbus,type=bind",
-
-		// You are on a modern Fedora Wayland stack. Stop using the legacy X11 
-		// socket entirely and just pass the Wayland socket into the container 
-		// so the app speaks natively to Mutter. No XWayland, no freezing.
-		"source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=/tmp/${localEnv:WAYLAND_DISPLAY},type=bind"
+        "source=/run/dbus,target=/run/dbus,type=bind"
 	],
 	"runArgs": [
 		"--hostname=dc_${localWorkspaceFolderBasename}", // Use a better hostname than random digits

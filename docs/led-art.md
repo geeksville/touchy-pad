@@ -31,6 +31,8 @@ Orangepi info https://www.reddit.com/r/SBCs/s/LBz8vA3nx5
 * 12V 200W in, internally use little 12V->buck converters to power the esp32 board and 5V device control
 * include a small fan to help convection
 
+* Tips on LVGL multiple displays and notifying lvgl of activity: https://lvgl.io/docs/open/8.4/overview/display#features-of-displays
+
 https://github.com/Xylopyrographer/LiteLED - high perf esp driver
 https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf 
 https://www.superlightingled.com/PDF/Addressable-Flex-LED-Pixel-Panel.pdf

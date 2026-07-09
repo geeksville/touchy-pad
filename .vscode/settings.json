@@ -1,5 +1,6 @@
 {
     "chat.tools.terminal.autoApprove": {
         "cargo build": true
-    }
+    },
+    "cmake.sourceDirectory": "/workspaces/touchy-pad/firmware"
 }
