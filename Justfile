@@ -180,8 +180,9 @@ gen-default-screen: build-proto-py
     set -euo pipefail
     _py="${SYS_PYTHON:-/usr/bin/python3}"
     _json="proto/default_screen.json"
+    _json_nt="proto/default_screen_touchless.json"
     _py_out="app/src/touchy_pad/_proto"
-    if [ -f "${_json}" ] \
+    if [ -f "${_json}" ] && [ -f "${_json_nt}" ] \
         && [ "${_json}" -nt "proto/gen_default_screen.py" ] \
         && [ "${_json}" -nt "app/src/touchy_pad/api/screens.py" ] \
         && [ "${_json}" -nt "${_py_out}/widgets_pb2.py" ]; then
@@ -192,9 +193,11 @@ gen-default-screen: build-proto-py
 
 # Compile proto/default_screen.json (the firmware's built-in fallback
 # screen, shown when no host-uploaded screens are present) into a C++
-# header carrying its serialised protobuf bytes. Depends on
-# gen-default-screen (which regenerates the JSON from the DSL) and thus
-# transitively on build-proto-py.
+# header carrying its serialised protobuf bytes. Also embeds the Stage-LB1
+# touch-less variant (proto/default_screen_touchless.json) as a second
+# symbol in the same header. Depends on gen-default-screen (which
+# regenerates the JSON from the DSL) and thus transitively on
+# build-proto-py.
 default_screen_json := justfile_directory() + "/proto/default_screen.json"
 default_screen_out  := justfile_directory() + "/firmware/main/default_screen_pb.h"
 build-default-screen: gen-default-screen
@@ -203,17 +206,20 @@ build-default-screen: gen-default-screen
     _py="${SYS_PYTHON:-/usr/bin/python3}"
     _out="firmware/main/default_screen_pb.h"
     _json="proto/default_screen.json"
+    _json_nt="proto/default_screen_touchless.json"
     _py_out="app/src/touchy_pad/_proto"
     if [ -f "${_out}" ] \
         && [ "${_out}" -nt "${_json}" ] \
+        && [ "${_out}" -nt "${_json_nt}" ] \
         && [ "${_out}" -nt "proto/embed_screen_json.py" ] \
         && [ "${_out}" -nt "${_py_out}/touchy_pb2.py" ] \
         && [ "${_out}" -nt "${_py_out}/widgets_pb2.py" ]; then
         echo "build-default-screen: up to date"
         exit 0
     fi
-    "${_py}" proto/embed_screen_json.py \
-        "${_json}" "${_out}" default_screen_pb
+    "${_py}" proto/embed_screen_json.py "${_out}" \
+        "${_json}:default_screen_pb" \
+        "${_json_nt}:default_screen_touchless_pb"
 
 # ---------------------------------------------------------------------------
 # Host app (app/) — Poetry-driven, but the proto module is a build-time

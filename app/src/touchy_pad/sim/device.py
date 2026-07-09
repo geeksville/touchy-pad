@@ -99,6 +99,7 @@ class SimDevice:
         display_size: tuple[int, int] = (480, 300),
         is_multitouch: bool = True,
         has_usb: bool = True,
+        is_touchable: bool = True,
     ) -> None:
         self._fs = fs
         self._lock = threading.RLock()
@@ -118,6 +119,7 @@ class SimDevice:
         # the host can adapt (e.g. emulate the single-touch / no-USB CYD).
         self._is_multitouch = bool(is_multitouch)
         self._has_usb = bool(has_usb)
+        self._is_touchable = bool(is_touchable)
 
         # Stage 82 — in-memory preferences mirror. The sim has no flash, so
         # these are not persisted, but a partial SetPreferencesCmd merges
@@ -300,6 +302,8 @@ class SimDevice:
                 # Stage 87 — the sim reports PSRAM present, so the T:
                 # transient drive is ramdisk-backed (not flash scratch).
                 temp_is_flash=False,
+                # Stage LB1 — the sim emulates a touch-capable board by default.
+                is_touchable=self._is_touchable,
             ),
         )
 

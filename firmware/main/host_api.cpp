@@ -419,6 +419,10 @@ static void fill_board_info(touchy_Response *resp)
     // (no-PSRAM board) rather than a PSRAM ramdisk? Host writers of
     // throwaway assets use this to throttle high-frequency refreshes.
     v->temp_is_flash = temp_is_flash();
+
+    // Stage LB1: does the board have a touch panel at all? Defaults true
+    // via the weak platform_is_touchable(); touch-less boards override it.
+    v->is_touchable = platform_is_touchable();
 }
 
 static void dispatch(const touchy_Command *cmd, touchy_Response *resp)

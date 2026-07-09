@@ -1597,6 +1597,33 @@ def build_setup_screen() -> Screen:
     return screen
 
 
+def build_setup_screen_touchless() -> Screen:
+    """Build the compiled-in firmware fallback screen for touch-less boards.
+
+    Counterpart to :func:`build_setup_screen` for display-less LED-matrix
+    boards (Stage LB1, e.g. ``jc_esp32p4_m3``) that have no touchscreen —
+    so the trackpad-based setup screen makes no sense. It lays out, left to
+    right, three fixed-size colour swatches sized to sit inside an 8-pixel
+    tall panel: a 4×4 red square, a 6×6 green square, and an 8×8 blue
+    square. This doubles as a smoke test for the LED display driver's
+    colour + geometry mapping.
+    """
+    screen = Screen("default", layout=row(gap=1))
+
+    for name, size, color in (
+        ("swatch_red", 4, 0xFF0000),
+        ("swatch_green", 6, 0x00FF00),
+        ("swatch_blue", 8, 0x0000FF),
+    ):
+        screen += spacer(
+            name,
+            rect=rect(w=size, h=size),
+            style=style(bg_color=color),
+        )
+
+    return screen
+
+
 def build_user_pages() -> list[tuple[str, _proto.Widget]]:
     """Build the demo user-screen page bodies for ``F:host/uscr/``.
 

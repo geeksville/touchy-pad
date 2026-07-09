@@ -31,3 +31,11 @@ const char *platform_serial(void)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     return serial;
 }
+
+// Weak "base class" implementation: every board with a touch panel inherits
+// this and returns true. Touch-less boards (Stage LB1 LED-matrix boards)
+// override it with a strong definition in their boards/<board>/board.cpp.
+__attribute__((weak)) bool platform_is_touchable(void)
+{
+    return true;
+}

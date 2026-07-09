@@ -227,7 +227,7 @@ message SysBoardInfoResponse {
         option allow_alias = true;
         UNSPECIFIED = 0;
 
-        CURRENT = 10;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
+        CURRENT = 11;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
                 
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
@@ -250,6 +250,9 @@ message SysBoardInfoResponse {
         V10 = 10; // stage 87: SysBoardInfoResponse gains temp_is_flash (the
                   //           'T:' transient drive is backed by flash, not
                   //           PSRAM, on this board) — additive scalar field
+        V11 = 11; // stage LB1: SysBoardInfoResponse gains is_touchable (the
+                  //           board has no touch panel at all, e.g. an
+                  //           LED-matrix board) — additive scalar field
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
@@ -292,6 +295,12 @@ message SysBoardInfoResponse {
     // as an advisory hint to throttle high-frequency refreshes and warn
     // about flash wear — the drive letter (`T:`) is the same either way.
     bool temp_is_flash = 14;
+    // Stage LB1 — the board has a touch panel at all. False on display-less
+    // LED-matrix boards (jc_esp32p4_m3) which have no touchscreen; host-side
+    // adapters use this to hide touch-only UI. Defaults to false on the
+    // wire, so pre-LB1 firmware (which never sets it) reads as "not
+    // touchable" — callers that care should also consult is_multitouch.
+    bool is_touchable = 15;
 }
 
 // Reply to FileOpenWriteCmd. Carries the handle the host must echo

@@ -1,0 +1,51 @@
+{
+  "active": {
+    "version": "CURRENT",
+    "layoutFlex": {
+      "gap": 1,
+      "layout": {
+        "children": [
+          {
+            "id": "swatch_red",
+            "rect": {
+              "w": 4,
+              "h": 4
+            },
+            "styles": [
+              {
+                "bgColor": 16711680
+              }
+            ],
+            "spacer": {}
+          },
+          {
+            "id": "swatch_green",
+            "rect": {
+              "w": 6,
+              "h": 6
+            },
+            "styles": [
+              {
+                "bgColor": 65280
+              }
+            ],
+            "spacer": {}
+          },
+          {
+            "id": "swatch_blue",
+            "rect": {
+              "w": 8,
+              "h": 8
+            },
+            "styles": [
+              {
+                "bgColor": 255
+              }
+            ],
+            "spacer": {}
+          }
+        ]
+      }
+    }
+  }
+}

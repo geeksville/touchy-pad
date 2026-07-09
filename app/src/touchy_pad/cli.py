@@ -510,6 +510,7 @@ def board_info() -> None:
     table.add_row("display", f"{v.display_width}x{v.display_height}")
     table.add_row("multitouch", "yes" if v.is_multitouch else "no")
     table.add_row("usb", "yes" if v.has_usb else "no")
+    table.add_row("touchable", "yes" if v.is_touchable else "no")
     table.add_row("free RAM", _fmt_bytes(v.free_heap_bytes))
     table.add_row("free PSRAM", _fmt_bytes(v.free_psram_bytes))
     table.add_row("flash FS", f"{_fmt_bytes(v.fs_used_bytes)} / {_fmt_bytes(v.fs_total_bytes)}")

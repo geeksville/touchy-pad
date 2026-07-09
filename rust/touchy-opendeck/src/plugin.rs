@@ -186,7 +186,7 @@ impl TouchyPlugin {
 		// hardware serial, so it is stable across ports / re-enumeration.
 		let device_id = layout::device_id_for(&board.serial);
 		log::info!(
-			"attach {key}: serial '{}' -> {device_id}; board '{}', display {}×{}, protocol v{}, multitouch={}, usb={}",
+			"attach {key}: serial '{}' -> {device_id}; board '{}', display {}×{}, protocol v{}, multitouch={}, usb={}, touchable={}",
 			board.serial,
 			board.board_name,
 			board.display_width,
@@ -194,6 +194,7 @@ impl TouchyPlugin {
 			board.protocol_version,
 			board.is_multitouch,
 			board.has_usb,
+			board.is_touchable,
 		);
 		if board.display_width == 0 || board.display_height == 0 {
 			return Err(anyhow!("{device_id} reported zero display dimensions ({}×{})", board.display_width, board.display_height));

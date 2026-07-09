@@ -47,19 +47,27 @@ def main() -> int:
 
     from google.protobuf import json_format  # noqa: E402
 
-    from touchy_pad.api.screens import build_setup_screen  # noqa: E402
+    from touchy_pad.api.screens import (  # noqa: E402
+        build_setup_screen,
+        build_setup_screen_touchless,
+    )
 
-    screen = build_setup_screen()
-    msg = screen.to_proto()
-    body = json_format.MessageToJson(msg, indent=2)
-
-    # NOTE: keep the file pure JSON — both consumers
+    # NOTE: keep the files pure JSON — both consumers
     # (proto/embed_screen_json.py and the simulator's _load_default_screen)
     # call json_format.Parse, which rejects `//`-style comments. The
     # "this file is generated" provenance lives in the Justfile recipe and
     # docs, not in the file itself.
-    out.write_text(body + "\n", encoding="utf-8")
-    print(f"wrote {out} (screen {screen.name!r})")
+    def _emit(path: Path, screen) -> None:
+        msg = screen.to_proto()
+        body = json_format.MessageToJson(msg, indent=2)
+        path.write_text(body + "\n", encoding="utf-8")
+        print(f"wrote {path} (screen {screen.name!r})")
+
+    # Touchable (default) variant, plus the Stage-LB1 touch-less variant
+    # written alongside it (default_screen_touchless.json).
+    _emit(out, build_setup_screen())
+    _emit(out.with_name("default_screen_touchless.json"),
+          build_setup_screen_touchless())
     return 0
 
 

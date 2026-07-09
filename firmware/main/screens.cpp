@@ -424,8 +424,15 @@ bool screens_load(const char *path)
         }
         ESP_LOGI(TAG, "loading built-in default screen");
         std::vector<uint8_t> bytes(
+#if CONFIG_TOUCHY_NO_TOUCH
+            // Touch-less boards (Stage LB1 LED-matrix) get the colour-swatch
+            // variant instead of the trackpad-based setup screen.
+            default_screen_touchless_pb_data,
+            default_screen_touchless_pb_data + default_screen_touchless_pb_len);
+#else
             default_screen_pb_data,
             default_screen_pb_data + default_screen_pb_len);
+#endif
         auto holder = decode_screen(bytes);
         if (!holder) {
             ESP_LOGE(TAG, "failed to decode built-in default screen");

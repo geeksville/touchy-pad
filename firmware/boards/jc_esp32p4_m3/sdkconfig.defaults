@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Board-specific Kconfig defaults for the Guition JC-ESP32P4-M3 LED-matrix
+# board (Stage LB1). Display-less / touch-less: drives one 8x32 WS2812B
+# matrix as an LVGL display over the RMT peripheral (DMA).
+
+# ----- Flash (16 MB) -----
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/16M.csv"
+
+# ----- CPU: 360 MHz (safe for v1.x silicon; 400 MHz requires v3.x) -----
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
+
+# ----- PSRAM: 32 MB hex-PSRAM -----
+# 250 MHz requires v3.x silicon; 200 MHz is the max for v1.x.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_SPEED_200M=y
+
+# ----- v1.x silicon compatibility -----
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+
+# ----- LVGL: disable Xtensa/ARM-specific optimizations (P4 is RISC-V) -----
+CONFIG_LV_USE_DRAW_ARM2D_SYNC=n
+CONFIG_LV_USE_NATIVE_HELIUM_ASM=n
+
+# ----- v1.x has no ECDSA hardware peripheral -----
+CONFIG_MBEDTLS_HARDWARE_ECDSA_SIGN=n
+CONFIG_MBEDTLS_HARDWARE_ECDSA_VERIFY=n
+
+# ----- Host transport: native USB via USB-OTG -----
+CONFIG_TOUCHY_LOG_OVER_PROTO=y
+
+# ----- Stage LB1: touch-less board -----
+# No touch panel; select the colour-swatch built-in default screen and skip
+# touch bring-up. (Runtime counterpart: platform_is_touchable() override.)
+CONFIG_TOUCHY_NO_TOUCH=y

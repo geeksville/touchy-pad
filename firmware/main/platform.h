@@ -31,6 +31,15 @@ struct Platform {
 // returned pointer is to static storage and never NULL.
 const struct Platform *platform_get(void);
 
+// True when the board has a touch panel at all. Prior boards all ship a
+// touchscreen, so this has a *weak* default (in platform.cpp) that returns
+// true — behaving like a virtual method whose base implementation is
+// "touchable". Display-less LED-matrix boards (Stage LB1, e.g.
+// jc_esp32p4_m3) provide a strong override returning false, which selects
+// the touch-less built-in default screen and lets the host hide touch-only
+// UI (reported over the host API as SysBoardInfoResponse.is_touchable).
+bool platform_is_touchable(void);
+
 // Stage 71 — stable device serial derived from the factory MAC
 // (`esp_read_mac`), formatted "txxxxxxxxxxxx" (leading 't' + 12 lowercase
 // hex digits, no separators). Computed once on first call and cached; the

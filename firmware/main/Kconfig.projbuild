@@ -43,6 +43,17 @@ config TOUCHY_PROTO_OVER_SERIAL
         protocol frames — route ESP-IDF logs to the host via
         TOUCHY_LOG_OVER_PROTO instead of the protocol CDC/UART console.
 
+config TOUCHY_NO_TOUCH
+    bool "Board has no touch panel"
+    default n
+    help
+        Set on display-less / touch-less boards (Stage LB1 LED-matrix
+        boards such as jc_esp32p4_m3). It selects the touch-less built-in
+        default screen (a set of colour swatches) compiled into
+        default_screen_pb.h instead of the trackpad-based one, and lets
+        the firmware skip touch_init(). This is a compile-time counterpart
+        to the runtime Platform.is_touchable flag reported to the host.
+
 config TOUCHY_NO_DISPLAY
     bool "Disable the display + touchscreen hardware"
     default n
