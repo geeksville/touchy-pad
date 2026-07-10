@@ -15,8 +15,12 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_200M=y
 
-# ----- v1.x silicon compatibility -----
+# this board has old silicon v1.3!
+# NOTE! Support of ESP32-P4 rev. <3.0 and >=3.0 is mutually exclusive
+#
 CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+# CONFIG_ESP32P4_REV_MIN_0 is not set
+# CONFIG_ESP32P4_REV_MIN_1 is not set
 CONFIG_ESP32P4_REV_MIN_100=y
 
 # ----- LVGL: disable Xtensa/ARM-specific optimizations (P4 is RISC-V) -----
@@ -34,3 +38,4 @@ CONFIG_TOUCHY_LOG_OVER_PROTO=y
 # No touch panel; select the colour-swatch built-in default screen and skip
 # touch bring-up. (Runtime counterpart: platform_is_touchable() override.)
 CONFIG_TOUCHY_NO_TOUCH=y
+

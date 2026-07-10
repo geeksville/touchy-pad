@@ -6,6 +6,8 @@
 default:
     @just --list
 
+idf_version := "v6.0.2"
+
 # ---------------------------------------------------------------------------
 # Developer setup
 # ---------------------------------------------------------------------------
@@ -275,12 +277,12 @@ app-touchpad-gif *ARGS:
 app-backtrace *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
-    # activate_idf_v6.0.1.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
+    # activate_idf_{{idf_version}}.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
     # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
     # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
     # var (not IDF_PATH) to break the re-exec loop.
     if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
+        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
     fi
     xtensa-esp32s3-elf-addr2line -pfiaC -e firmware/build/touchy_pad_v2.elf {{ARGS}}
 
@@ -411,8 +413,8 @@ firmware-build: build-proto-c build-default-screen
     # used in CI and manual installs (no error if neither — idf.py may already
     # be on PATH from an outer shell).
     exec bash -c '
-        if [ -f "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" ]; then
-            source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" 2>/dev/null
+        if [ -f "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" ]; then
+            source "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" 2>/dev/null
         elif [ -f "$HOME/esp/esp-idf/export.sh" ]; then
             source "$HOME/esp/esp-idf/export.sh"
         fi
@@ -453,13 +455,13 @@ firmware-reconfigure board="":
     fi
     export _IDF_TARGET
     exec bash -c '
-        if [ -f "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" ]; then
-            source "$HOME/.espressif/tools/activate_idf_v6.0.1.sh" 2>/dev/null
+        if [ -f "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" ]; then
+            source "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" 2>/dev/null
         elif [ -f "$HOME/esp/esp-idf/export.sh" ]; then
             source "$HOME/esp/esp-idf/export.sh"
         else
             echo "error: cannot find ESP-IDF activation script" >&2
-            echo "  tried: ~/.espressif/tools/activate_idf_v6.0.1.sh" >&2
+            echo "  tried: ~/.espressif/tools/activate_idf_{{idf_version}}.sh" >&2
             echo "  tried: ~/esp/esp-idf/export.sh" >&2
             exit 1
         fi
@@ -471,12 +473,12 @@ firmware-reconfigure board="":
 flash-erase: 
     #!/usr/bin/env bash
     set -euo pipefail
-    # activate_idf_v6.0.1.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
+    # activate_idf_{{idf_version}}.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
     # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
     # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
     # var (not IDF_PATH) to break the re-exec loop.
     if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
+        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
     fi
     # Pick the first readable+writable ttyACM*/ttyUSB* under /host/dev/.
     # Native-USB boards enumerate as ttyACM*; UART-bridge boards (CH340 on
@@ -497,12 +499,12 @@ flash-erase:
 flash: firmware-build
     #!/usr/bin/env bash
     set -euo pipefail
-    # activate_idf_v6.0.1.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
+    # activate_idf_{{idf_version}}.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
     # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
     # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
     # var (not IDF_PATH) to break the re-exec loop.
     if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
+        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
     fi
     # Pick the first readable+writable ttyACM*/ttyUSB* under /host/dev/.
     # Native-USB boards enumerate as ttyACM*; UART-bridge boards (CH340 on
@@ -547,7 +549,7 @@ merge-bin: firmware-build
     set -euo pipefail
     # Same re-exec trick as flash: pass "bash" as $0 so is_sourced() returns true.
     if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
+        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
     fi
     out="touchy_pad_merged.bin"
     esptool_py="$(command -v esptool || command -v esptool.py)"
@@ -574,7 +576,7 @@ flash-merged: merge-bin
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "${IDF_PATH:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_v6.0.1.sh && exec bash "$1"' -- "$0"
+        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && exec bash "$1"' -- "$0"
     fi
     port=""
     for candidate in $(ls /host/dev/ttyACM* /host/dev/ttyUSB* 2>/dev/null | sort); do
