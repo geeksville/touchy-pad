@@ -302,7 +302,7 @@ def _make_transport() -> Transport | None:
     # protocol over it instead of auto-discovering a USB device.
     port = ctx.obj.get("port")
     if port:
-        from .api._transport_serial import SerialTransport
+        from .api._transponrt_serial import SerialTransport
 
         return SerialTransport(port)
     return None

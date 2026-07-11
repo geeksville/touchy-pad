@@ -7,9 +7,8 @@
           {
             "id": "swatch_red",
             "rect": {
-              "y": 1,
-              "w": 6,
-              "h": 6
+              "w": 8,
+              "h": 8
             },
             "styles": [
               {
@@ -22,17 +21,17 @@
                 "tracks": [
                   {
                     "prop": "X",
-                    "end": 25
+                    "end": 24
                   },
                   {
                     "prop": "WIDTH",
-                    "start": 3,
-                    "end": 6
+                    "start": 4,
+                    "end": 8
                   },
                   {
                     "prop": "HEIGHT",
-                    "start": 3,
-                    "end": 6
+                    "start": 4,
+                    "end": 8
                   }
                 ],
                 "durationMs": 900,
@@ -45,9 +44,8 @@
           {
             "id": "swatch_green",
             "rect": {
-              "y": 1,
-              "w": 6,
-              "h": 6
+              "w": 8,
+              "h": 8
             },
             "styles": [
               {
@@ -60,17 +58,17 @@
                 "tracks": [
                   {
                     "prop": "X",
-                    "end": 25
+                    "end": 24
                   },
                   {
                     "prop": "WIDTH",
-                    "start": 3,
-                    "end": 6
+                    "start": 4,
+                    "end": 8
                   },
                   {
                     "prop": "HEIGHT",
-                    "start": 3,
-                    "end": 6
+                    "start": 4,
+                    "end": 8
                   }
                 ],
                 "durationMs": 1200,
@@ -84,9 +82,8 @@
           {
             "id": "swatch_blue",
             "rect": {
-              "y": 1,
-              "w": 6,
-              "h": 6
+              "w": 8,
+              "h": 8
             },
             "styles": [
               {
@@ -99,17 +96,17 @@
                 "tracks": [
                   {
                     "prop": "X",
-                    "end": 25
+                    "end": 24
                   },
                   {
                     "prop": "WIDTH",
-                    "start": 3,
-                    "end": 6
+                    "start": 4,
+                    "end": 8
                   },
                   {
                     "prop": "HEIGHT",
-                    "start": 3,
-                    "end": 6
+                    "start": 4,
+                    "end": 8
                   }
                 ],
                 "durationMs": 750,

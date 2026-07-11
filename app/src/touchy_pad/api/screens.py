@@ -1623,11 +1623,11 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     # touch under the panel height, and the smallest is half that so the
     # size pulse is visible. The bounce runs across the full width minus
     # the shape's footprint so the shapes never clip off-screen.
-    size_max = max(2, min(height - 2, 6))
+    size_max = min(height, 8)
     size_min = max(1, size_max // 2)
     y = max(0, (height - size_max) // 2)
-    x_min = 1
-    x_max = max(x_min, width - size_max - 1)
+    x_min = 0
+    x_max = max(x_min, width - size_max)
 
     def _bouncer(name, color, *, radius, duration_ms, start_delay_ms, path):
         return spacer(
