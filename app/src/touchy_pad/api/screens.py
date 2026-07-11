@@ -1597,29 +1597,82 @@ def build_setup_screen() -> Screen:
     return screen
 
 
-def build_setup_screen_touchless() -> Screen:
+def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     """Build the compiled-in firmware fallback screen for touch-less boards.
 
     Counterpart to :func:`build_setup_screen` for display-less LED-matrix
-    boards (Stage LB1, e.g. ``jc_esp32p4_m3``) that have no touchscreen —
-    so the trackpad-based setup screen makes no sense. It lays out, left to
-    right, three fixed-size colour swatches sized to sit inside an 8-pixel
-    tall panel: a 4×4 red square, a 6×6 green square, and an 8×8 blue
-    square. This doubles as a smoke test for the LED display driver's
-    colour + geometry mapping.
-    """
-    screen = Screen("default", layout=row(gap=1))
+    boards (Stage LB1, e.g. ``jc_esp32p4_m3`` — an 8×32 WS2812B panel) that
+    have no touchscreen, so the trackpad-based setup screen makes no sense.
 
-    for name, size, color in (
-        ("swatch_red", 4, 0x400000),
-        ("swatch_green", 6, 0x004000),
-        ("swatch_blue", 8, 0x000040),
-    ):
-        screen += spacer(
+    Instead of three static swatches this lays out three shapes on an
+    absolute layer — a **red square**, a **green circle**, and a **blue
+    square** — each driven by an LVGL :func:`animation` that bounces it
+    horizontally across the panel while pulsing its size. The three shapes
+    run at different durations / easing curves / start delays so they drift
+    in and out of phase, which doubles as a lively smoke test for the LED
+    display driver's colour, geometry, and animation mapping.
+
+    ``width`` / ``height`` describe the target panel in pixels (defaults
+    match the 32×8 LED matrix). Callers with a differently-sized display
+    (e.g. :func:`~touchy_pad.cli` screen init reading the reported board
+    dimensions) can pass the real geometry so the shapes stay in-bounds.
+    """
+    screen = Screen("default", layout=absolute())
+
+    # Keep the shapes comfortably inside the panel: the largest edge is a
+    # touch under the panel height, and the smallest is half that so the
+    # size pulse is visible. The bounce runs across the full width minus
+    # the shape's footprint so the shapes never clip off-screen.
+    size_max = max(2, min(height - 2, 6))
+    size_min = max(1, size_max // 2)
+    y = max(0, (height - size_max) // 2)
+    x_min = 1
+    x_max = max(x_min, width - size_max - 1)
+
+    def _bouncer(name, color, *, radius, duration_ms, start_delay_ms, path):
+        return spacer(
             name,
-            rect=rect(w=size, h=size),
-            style=style(bg_color=color),
+            rect=rect(x=x_min, y=y, w=size_max, h=size_max),
+            style=[style(bg_color=color, radius=radius)],
+            animations=[
+                animation(
+                    anim_track(StyleProp.X, x_min, x_max),
+                    anim_track(StyleProp.WIDTH, size_min, size_max),
+                    anim_track(StyleProp.HEIGHT, size_min, size_max),
+                    duration_ms=duration_ms,
+                    path=path,
+                    repeat_count=0,  # infinite
+                    reverse=True,  # ping-pong back and forth
+                    start_delay_ms=start_delay_ms,
+                ),
+            ],
         )
+
+    # radius=0 → square corners; radius=32767 → fully rounded (circle).
+    screen += _bouncer(
+        "swatch_red",
+        0x400000,
+        radius=0,
+        duration_ms=900,
+        start_delay_ms=0,
+        path=AnimPath.EASE_IN_OUT,
+    )
+    screen += _bouncer(
+        "swatch_green",
+        0x004000,
+        radius=32767,
+        duration_ms=1200,
+        start_delay_ms=250,
+        path=AnimPath.BOUNCE,
+    )
+    screen += _bouncer(
+        "swatch_blue",
+        0x000040,
+        radius=0,
+        duration_ms=750,
+        start_delay_ms=450,
+        path=AnimPath.OVERSHOOT,
+    )
 
     return screen
 

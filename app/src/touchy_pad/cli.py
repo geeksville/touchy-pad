@@ -732,22 +732,40 @@ def _do_screen_init(pad) -> None:
     a ``widget_ref(id="page")`` body), the Touchy-Pad logo image, and the
     baseline ``trackpad`` page into ``F:host/uscr/`` so the device has a
     usable layout out of the box. Shared by ``touchy init`` and ``screen demo``.
+
+    Touch-less boards (display-less LED matrices, ``board_info.is_touchable``
+    false) can't use a trackpad, so they instead get the self-contained
+    animated setup screen from :func:`build_setup_screen_touchless`.
     """
-    from .api.images import make_touchy_png
-    from .api.screens import build_default_screen
     from .paths import DEFAULT_SCREEN_PATH
 
-    pad.screen_save(build_default_screen())
-    logger.info("sent %s", DEFAULT_SCREEN_PATH)
+    info = pad.board_info
+    if info is not None and not info.is_touchable:
+        from .api.screens import build_setup_screen_touchless
 
-    touchy_png = make_touchy_png()
-    pad.file_save(_TOUCHY_IMG_PATH, touchy_png, max_width=128, max_height=128)
-    logger.info("sent %s (%d bytes source)", _TOUCHY_IMG_PATH, len(touchy_png))
+        screen = build_setup_screen_touchless(
+            width=info.display_width or 32,
+            height=info.display_height or 8,
+        )
+        pad.screen_save(screen)
+        logger.info("sent %s (touch-less)", DEFAULT_SCREEN_PATH)
+        pad.screen_load(DEFAULT_SCREEN_PATH)
+        logger.info("loaded %s", DEFAULT_SCREEN_PATH)
+    else:
+        from .api.images import make_touchy_png
+        from .api.screens import build_default_screen
 
-    _do_write_trackpad(pad, _TOUCHY_IMG_PATH)
+        pad.screen_save(build_default_screen())
+        logger.info("sent %s", DEFAULT_SCREEN_PATH)
 
-    pad.screen_load(DEFAULT_SCREEN_PATH)
-    logger.info("loaded %s", DEFAULT_SCREEN_PATH)
+        touchy_png = make_touchy_png()
+        pad.file_save(_TOUCHY_IMG_PATH, touchy_png, max_width=128, max_height=128)
+        logger.info("sent %s (%d bytes source)", _TOUCHY_IMG_PATH, len(touchy_png))
+
+        _do_write_trackpad(pad, _TOUCHY_IMG_PATH)
+
+        pad.screen_load(DEFAULT_SCREEN_PATH)
+        logger.info("loaded %s", DEFAULT_SCREEN_PATH)
 
 
 @screen.command("demo")

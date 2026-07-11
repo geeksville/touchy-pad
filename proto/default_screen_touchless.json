@@ -1,19 +1,43 @@
 {
   "active": {
     "version": "CURRENT",
-    "layoutFlex": {
-      "gap": 1,
+    "layoutAbsolute": {
       "layout": {
         "children": [
           {
             "id": "swatch_red",
             "rect": {
-              "w": 4,
-              "h": 4
+              "y": 1,
+              "w": 6,
+              "h": 6
             },
             "styles": [
               {
-                "bgColor": 4194304
+                "bgColor": 4194304,
+                "radius": 0
+              }
+            ],
+            "animations": [
+              {
+                "tracks": [
+                  {
+                    "prop": "X",
+                    "end": 25
+                  },
+                  {
+                    "prop": "WIDTH",
+                    "start": 3,
+                    "end": 6
+                  },
+                  {
+                    "prop": "HEIGHT",
+                    "start": 3,
+                    "end": 6
+                  }
+                ],
+                "durationMs": 900,
+                "path": "EASE_IN_OUT",
+                "reverse": true
               }
             ],
             "spacer": {}
@@ -21,12 +45,38 @@
           {
             "id": "swatch_green",
             "rect": {
+              "y": 1,
               "w": 6,
               "h": 6
             },
             "styles": [
               {
-                "bgColor": 16384
+                "bgColor": 16384,
+                "radius": 32767
+              }
+            ],
+            "animations": [
+              {
+                "tracks": [
+                  {
+                    "prop": "X",
+                    "end": 25
+                  },
+                  {
+                    "prop": "WIDTH",
+                    "start": 3,
+                    "end": 6
+                  },
+                  {
+                    "prop": "HEIGHT",
+                    "start": 3,
+                    "end": 6
+                  }
+                ],
+                "durationMs": 1200,
+                "path": "BOUNCE",
+                "reverse": true,
+                "startDelayMs": 250
               }
             ],
             "spacer": {}
@@ -34,12 +84,38 @@
           {
             "id": "swatch_blue",
             "rect": {
-              "w": 8,
-              "h": 8
+              "y": 1,
+              "w": 6,
+              "h": 6
             },
             "styles": [
               {
-                "bgColor": 64
+                "bgColor": 64,
+                "radius": 0
+              }
+            ],
+            "animations": [
+              {
+                "tracks": [
+                  {
+                    "prop": "X",
+                    "end": 25
+                  },
+                  {
+                    "prop": "WIDTH",
+                    "start": 3,
+                    "end": 6
+                  },
+                  {
+                    "prop": "HEIGHT",
+                    "start": 3,
+                    "end": 6
+                  }
+                ],
+                "durationMs": 750,
+                "path": "OVERSHOOT",
+                "reverse": true,
+                "startDelayMs": 450
               }
             ],
             "spacer": {}
