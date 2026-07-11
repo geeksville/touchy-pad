@@ -13,7 +13,7 @@
             },
             "styles": [
               {
-                "bgColor": 16711680
+                "bgColor": 4194304
               }
             ],
             "spacer": {}
@@ -26,7 +26,7 @@
             },
             "styles": [
               {
-                "bgColor": 65280
+                "bgColor": 16384
               }
             ],
             "spacer": {}
@@ -39,7 +39,7 @@
             },
             "styles": [
               {
-                "bgColor": 255
+                "bgColor": 64
               }
             ],
             "spacer": {}

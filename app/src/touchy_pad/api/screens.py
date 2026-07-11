@@ -1611,9 +1611,9 @@ def build_setup_screen_touchless() -> Screen:
     screen = Screen("default", layout=row(gap=1))
 
     for name, size, color in (
-        ("swatch_red", 4, 0xFF0000),
-        ("swatch_green", 6, 0x00FF00),
-        ("swatch_blue", 8, 0x0000FF),
+        ("swatch_red", 4, 0x400000),
+        ("swatch_green", 6, 0x004000),
+        ("swatch_blue", 8, 0x000040),
     ):
         screen += spacer(
             name,

@@ -31,7 +31,7 @@ bool LEDPanel::begin()
     strip_cfg.strip_gpio_num = _gpio;
     strip_cfg.max_leds       = led_count;
     strip_cfg.led_model      = LED_MODEL_WS2812;
-    strip_cfg.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
+    strip_cfg.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB;
     strip_cfg.flags.invert_out = false;
 
     // RMT backend with DMA: keeps the strict WS2812B timing rock-solid even
@@ -58,9 +58,24 @@ bool LEDPanel::begin()
 
 int LEDPanel::serpentine_index(int x, int y) const
 {
+#ifdef LED_ROWS_SNAKED
     // Even rows run left→right; odd rows are reversed (see lightbar.md).
     const int col = (y & 1) ? (_width - 1 - x) : x;
-    return y * _width + col;
+#else
+    const int col = x;
+#endif
+#define LED_COLS_SNAKED 1
+#if LED_COLS_SNAKED
+    // Even columns run top→bottom; odd columns are reversed.
+    const int row = (col & 1) ? (_height - 1 - y) : y;
+#else
+    const int row = y;
+#endif
+#ifdef LED_ROW_MAJOR
+    return row * _width + col;
+#else
+    return col * _height + row;
+#endif
 }
 
 void LEDPanel::set_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
@@ -72,6 +87,7 @@ void LEDPanel::set_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
     r = (uint8_t)((uint16_t)r * _brightness / 255);
     g = (uint8_t)((uint16_t)g * _brightness / 255);
     b = (uint8_t)((uint16_t)b * _brightness / 255);
+
     led_strip_set_pixel(_strip, serpentine_index(x, y), r, g, b);
 }
 
