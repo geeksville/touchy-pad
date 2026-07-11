@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# `board` component for the Guition JC-ESP32P4-M3 LED-matrix board (Stage
-# LB1). Implements main/board.h, main/display.h, main/touch.h. The LVGL
-# display is backed by a WS2812B LEDPanel (main/leds/led_panel.cpp).
+# `board` component for the Adafruit ESP32-S3 Feather LED-matrix board
+# (Stage LB2). Implements main/board.h, main/display.h, main/touch.h. The
+# LVGL display is backed by a WS2812B LEDPanel (main/leds/led_panel.cpp).
 
 idf_component_register(
     SRCS

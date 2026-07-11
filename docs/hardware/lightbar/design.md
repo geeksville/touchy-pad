@@ -101,3 +101,93 @@ work in this stage.
 - Multi-lane / PARLIO parallel output (4 lanes × 4 modules, 16 panels).
 - 12V power, fan, OTA — tracked in `lightbar.md`.
 
+## stage LB2 — 2nd LED-matrix board (`feather_esp32_s3`)
+
+**Status: implemented (firmware not yet compiled on real ESP-IDF in this
+environment).** Shared `Panel`/`LEDPanel` code was relocated from
+`firmware/boards/common/` to `firmware/main/leds/` (compiled by the board
+component, not `main`, so the `espressif/led_strip` dependency stays
+board-scoped); `jc_esp32p4_m3` was repointed at the new location. The new
+`firmware/boards/feather_esp32_s3/` board (target `esp32s3`, LED on
+GPIO 4) reuses the LB1 display driver, touch-less no-op touch, brightness
+path, and touch-less default screen unchanged.
+
+The ESP32-P4 `jc_esp32p4_m3` board from stage LB1 does not yet boot on
+real hardware, so it is parked (unworking). The goal of this stage is to
+prove the LB1 software stack — `Panel`/`LEDPanel`, the LVGL LED display
+driver, and the touch-less default screen — on **real hardware** using a
+mainstream, well-supported ESP32-S3 module, even while the custom P4
+board is stuck.
+
+Bring up a second display-less, touch-less LED board: an Adafruit
+ESP32-S3 Feather driving a single 8x32 WS2812B matrix as an LVGL display,
+reachable over native USB. It reuses the LB1 `LEDPanel` and touch-less
+default screen unchanged — only the board scaffold and pin map are new.
+Multi-panel tiling / multi-lane output stay deferred (see below).
+
+### Target hardware
+- **Module:** Adafruit ESP32-S3 Feather (N16R8 variant — 16 MB flash,
+  8 MB PSRAM), native USB-OTG. ESP-IDF already supports this chip
+  (`set-target esp32s3`), so no custom chip support is needed. See
+  `docs/hardware/feather_esp32_s3/README.md`.
+- **Display:** one 8x32 WS2812B matrix (256 LEDs) on **GPIO 4**.
+- **No LCD, no touch panel.**
+
+### Definition of done
+The Feather flashes and boots on real hardware, enumerates over USB,
+answers `board-info` (reporting `is_multitouch = false`, `has_usb =
+true`, `is_touchable = false`), accepts screen uploads, renders the
+touch-less 3-square default screen on the matrix, and honours brightness.
+No tiling / multi-panel work in this stage.
+
+### Work items
+
+1. **Relocate the shared LED code** — move the `Panel` / `LEDPanel`
+   abstraction (`panel.h`, `led_panel.{h,cpp}`) from
+   `firmware/boards/common/` into a common subdir of `firmware/main/`
+   (e.g. `firmware/main/leds/`) so it is a first-class, board-independent
+   subsystem rather than living under `boards/`. Update the include paths
+   and CMake references in `jc_esp32p4_m3`'s `board/CMakeLists.txt` (and
+   the new Feather board) to point at the new location, and rebuild LB1
+   to confirm no regression.
+
+2. **Board scaffold** — create `firmware/boards/feather_esp32_s3/`,
+   mirroring the S3 boards (e.g. `waveshare_s3_lcd_7b`) for the
+   chip/USB/PSRAM setup and `jc_esp32p4_m3` for the LED-display half:
+   - `target` → `esp32s3`
+   - `sdkconfig.defaults` — PSRAM (8 MB) enabled, native USB, `led_strip`
+     deps; touch-less flag (`CONFIG_TOUCHY_NO_TOUCH=y`, same knob LB1
+     uses to select the touch-less default screen).
+   - `board/board_pins.h` — `BOARD_LED_PANEL_GPIO = GPIO_NUM_4`, panel
+     geometry `32x8`, backlight-less markers. No I2C / touch / LCD pins.
+   - `board/board.cpp` — `board_init()` (no I2C / touch bus),
+     `platform_get()` → `{ is_multitouch = false, has_usb = true }`,
+     a strong `platform_is_touchable()` override returning `false`, and
+     `backlight_set()` mapping brightness to the LED-strip brightness
+     scalar (0 = off … 100 = max) — reusing the LB1 pattern.
+   - `board/display.cpp` — the same LED LVGL `display_init()` as LB1
+     (single 32×8 `lv_display`, RGB565→RGB888 + gamma, serpentine map via
+     `LEDPanel`, no `touch_init()`), constructing one `LEDPanel` on
+     GPIO 4.
+   - `board/CMakeLists.txt` + `idf_component.yml` pulling
+     `espressif/led_strip` (>= 3.0.3) and referencing the relocated
+     shared LED sources.
+
+3. **Reconfigure + build plumbing** — confirm `just firmware-reconfigure
+   feather_esp32_s3` reads the `target` file and runs `set-target
+   esp32s3`, and that `just firmware-build` / `just flash` work for the
+   new board. Add an `sdkconfig.feather_esp32_s3` snapshot if the repo
+   commits per-board sdkconfigs.
+
+4. **Reuse, don't re-implement** — the touch-less default screen
+   (`proto/default_screen_touchless.json`, `default_screen_touchless_pb_*`
+   in `firmware/main/default_screen_pb.h`) and the `is_touchable` host-API
+   surfacing from LB1 are reused as-is; no proto, CLI, or simulator
+   changes are expected in this stage.
+
+### Deferred (future lightbar stages)
+- Variable panel count / config-driven GPIO list.
+- Multiple `Panel`s tiled into one `lv_display`, or multiple
+  `lv_display`s.
+- Multi-lane / PARLIO parallel output (4 lanes × 4 modules, 16 panels).
+- 12V power, fan, OTA — tracked in `lightbar.md`.

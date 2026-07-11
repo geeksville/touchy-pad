@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Board-specific deps for the Adafruit ESP32-S3 Feather LED-matrix board.
+dependencies:
+  # WS2812B addressable-LED driver (RMT + DMA backend). >= 3.0.3 for the
+  # DMA-capable RMT path used by LEDPanel.
+  espressif/led_strip: "^3.0.3"
+  # Base esp_lcd_touch type (esp_lcd_touch_handle_t). This board has no
+  # touch controller, but main/touch.h includes esp_lcd_touch.h, so the
+  # header must be resolvable even though no concrete driver is used.
+  espressif/esp_lcd_touch: "^1.1.0"

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Board-specific Kconfig defaults for the Adafruit ESP32-S3 Feather
+# LED-matrix board (Stage LB2). Display-less / touch-less: drives one 8x32
+# WS2812B matrix as an LVGL display over the RMT peripheral (DMA). This is
+# the mainstream-hardware twin of the jc_esp32p4_m3 board, used to prove the
+# LB1 software stack on silicon that actually boots today.
+#
+# Target module: Adafruit ESP32-S3 Feather, N16R8 variant
+# (16 MB QIO flash, 8 MB octal PSRAM), native USB-OTG.
+
+# ----- Flash (16 MB, QIO @ 80 MHz) -----
+# 80 MHz is the safe tier under ESP-IDF 6.x (no HPM-DC dance required).
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/16M.csv"
+
+# ----- PSRAM (8 MB, octal SPI @ 80 MHz) -----
+# Required by the N16R8 board variant.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# ----- Host transport: native USB via USB-OTG -----
+CONFIG_TOUCHY_LOG_OVER_PROTO=y
+
+# ----- Stage LB2: touch-less board -----
+# No touch panel; select the colour-swatch built-in default screen and skip
+# touch bring-up. (Runtime counterpart: platform_is_touchable() override.)
+CONFIG_TOUCHY_NO_TOUCH=y
