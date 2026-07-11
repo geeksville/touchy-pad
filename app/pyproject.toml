@@ -23,7 +23,7 @@ requires-python = ">=3.11,<3.15"
 dependencies = [
     # Wire protocol bindings — generated from /proto/touchy.proto and committed
     # under src/touchy_pad/_proto/.
-    "protobuf>=4.25,<7",
+    "protobuf>=4.25",
     # Cross-platform raw-USB I/O against the device's custom vendor interface.
     # pyusb wraps libusb1; users must have a working libusb runtime on the host.
     "pyusb>=1.2,<2",
