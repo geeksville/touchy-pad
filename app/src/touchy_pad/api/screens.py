@@ -1714,7 +1714,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
         "welcome",
         text="Welcome to touchypad.",
         font_size=8,
-        long_mode=LongMode.LONG_MODE_SCROLL,
+        long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
         rect=rect(x=0, y=0, w=width, h=height),
         style=style(text_color=0x606060),
     )

@@ -144,6 +144,11 @@ lv_style_transition_dsc_t *build_lv_transition(const touchy_Transition &t,
 const lv_font_t *font_for_size(int32_t size)
 {
     switch (size) {
+#if LV_FONT_UNSCII_8
+    case 8:  return &lv_font_unscii_8;
+#else
+#error "Montserrat 8 is the smallest built-in font; if you want to use it, enable LV_FONT_MONTSERRAT_8 in sdkconfig.defaults and rebuild."
+#endif
 #if LV_FONT_MONTSERRAT_8
     case 8:  return &lv_font_montserrat_8;
 #endif
