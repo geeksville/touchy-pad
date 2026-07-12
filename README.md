@@ -4,6 +4,7 @@
 [![app CI](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml/badge.svg)](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml) 
 [![Subreddit subscribers](https://img.shields.io/reddit/subreddit-subscribers/touchypad)](https://www.reddit.com/r/touchypad/)
 
+![welcome](docs/images/welcome.gif)
 
 Touchy-pad is an open-source app that turns various cheap ($15-$30) 'aliexpress' displays into:
 * A high end graphical USB HID touchpad, with multitouch gestures, scrolling, dragging, keyboard macros, etc...
