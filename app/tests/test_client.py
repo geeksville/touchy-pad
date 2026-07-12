@@ -151,6 +151,27 @@ def test_set_backlight_level_passed(make_client):
     assert seen == {"level": 50, "has_timeout": False, "has_boot": False}
 
 
+def test_get_preferences_returns_prefs(make_client):
+    """Stage LB4 — get_preferences round-trips the device's PreferencesFile."""
+
+    def server(cmd, _t):
+        assert cmd.WhichOneof("cmd") == "get_preferences"
+        return _proto.Response(
+            code=_proto.RESULT_OK,
+            preferences_read=_proto.PreferencesReadResponse(
+                prefs=_proto.PreferencesFile(
+                    file_version=_proto.PreferencesFile.Version.CURRENT,
+                    backlight_level=42,
+                ),
+            ),
+        )
+
+    with make_client(server) as c:
+        prefs = c.get_preferences()
+    assert prefs.file_version == _proto.PreferencesFile.Version.CURRENT
+    assert prefs.backlight_level == 42
+
+
 @pytest.mark.parametrize(
     ("count", "expected"),
     [

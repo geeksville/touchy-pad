@@ -374,3 +374,10 @@ directly (same pattern already used for `TextAlign` ↔ `lv_text_align_t`).
   `_set_text_static` with ROM strings under `DOTS`) — the firmware
   already copies label text via `lv_label_set_text`, so this is a
   non-issue, but worth a one-line code comment in `build_label`.
+
+## stage lb4: better prefs
+
+extend the python cli with new subcommands under the existing "pref"
+
+* json-get: use the protocol to read the Preferences protobuf from the device and emit it to stdout as json
+* json-set: read prefs json from stdin and set them on the device.  it is okay for optional fields to be missing from the json.

@@ -582,6 +582,17 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
                          : touchy_ResultCode_NOT_FOUND;
         break;
 
+    case touchy_Command_get_preferences_tag: {
+        // Stage LB4 — return the device's current, merged preferences.
+        // file_version is device-owned and always set so the host can use
+        // its presence as a validity canary.
+        resp->which_payload = touchy_Response_preferences_read_tag;
+        resp->payload.preferences_read.has_prefs = true;
+        resp->payload.preferences_read.prefs = Prefs::instance().to_proto();
+        resp->code = touchy_ResultCode_OK;
+        break;
+    }
+
     case touchy_Command_run_actions_tag: {
         // Stage 71 — run a host-supplied list of Actions as if a local
         // widget had fired them. `actions` is FT_POINTER (heap), so its

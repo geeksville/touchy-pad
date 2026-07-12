@@ -681,6 +681,70 @@ def pref_backlight_level(level: int) -> None:
         c.set_backlight_level(level)
 
 
+@pref.command("json-get")
+def pref_json_get() -> None:
+    """Read the device's current preferences and print them as JSON.
+
+    Dumps the full ``PreferencesFile`` (including the device-owned
+    ``file_version``) to stdout. The output round-trips through
+    ``touchy pref json-set``.
+
+    Example::
+
+        touchy pref json-get > prefs.json
+    """
+    from google.protobuf.json_format import MessageToJson
+
+    from . import _proto
+
+    with _client() as c:
+        prefs = c.get_preferences()
+    # file_version is our validity canary: the device always sets it, so
+    # its absence means the round-trip is broken (old firmware, wrong
+    # message, …). Fail loudly rather than emit a misleading dump.
+    if prefs.file_version == _proto.PreferencesFile.Version.UNSPECIFIED:
+        raise click.ClickException(
+            "device did not report 'fileVersion' — its firmware may be too "
+            "old to support 'pref json-get'."
+        )
+    click.echo(MessageToJson(prefs))
+
+
+@pref.command("json-set")
+def pref_json_set() -> None:
+    """Apply preferences from a JSON document on stdin.
+
+    Reads a JSON object matching the PreferencesFile schema from stdin
+    and sends it as a partial preferences update. Only fields present in
+    the JSON are changed; the device merges and persists the result.
+
+    The device-owned ``file_version`` field is ignored if present.
+
+    Example::
+
+        echo '{"backlightLevel": 50, "bootDelayS": 2}' | touchy pref json-set
+    """
+    from google.protobuf.json_format import Parse
+
+    from . import _proto
+
+    data = sys.stdin.read()
+    prefs = Parse(data, _proto.PreferencesFile())
+    # file_version is a device-owned field, but we require it to be present
+    # in the incoming JSON as a canary: a valid dump (e.g. from
+    # `touchy pref json-get`) always carries it, whereas an absent field
+    # parses to UNSPECIFIED (0). Refuse anything that looks bogus.
+    if prefs.file_version == _proto.PreferencesFile.Version.UNSPECIFIED:
+        raise click.ClickException(
+            "input JSON is missing 'fileVersion' — refusing to apply "
+            "(is this really a PreferencesFile dump?)"
+        )
+    # Never let the host set it on the device.
+    prefs.ClearField("file_version")
+    with _client() as c:
+        c.set_preferences(prefs)
+
+
 # ---------------------------------------------------------------------------
 # Screen — backlight control, layout management, and screen authoring
 # ---------------------------------------------------------------------------

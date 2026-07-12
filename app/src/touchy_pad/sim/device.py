@@ -338,6 +338,15 @@ class SimDevice:
                 return _result(_proto.RESULT_INVALID_ARG)
         return _result()
 
+    def _cmd_get_preferences(self, _msg: _proto.GetPreferencesCmd) -> _proto.Response:
+        # Stage LB4 — return the in-memory prefs mirror. file_version is
+        # device-owned; set it to CURRENT so the host's validity canary
+        # (its presence) is satisfied on a round-trip.
+        prefs = _proto.PreferencesFile()
+        prefs.CopyFrom(self._prefs)
+        prefs.file_version = _proto.PreferencesFile.Version.CURRENT
+        return _result(preferences_read=_proto.PreferencesReadResponse(prefs=prefs))
+
     def _cmd_run_actions(self, msg: _proto.RunActionsCmd) -> _proto.Response:
         # Stage 71 — run host-supplied Actions as if a local widget fired
         # them. Delegated to the GUI's action dispatcher when present so

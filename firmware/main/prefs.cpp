@@ -128,23 +128,7 @@ bool Prefs::apply_partial(const touchy_PreferencesFile &p)
 void Prefs::save()
 {
     PbMessage<touchy_PreferencesFile> pf(touchy_PreferencesFile_fields);
-    pf->file_version      = touchy_PreferencesFile_Version_CURRENT;
-    // Stage 82 — fields are now `optional` (explicit presence); set the
-    // has_* flags so nanopb serialises them.
-    pf->has_screen_timeout_ms = true;
-    pf->screen_timeout_ms = m_timeout_ms;
-    pf->has_min_log_level = true;
-    pf->min_log_level = m_min_log_level;
-    pf->has_boot_delay_s = true;
-    pf->boot_delay_s = m_boot_delay_s;
-    pf->has_backlight_level = true;
-    pf->backlight_level = m_backlight_level;
-    // current_screen is a fixed-size char[N] in the generated struct;
-    // snprintf truncates safely if the source ever exceeds the bound
-    // (which it shouldn't — the bound matches FileOpenWriteCmd.path).
-    pf->has_current_screen = true;
-    snprintf(pf->current_screen, sizeof(pf->current_screen), "%s",
-             m_current_screen.c_str());
+    *pf.get() = to_proto();
 
     uint8_t buf[PREFS_BUF_SIZE];
     size_t  n = 0;
@@ -159,4 +143,27 @@ void Prefs::save()
     ESP_LOGI(TAG, "Saved prefs (screen_timeout_ms=%" PRIu32
                   " current_screen='%s')",
              m_timeout_ms, m_current_screen.c_str());
+}
+
+touchy_PreferencesFile Prefs::to_proto() const
+{
+    touchy_PreferencesFile pf = touchy_PreferencesFile_init_zero;
+    pf.file_version      = touchy_PreferencesFile_Version_CURRENT;
+    // Stage 82 — fields are `optional` (explicit presence); set the
+    // has_* flags so nanopb serialises / the host sees them.
+    pf.has_screen_timeout_ms = true;
+    pf.screen_timeout_ms = m_timeout_ms;
+    pf.has_min_log_level = true;
+    pf.min_log_level = m_min_log_level;
+    pf.has_boot_delay_s = true;
+    pf.boot_delay_s = m_boot_delay_s;
+    pf.has_backlight_level = true;
+    pf.backlight_level = m_backlight_level;
+    // current_screen is a fixed-size char[N] in the generated struct;
+    // snprintf truncates safely if the source ever exceeds the bound
+    // (which it shouldn't — the bound matches FileOpenWriteCmd.path).
+    pf.has_current_screen = true;
+    snprintf(pf.current_screen, sizeof(pf.current_screen), "%s",
+             m_current_screen.c_str());
+    return pf;
 }

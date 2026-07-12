@@ -168,6 +168,16 @@ class TouchyClient:
         """
         _check(self._rpc(_proto.Command(set_preferences=_proto.SetPreferencesCmd(prefs=prefs))))
 
+    def get_preferences(self) -> _proto.PreferencesFile:
+        """Read the device's current, merged preferences.
+
+        Stage LB4 — the device replies with the full ``PreferencesFile``,
+        including the device-owned ``file_version``. Used by
+        ``touchy pref json-get`` to dump the live settings as JSON.
+        """
+        reply = _check(self._rpc(_proto.Command(get_preferences=_proto.GetPreferencesCmd())))
+        return reply.preferences_read.prefs
+
     def screen_sleep_timeout(self, timeout_ms: int) -> None:
         """Set the backlight auto-sleep timeout (Stage 82: via SetPreferences)."""
         self.set_preferences(_proto.PreferencesFile(screen_timeout_ms=timeout_ms))

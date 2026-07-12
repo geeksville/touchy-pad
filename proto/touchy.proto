@@ -161,6 +161,13 @@ message SetPreferencesCmd {
     PreferencesFile prefs = 1;
 }
 
+// Stage LB4 — read the device's current preferences. The reply is a
+// PreferencesReadResponse carrying the full, merged PreferencesFile
+// (including the device-owned `file_version`). The host uses this to dump
+// the live settings as JSON (`touchy pref json-get`).
+message GetPreferencesCmd {
+}
+
 // Pop a single event from the device's event queue. The corresponding
 // Response is the Event message itself (wrapped in `Response.event`), or an
 // empty Response with code = NOT_FOUND when the queue is empty.
@@ -196,6 +203,7 @@ message Command {
         SysBoardInfoGetCmd     sys_board_info_get    = 10;
         RunActionsCmd          run_actions           = 11;
         SetPreferencesCmd      set_preferences       = 12;
+        GetPreferencesCmd      get_preferences       = 13;
     }
 }
 
@@ -227,7 +235,7 @@ message SysBoardInfoResponse {
         option allow_alias = true;
         UNSPECIFIED = 0;
 
-        CURRENT = 11;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
+        CURRENT = 12;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
                 
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
@@ -253,6 +261,8 @@ message SysBoardInfoResponse {
         V11 = 11; // stage LB1: SysBoardInfoResponse gains is_touchable (the
                   //           board has no touch panel at all, e.g. an
                   //           LED-matrix board) — additive scalar field
+        V12 = 12; // stage LB4: GetPreferencesCmd + PreferencesReadResponse
+                  //           let the host read back the live prefs
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number
@@ -316,6 +326,12 @@ message EventConsumeResponse {
     LvEvent event = 1;
 }
 
+// Stage LB4 — reply to GetPreferencesCmd. Carries the device's full,
+// merged preferences (including the device-owned `file_version`).
+message PreferencesReadResponse {
+    PreferencesFile prefs = 1;
+}
+
 // Stage 64.1 — a single tunneled device log line, delivered to the host
 // as a `Response.log_record` payload alongside the normal
 // `EventConsumeResponse` flow. The host's existing
@@ -351,6 +367,8 @@ message Response {
         // place of `event_consume` from an `EventConsumeCmd` reply
         // when the event queue is empty but the log queue is not.
         LogRecord             log_record      = 5;
+        // Stage LB4 — reply to GetPreferencesCmd.
+        PreferencesReadResponse preferences_read = 6;
     }
 }
 

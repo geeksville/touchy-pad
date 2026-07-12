@@ -43,6 +43,13 @@ public:
     // Update the backlight brightness and persist it immediately to flash.
     void set_backlight_level(uint8_t level);
 
+    // Stage LB4 — snapshot the current preferences as a fully-populated
+    // `touchy_PreferencesFile` (file_version + every value field, all
+    // has_* presence flags set). This is exactly what `save()` writes to
+    // flash, so the returned message mirrors the persisted file. Used by
+    // the GetPreferencesCmd handler to reply with the live settings.
+    touchy_PreferencesFile to_proto() const;
+
     // Stage 82 — apply a partial PreferencesFile from a SetPreferencesCmd.
     // Only fields with explicit presence (has_*) are merged; the host's
     // file_version (if any) is ignored. Each applied field fires its side
