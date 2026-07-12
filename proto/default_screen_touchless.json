@@ -125,7 +125,7 @@
             },
             "styles": [
               {
-                "textColor": 6316128
+                "textColor": 4210752
               },
               {
                 "fontSize": 8
@@ -135,7 +135,7 @@
             "growY": 1,
             "label": {
               "text": "Welcome to touchypad.",
-              "longMode": "LONG_MODE_SCROLL"
+              "longMode": "LONG_MODE_SCROLL_CIRCULAR"
             }
           }
         ]

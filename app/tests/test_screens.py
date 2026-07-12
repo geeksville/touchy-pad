@@ -1029,7 +1029,7 @@ def test_build_setup_screen_touchless_has_scrolling_welcome():
     assert welcome.id == "welcome"
     assert welcome.WhichOneof("kind") == "label"
     assert welcome.label.text == "Welcome to touchypad."
-    assert welcome.label.long_mode == _proto.LongMode.LONG_MODE_SCROLL
+    assert welcome.label.long_mode == _proto.LongMode.LONG_MODE_SCROLL_CIRCULAR
     # font_size lives on a Style now (folded in by the label() sugar).
     assert any(st.font_size == 8 for st in welcome.styles)
     # Explicit rect fills the 32×8 panel (also activates SCROLL_CIRCULAR).

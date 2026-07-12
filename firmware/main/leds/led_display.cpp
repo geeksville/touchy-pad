@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Stage LB2 — LVGL display driver for the Adafruit ESP32-S3 Feather
-// LED-matrix board.
+// Shared LVGL display driver for WS2812B LED-matrix boards (Stages LB1 /
+// LB2). Used by jc_esp32p4_m3 and feather_esp32_s3; compiled into each
+// board component via its CMakeLists.txt SRCS list.
 //
-// There is no LCD: the LVGL display is a small (32×8) RGB565 canvas whose
-// flush callback converts each rendered pixel to gamma-corrected RGB888
-// and pushes it into a single WS2812B LEDPanel. LVGL renders the whole
-// frame each time (FULL render mode) — the surface is tiny (256 px), so a
+// There is no LCD: the LVGL display is a small (e.g. 32×8) RGB565 canvas
+// whose flush callback converts each rendered pixel to gamma-corrected
+// RGB888 and pushes it into a single WS2812B LEDPanel. LVGL renders the
+// whole frame each time (FULL render mode) — the surface is tiny, so a
 // single full-frame buffer and one led_strip refresh per frame is simplest
 // and avoids partial-area bookkeeping.
 //
-// Identical in behaviour to the jc_esp32p4_m3 driver; the LEDPanel and
-// gamma/serpentine logic are shared from firmware/main/leds/.
+// Board-specific pins / geometry come from the board's own `board_pins.h`
+// (BOARD_LED_PANEL_GPIO / _W / _H), pulled in via the board component's
+// PRIV_INCLUDE_DIRS ".". The LEDPanel + serpentine map live alongside in
+// led_panel.{h,cpp}.
 
 #include "display.h"
 #include "led_display.h"
