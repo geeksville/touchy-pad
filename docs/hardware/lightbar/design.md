@@ -191,3 +191,186 @@ No tiling / multi-panel work in this stage.
   `lv_display`s.
 - Multi-lane / PARLIO parallel output (4 lanes × 4 modules, 16 panels).
 - 12V power, fan, OTA — tracked in `lightbar.md`.
+
+## stage LB3 — label `long_mode` + scrolling welcome text
+
+Add an LVGL long-mode selector to the `Label` widget, wire it through
+every layer of the stack (proto → Python DSL → firmware builder → sim →
+Rust mirror), and use it on the touch-less default screen so the
+8×32 LED panel shows a continuously scrolling "Welcome to touchypad"
+marquee over the bouncing shapes.
+
+### Background
+
+LVGL's `lv_label_long_mode_t` enum
+([docs](https://lvgl.io/docs/open/main/widgets/label#long-modes))
+controls what happens when label text overflows its fixed bounding box.
+The installed LVGL (`firmware/managed_components/lvgl__lvgl`) defines:
+
+```c
+typedef enum {
+    LV_LABEL_LONG_MODE_WRAP,             // 0  (default)
+    LV_LABEL_LONG_MODE_DOTS,             // 1
+    LV_LABEL_LONG_MODE_SCROLL,           // 2  (back-and-forth)
+    LV_LABEL_LONG_MODE_SCROLL_CIRCULAR,  // 3  (continuous one-way)
+    LV_LABEL_LONG_MODE_CLIP,             // 4
+} lv_label_long_mode_t;
+```
+
+The proto enum values are chosen to match 1:1 so the firmware can cast
+directly (same pattern already used for `TextAlign` ↔ `lv_text_align_t`).
+`WRAP = 0` is the proto3 default, so existing labels that don't set
+`long_mode` keep today's behaviour — **no wire-incompatible break**.
+
+### Definition of done
+
+* `Label` carries an optional `LongMode long_mode` field; the Python
+  `label()` DSL, the firmware `build_label`, the Qt sim, and the Rust
+  proto mirror all honour it.
+* `build_setup_screen_touchless()` overlays a full-screen
+  `LongMode.SCROLL_CIRCULAR` label reading
+  `"Welcome to touchypad. This is a test"` above the three bouncers.
+* `just build-proto` regenerates the Python `_proto` bindings, the C
+  nanopb headers, and the Rust `prost` bindings cleanly; `just app-test`
+  passes with a new test covering the field round-trip and the
+  touch-less welcome label.
+
+### Assumptions
+
+* **Font:** the 8-pixel-tall panel can only legibly render an 8px font;
+  the only sizes compiled today are Montserrat **16** and **30**
+  (`firmware/sdkconfig.defaults`). This stage enables
+  `CONFIG_LV_FONT_MONTSERRAT_8=y` in the shared `sdkconfig.defaults`
+  (small flash cost, benefits every board) and sets `font_size=8` on the
+  welcome label. *(If 8px reads too chunky on hardware, Montserrat 10 is
+  the fallback — but 10px on an 8px display clips, so 8 is the safe
+  first choice.)*
+* **Label sizing under `absolute()`:** `grow_x`/`grow_y` are documented
+  as ignored under an absolute parent (`AGENTS.md` Stage 72), and
+  `SCROLL_CIRCULAR` *requires* a fixed width narrower than the text to
+  activate. So the welcome label gets an explicit
+  `rect(x=0, y=0, w=width, h=height)` to fill the 32×8 panel — this is
+  the concrete mechanism behind the design's "grow the x/y size to fill
+  the screen". `grow_x=1, grow_y=1` is also set for documentation /
+  forward-compatibility.
+* **Text colour:** white (`0xFFFFFF`) so it's bright on the WS2812B
+  matrix over the dim `0x40`-tier bouncer colours.
+* **Z-order:** "over the bouncing shapes" → the label is appended *after*
+  the three bouncers (LVGL draws later children on top).
+
+### Work items
+
+1. **Proto — new `LongMode` enum + `Label.long_mode` field**
+   (`proto/widgets.proto` *and* the mirror at
+   `rust/touchy-pad/proto/widgets.proto`):
+
+   ```proto
+   // Long-mode behaviour for a label whose width/height is fixed.
+   // Values match lv_label_long_mode_t 1:1 — the firmware casts directly.
+   enum LongMode {
+       WRAP            = 0;  // LV_LABEL_LONG_MODE_WRAP  (default)
+       DOTS            = 1;  // LV_LABEL_LONG_MODE_DOTS
+       SCROLL          = 2;  // LV_LABEL_LONG_MODE_SCROLL
+       SCROLL_CIRCULAR = 3;  // LV_LABEL_LONG_MODE_SCROLL_CIRCULAR
+       CLIP            = 4;  // LV_LABEL_LONG_MODE_CLIP
+   }
+   ```
+
+   Add to `message Label` (next free tag):
+   ```proto
+   LongMode long_mode = 4;
+   ```
+   Bump `Widget.Version.CURRENT` 25 → 26 (house convention: bump on any
+   widget-message change, even additive).
+
+2. **Regenerate bindings** — `just build-proto` (Python `_proto` + C
+   nanopb `widgets.pb.{h,c}`). The Rust `prost` bindings rebuild on next
+   `cargo build` from the mirrored `.proto`.
+
+3. **Python DSL** (`app/src/touchy_pad/api/screens.py`):
+   * Add a `LongMode` re-export (alias of `_proto.Label.LongMode`,
+     exactly like the existing `TextAlign` alias) at the top of the
+     module with the other enum re-exports.
+   * `label(...)` gains `long_mode: int = LongMode.WRAP` and writes
+     `w.label.long_mode = long_mode` only when the caller passes a
+     non-default value (keep the default path untouched so existing
+     screens are byte-identical).
+   * Update the `label()` docstring to describe each mode and note that
+     `SCROLL` / `SCROLL_CIRCULAR` need a fixed width (set via `rect` or a
+     sizing parent) to take effect.
+
+4. **Firmware builder** (`firmware/main/widgets/widget_builders.cpp`,
+   `build_label`): after the existing `text_align` block, add:
+
+   ```cpp
+   if (w.kind.label.long_mode != touchy_LongMode_WRAP) {
+       lv_label_set_long_mode(lbl,
+           (lv_label_long_mode_t)w.kind.label.long_mode);
+   }
+   ```
+   `WRAP` (0) is skipped so the LVGL default path is unchanged. Extend
+   the `ESP_LOGI` line to include `long_mode=%d`.
+
+5. **Enable Montserrat 8** — add `CONFIG_LV_FONT_MONTSERRAT_8=y` to
+   `firmware/sdkconfig.defaults` (alongside the existing 16 / 30 lines).
+   No per-board override needed.
+
+6. **Touch-less welcome label** — in
+   `build_setup_screen_touchless()` (`app/src/touchy_pad/api/screens.py`),
+   after the three `_bouncer(...)` calls and **before** `return screen`,
+   append:
+
+   ```python
+   welcome = label(
+       "welcome",
+       text="Welcome to touchypad. This is a test",
+       font_size=8,
+       long_mode=LongMode.SCROLL_CIRCULAR,
+       rect=rect(x=0, y=0, w=width, h=height),
+       style=style(text_color=0xFFFFFF),
+   )
+   grow(welcome, x=1, y=1)   # documentation / forward-compat
+   screen += welcome
+   ```
+
+   The explicit `rect(w=width, h=height)` is what actually fills the
+   panel under the absolute layout *and* gives `SCROLL_CIRCULAR` the
+   fixed box it needs to scroll within.
+
+7. **Regenerate embedded screen** — `just gen-default-screen`
+   (→ `proto/default_screen_touchless.json`) then
+   `just build-default-screen` (→
+   `firmware/main/default_screen_pb.h`). The welcome label now rides
+   inside `default_screen_touchless_pb_*`.
+
+8. **Qt sim** (`app/src/touchy_pad/sim/widgets.py`, the `kind == "label"`
+   branch): map `SCROLL` / `SCROLL_CIRCULAR` to a rough equivalent —
+   `QtWidgets.QLabel` has no built-in marquee, so wrap the text in a
+   `QScrollArea` with horizontal scrollbar off, or (simplest) just let
+   Qt clip (`CLIP`-like) and log a debug note. The sim is advisory; the
+   exact animation fidelity is not required. At minimum, don't crash on
+   the new field.
+
+9. **Rust** — no hand-written label code exists; the mirrored proto +
+   `prost` rebuild covers it. If `rust/touchy-pad` has a screen-builder
+   helper that constructs `Label`, pass `long_mode` through there too
+   (grep confirms there is none today).
+
+10. **Tests** (`app/tests/test_screens.py`):
+    * Extend the existing label round-trip test to set
+      `long_mode=LongMode.SCROLL_CIRCULAR` and assert it survives
+      `Screen.to_proto()` → bytes → parse.
+    * Add a `build_setup_screen_touchless()` assertion that the decoded
+      screen contains a `label` child with the welcome text,
+      `long_mode == SCROLL_CIRCULAR`, and `font_size == 8`.
+
+### Deferred / out of scope
+
+* Per-label scroll speed / animation customisation (LVGL's
+  `lv_style_set_anim` template) — not needed for the marquee.
+* Custom bitmap font tuned for the 5×8 LED grid — Montserrat 8 is the
+  pragmatic first step; revisit if legibility is poor on hardware.
+* `DOTS` mode's in-place buffer edit caveat (LVGL warns against
+  `_set_text_static` with ROM strings under `DOTS`) — the firmware
+  already copies label text via `lv_label_set_text`, so this is a
+  non-issue, but worth a one-line code comment in `build_label`.

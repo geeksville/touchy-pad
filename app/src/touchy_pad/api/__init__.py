@@ -76,6 +76,7 @@ from .screens import (
     AnimPath,
     ImageSource,
     Layer,
+    LongMode,
     LvState,
     Screen,
     StyleProp,
@@ -87,6 +88,7 @@ from .screens import (
     build_demo,
     build_demo_screen,
     build_setup_screen,
+    build_setup_screen_touchless,
     build_user_pages,
     button,
     cell,
@@ -186,6 +188,7 @@ __all__ = [
     "build_demo_screen",
     "build_default_screen",
     "build_setup_screen",
+    "build_setup_screen_touchless",
     "build_user_pages",
     # On-device filesystem paths (Stage 68).
     "SCREENS_DIR",
@@ -216,6 +219,7 @@ __all__ = [
     "HID_MOUSE_BTN_MIDDLE",
     # Proto enum namespaces.
     "AnimPath",
+    "LongMode",
     "LvState",
     "StyleProp",
     "TextAlign",

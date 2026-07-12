@@ -137,6 +137,80 @@ lv_style_transition_dsc_t *build_lv_transition(const touchy_Transition &t,
     return tr;
 }
 
+// Map a requested pixel font size to the nearest Montserrat font that is
+// compiled into this firmware build. Returns nullptr for sizes with no
+// matching font (the caller then leaves the theme default in place).
+// Add new sizes here as they are enabled in sdkconfig.defaults.
+const lv_font_t *font_for_size(int32_t size)
+{
+    switch (size) {
+#if LV_FONT_MONTSERRAT_8
+    case 8:  return &lv_font_montserrat_8;
+#endif
+#if LV_FONT_MONTSERRAT_10
+    case 10: return &lv_font_montserrat_10;
+#endif
+#if LV_FONT_MONTSERRAT_12
+    case 12: return &lv_font_montserrat_12;
+#endif
+#if LV_FONT_MONTSERRAT_14
+    case 14: return &lv_font_montserrat_14;
+#endif
+#if LV_FONT_MONTSERRAT_16
+    case 16: return &lv_font_montserrat_16;
+#endif
+#if LV_FONT_MONTSERRAT_18
+    case 18: return &lv_font_montserrat_18;
+#endif
+#if LV_FONT_MONTSERRAT_20
+    case 20: return &lv_font_montserrat_20;
+#endif
+#if LV_FONT_MONTSERRAT_22
+    case 22: return &lv_font_montserrat_22;
+#endif
+#if LV_FONT_MONTSERRAT_24
+    case 24: return &lv_font_montserrat_24;
+#endif
+#if LV_FONT_MONTSERRAT_26
+    case 26: return &lv_font_montserrat_26;
+#endif
+#if LV_FONT_MONTSERRAT_28
+    case 28: return &lv_font_montserrat_28;
+#endif
+#if LV_FONT_MONTSERRAT_30
+    case 30: return &lv_font_montserrat_30;
+#endif
+#if LV_FONT_MONTSERRAT_32
+    case 32: return &lv_font_montserrat_32;
+#endif
+#if LV_FONT_MONTSERRAT_34
+    case 34: return &lv_font_montserrat_34;
+#endif
+#if LV_FONT_MONTSERRAT_36
+    case 36: return &lv_font_montserrat_36;
+#endif
+#if LV_FONT_MONTSERRAT_38
+    case 38: return &lv_font_montserrat_38;
+#endif
+#if LV_FONT_MONTSERRAT_40
+    case 40: return &lv_font_montserrat_40;
+#endif
+#if LV_FONT_MONTSERRAT_42
+    case 42: return &lv_font_montserrat_42;
+#endif
+#if LV_FONT_MONTSERRAT_44
+    case 44: return &lv_font_montserrat_44;
+#endif
+#if LV_FONT_MONTSERRAT_46
+    case 46: return &lv_font_montserrat_46;
+#endif
+#if LV_FONT_MONTSERRAT_48
+    case 48: return &lv_font_montserrat_48;
+#endif
+    default: return nullptr;
+    }
+}
+
 // Build one `lv_style_t` from a `touchy_Style` message. Each populated
 // scalar contributes one `lv_style_set_<prop>` call; fields whose
 // `has_<field>` is false inherit the theme. Returns a heap-allocated
@@ -171,6 +245,14 @@ lv_style_t *build_lv_style(const touchy_Style &s, WidgetStyles *ws)
     if (s.has_outline_width) lv_style_set_outline_width(st, s.outline_width);
     if (s.has_transform_scale_x) lv_style_set_transform_scale_x(st, s.transform_scale_x);
     if (s.has_transform_scale_y) lv_style_set_transform_scale_y(st, s.transform_scale_y);
+    if (s.has_font_size) {
+        // Font size is a style property in LVGL (lv_style_set_text_font).
+        // Map the requested pixel size to the nearest Montserrat font
+        // compiled into the firmware; sizes without a matching font fall
+        // back to the theme default (no set_text_font call).
+        if (const lv_font_t *font = font_for_size(s.font_size))
+            lv_style_set_text_font(st, font);
+    }
     if (s.has_transition) {
         lv_style_transition_dsc_t *tr = build_lv_transition(s.transition, ws);
         if (tr) lv_style_set_transition(st, tr);

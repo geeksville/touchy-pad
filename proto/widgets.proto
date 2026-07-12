@@ -331,6 +331,12 @@ message Style {
     // Vertical scale in 1/256 units; 256 = 100% (LV_SCALE_NONE), 192 = 75%.
     // Maps to `lv_style_set_transform_scale_y`.
     optional int32  transform_scale_y = 20;
+    // Font size in pixels (matches the Montserrat N naming). 0/unset =
+    // theme default. The firmware maps each value to the nearest
+    // `lv_font_montserrat_<N>` compiled in (see
+    // CONFIG_LV_FONT_MONTSERRAT_* in firmware/sdkconfig.defaults); sizes
+    // without a matching font fall back to the theme default.
+    optional int32  font_size         = 21;
 }
 
 // Single device-side keystroke step inside an `ActionMacro`.
@@ -582,13 +588,30 @@ enum TextAlign {
     RIGHT  = 3;
 }
 
+// Long-mode behaviour for a label whose width/height is fixed. Maps
+// directly to lv_label_long_mode_t (values chosen 1:1 so the firmware
+// casts directly). See
+// https://lvgl.io/docs/open/main/widgets/label#long-modes
+//
+// Proto3 enum values are package-scoped siblings, so they are prefixed
+// `LONG_MODE_` to avoid colliding with e.g. `LvEventCode.SCROLL`.
+enum LongMode {
+    LONG_MODE_WRAP            = 0;  // LV_LABEL_LONG_MODE_WRAP  (default)
+    LONG_MODE_DOTS            = 1;  // LV_LABEL_LONG_MODE_DOTS
+    LONG_MODE_SCROLL          = 2;  // LV_LABEL_LONG_MODE_SCROLL
+    LONG_MODE_SCROLL_CIRCULAR = 3;  // LV_LABEL_LONG_MODE_SCROLL_CIRCULAR
+    LONG_MODE_CLIP            = 4;  // LV_LABEL_LONG_MODE_CLIP
+}
+
 message Label {
     string text      = 1;
-    // 0 = theme default. Otherwise: closest available Montserrat size
-    // compiled into the firmware (see CONFIG_LV_FONT_MONTSERRAT_* in
-    // firmware/sdkconfig.defaults).
-    int32     font_size  = 2;
     TextAlign text_align = 3;
+    // Behaviour when the text overflows the label's fixed box
+    // (LVGL long mode). Default WRAP matches the LVGL default. The
+    // SCROLL / SCROLL_CIRCULAR modes only activate when the label has
+    // a fixed width narrower than the text — set via `rect` or a sizing
+    // parent (flex grow / grid stretch).
+    LongMode long_mode = 4;
 }
 
 message Slider {
@@ -956,7 +979,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 25;
+        CURRENT         = 27;  // LB3: font_size moved Label → Style
     }
     Version version = 6;
 

@@ -217,11 +217,18 @@ lv_obj_t *build_label(lv_obj_t *parent, const touchy_Widget &w)
         if (idx >= 0 && idx < 4)
             lv_obj_set_style_text_align(lbl, map[idx], 0);
     }
-    ESP_LOGI(TAG, "build_label id='%s' text='%.40s' font_size=%d text_align=%d",
-             w.id, w.kind.label.text, (int)w.kind.label.font_size,
-             (int)w.kind.label.text_align);
-    // font_size is advisory: we only honour it if a matching Montserrat
-    // build-in is compiled. Anything else falls back to theme default.
+    // Long mode: how overflow is handled when the label box is fixed.
+    // Values mirror lv_label_long_mode_t 1:1; skip the WRAP (0) default
+    // so the LVGL base path is unchanged.
+    if (w.kind.label.long_mode != touchy_LongMode_LONG_MODE_WRAP) {
+        lv_label_set_long_mode(lbl,
+            (lv_label_long_mode_t)w.kind.label.long_mode);
+    }
+    ESP_LOGI(TAG, "build_label id='%s' text='%.40s' text_align=%d long_mode=%d",
+             w.id, w.kind.label.text,
+             (int)w.kind.label.text_align, (int)w.kind.label.long_mode);
+    // font_size now lives on Style (applied via lv_style_set_text_font in
+    // widget_styles.cpp) — nothing font-related to do here.
     return lbl;
 }
 

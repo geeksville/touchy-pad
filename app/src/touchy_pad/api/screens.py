@@ -96,6 +96,7 @@ __all__ = [
     "LvState",
     "StyleProp",
     "TextAlign",
+    "LongMode",
 ]
 
 
@@ -106,6 +107,7 @@ AnimPath = _proto.AnimPath
 LvState = _proto.LvState
 StyleProp = _proto.StyleProp
 TextAlign = _proto.TextAlign
+LongMode = _proto.LongMode
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +239,7 @@ def style(
     transform_width: int | None = None,
     transition: _proto.Transition | None = None,
     shadow_width: int | None = None,
+    font_size: int | None = None,
 ) -> _proto.Style:
     """Cosmetic overrides; unset fields fall back to theme defaults.
 
@@ -264,6 +267,10 @@ def style(
       animates the listed properties when the style is added / removed
       from the widget's selector match (e.g. entering / leaving
       ``STATE_PRESSED``). See :func:`transition` for the pattern.
+    * ``font_size`` sets the text font size in pixels (matches the
+      Montserrat ``N`` naming). The firmware maps it to the nearest
+      ``lv_font_montserrat_<N>`` compiled in; sizes without a matching
+      font fall back to the theme default. ``0``/unset = theme default.
 
     Stack several ``Style`` instances on a widget by passing a list as
     the factory's ``style=`` argument.
@@ -291,6 +298,8 @@ def style(
         s.transform_width = transform_width
     if shadow_width is not None:
         s.shadow_width = shadow_width
+    if font_size is not None:
+        s.font_size = font_size
     if transition is not None:
         s.transition.CopyFrom(transition)
     return s
@@ -725,21 +734,43 @@ def label(
     text: str = "",
     font_size: int = 0,
     text_align: int = TextAlign.AUTO,
+    long_mode: int = LongMode.LONG_MODE_WRAP,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
 ) -> _proto.Widget:
     """Static text. ``font_size = 0`` uses the theme default.
 
+    ``font_size`` is sugar: it is folded into the widget's default-state
+    :class:`Style` (LVGL treats font as a style property). Pass an
+    explicit ``style=`` with its own ``font_size`` to override it per
+    state (e.g. a bigger font only while pressed).
+
     ``text_align`` controls horizontal alignment of the text *within the
     label's box* (``TEXT_ALIGN_*``; default ``AUTO`` follows LVGL). To
     actually centre across the screen, also give the label full width
     (e.g. ``grow(label(...), x=1)`` under a column).
+
+    ``long_mode`` controls how text overflowing the label's fixed box is
+    handled (``LONG_MODE_*``; default ``WRAP``). ``SCROLL`` bounces the
+    text back-and-forth; ``SCROLL_CIRCULAR`` scrolls continuously. The
+    scroll modes only activate when the label has a fixed width narrower
+    than the text — set via ``rect`` (e.g. under an absolute layout) or a
+    sizing parent (flex grow / grid stretch). ``DOTS`` trims with ``…``;
+    ``CLIP`` hard-clips.
     """
-    w = _widget(id, rect=rect, style=style, animations=animations)
+    styles = _normalise_styles(style)
+    if font_size:
+        # Fold font_size into an extra default-state style (LVGL treats
+        # font as a style prop). If the caller also passed a style with a
+        # font_size, theirs wins (last entry in `styles`).
+        fs = _proto.Style()
+        fs.font_size = font_size
+        styles = [*styles, fs]
+    w = _widget(id, rect=rect, style=styles, animations=animations)
     w.label.text = text
-    w.label.font_size = font_size
     w.label.text_align = text_align
+    w.label.long_mode = long_mode
     return w
 
 
@@ -1651,7 +1682,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     # radius=0 → square corners; radius=32767 → fully rounded (circle).
     screen += _bouncer(
         "swatch_red",
-        0x400000,
+        0x200000,
         radius=0,
         duration_ms=900,
         start_delay_ms=0,
@@ -1659,7 +1690,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     )
     screen += _bouncer(
         "swatch_green",
-        0x004000,
+        0x002000,
         radius=32767,
         duration_ms=1200,
         start_delay_ms=250,
@@ -1667,12 +1698,28 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     )
     screen += _bouncer(
         "swatch_blue",
-        0x000040,
+        0x000020,
         radius=0,
         duration_ms=750,
         start_delay_ms=450,
         path=AnimPath.OVERSHOOT,
     )
+
+    # Stage LB3 — a full-screen scrolling welcome marquee drawn *above*
+    # the bouncers (appended last → LVGL draws it on top). Explicit rect
+    # fills the 32×8 panel under the absolute layout *and* gives
+    # SCROLL_CIRCULAR the fixed width it needs to activate. font_size=8
+    # matches the panel height (Montserrat 8 enabled in sdkconfig.defaults).
+    welcome = label(
+        "welcome",
+        text="Welcome to touchypad.",
+        font_size=8,
+        long_mode=LongMode.LONG_MODE_SCROLL,
+        rect=rect(x=0, y=0, w=width, h=height),
+        style=style(text_color=0x606060),
+    )
+    grow(welcome, x=1, y=1)  # documentation / forward-compat under flex/grid
+    screen += welcome
 
     return screen
 

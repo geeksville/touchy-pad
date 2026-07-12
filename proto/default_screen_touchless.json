@@ -12,7 +12,7 @@
             },
             "styles": [
               {
-                "bgColor": 4194304,
+                "bgColor": 1048576,
                 "radius": 0
               }
             ],
@@ -49,7 +49,7 @@
             },
             "styles": [
               {
-                "bgColor": 16384,
+                "bgColor": 4096,
                 "radius": 32767
               }
             ],
@@ -87,7 +87,7 @@
             },
             "styles": [
               {
-                "bgColor": 64,
+                "bgColor": 16,
                 "radius": 0
               }
             ],
@@ -116,6 +116,27 @@
               }
             ],
             "spacer": {}
+          },
+          {
+            "id": "welcome",
+            "rect": {
+              "w": 32,
+              "h": 8
+            },
+            "styles": [
+              {
+                "textColor": 6316128
+              },
+              {
+                "fontSize": 8
+              }
+            ],
+            "growX": 1,
+            "growY": 1,
+            "label": {
+              "text": "Welcome to touchypad. This is a test",
+              "longMode": "LONG_MODE_SCROLL_CIRCULAR"
+            }
           }
         ]
       }

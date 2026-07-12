@@ -55,6 +55,7 @@ from .widgets_pb2 import (  # noqa: F401  (re-exported)
     LayoutFlex,
     LayoutGrid,
     LogLine,
+    LongMode,
     LvEventCode,
     LvState,
     MacroStep,

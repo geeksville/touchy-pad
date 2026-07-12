@@ -280,10 +280,21 @@ def _build_leaf(
     if kind == "label":
         lbl = QtWidgets.QLabel(w.label.text or "")
         lbl.setAlignment(_qt_align(w.label.text_align))
-        if w.label.font_size:
+        # font_size now lives on Style (last entry wins, matching the
+        # firmware's lv_obj_add_style precedence).
+        font_size = next(
+            (st.font_size for st in reversed(w.styles) if st.HasField("font_size")),
+            0,
+        )
+        if font_size:
             f = lbl.font()
-            f.setPointSize(int(w.label.font_size))
+            f.setPointSize(int(font_size))
             lbl.setFont(f)
+        # Long mode: Qt has no built-in marquee, so WRAP turns on word
+        # wrap (Qt's default-ish behaviour) while every other mode stays
+        # single-line and lets Qt clip at the label's fixed width — close
+        # enough for advisory sim rendering of SCROLL / DOTS / CLIP.
+        lbl.setWordWrap(w.label.long_mode == _proto.LongMode.LONG_MODE_WRAP)
         return lbl
 
     if kind == "slider":

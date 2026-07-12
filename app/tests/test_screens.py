@@ -9,12 +9,14 @@ import pytest
 from touchy_pad import _proto
 from touchy_pad.api import (
     AnimPath,
+    LongMode,
     LvState,
     Screen,
     StyleProp,
     arc,
     build_default_screen,
     build_demo,
+    build_setup_screen_touchless,
     build_user_pages,
     button,
     change_widget_ref_action,
@@ -102,7 +104,10 @@ def test_button_round_trip():
     w1 = _children(decoded.active)[1]
     assert w1.WhichOneof("kind") == "label"
     assert w1.label.text == "Hello"
-    assert w1.label.font_size == 24
+    # font_size folds into a default-state Style (LVGL treats font as a
+    # style property).
+    assert any(st.font_size == 24 for st in w1.styles)
+    assert w1.label.long_mode == _proto.LongMode.LONG_MODE_WRAP
 
 
 def test_all_widget_kinds_serialise():
@@ -1001,3 +1006,44 @@ def test_default_screen_json_round_trips_to_default():
     # Keep the JSON parseable and structurally correct, but don't do an
     # exact byte comparison — that breaks every time build_setup_screen()
     # evolves.  Run `just gen-default-screen` to resync the file.
+
+
+def test_label_long_mode_round_trips():
+    """Label.long_mode survives proto serialise → parse."""
+    s = Screen("lm", layout=col())
+    s += label("scroller", text="abc", long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR)
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert w.WhichOneof("kind") == "label"
+    assert w.label.text == "abc"
+    assert w.label.long_mode == _proto.LongMode.LONG_MODE_SCROLL_CIRCULAR
+
+
+def test_build_setup_screen_touchless_has_scrolling_welcome():
+    """The touch-less default screen overlays a SCROLL_CIRCULAR welcome."""
+    screen = build_setup_screen_touchless(width=32, height=8)
+    decoded = _proto.Screen.FromString(screen.to_bytes())
+    children = _children(decoded.active)
+    # The welcome label is appended last → drawn above the bouncers.
+    welcome = children[-1]
+    assert welcome.id == "welcome"
+    assert welcome.WhichOneof("kind") == "label"
+    assert welcome.label.text == "Welcome to touchypad."
+    assert welcome.label.long_mode == _proto.LongMode.LONG_MODE_SCROLL
+    # font_size lives on a Style now (folded in by the label() sugar).
+    assert any(st.font_size == 8 for st in welcome.styles)
+    # Explicit rect fills the 32×8 panel (also activates SCROLL_CIRCULAR).
+    assert welcome.rect.w == 32
+    assert welcome.rect.h == 8
+
+
+def test_touchless_default_screen_json_round_trips():
+    """proto/default_screen_touchless.json decodes with the welcome label."""
+    from google.protobuf import json_format
+
+    repo_root = Path(__file__).resolve().parents[2]
+    raw = (repo_root / "proto" / "default_screen_touchless.json").read_text(encoding="utf-8")
+    msg = json_format.Parse(raw, _proto.Screen())
+    welcome = _children(msg.active)[-1]
+    assert welcome.id == "welcome"
+    assert welcome.label.long_mode == _proto.LongMode.LONG_MODE_SCROLL_CIRCULAR
