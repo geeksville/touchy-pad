@@ -2,7 +2,7 @@
 Notes about LED-ART variants
 
 Probably best done as seperate projects:
-* [lightbar](hardware/lightbar.md): based on touchypad-code, 12V highwatt in, drives panels and talks protobuf over wifi
+* [lightbar](hardware/lightbar/lightbar.md): a hanging 4 sided LED column - based on touchypad-code, 12V highwatt in, drives multiple panels and talks protobuf over wifi
 * voicebot: use a local (coral based?) voice->text, text->voice AI.  possibly add homekit integration support so it can be an entirely local smart homekit controller.  Via MCP?
 * creep3r: uses lightbar and voicebot to do its art.  probably runs on the same hw with voicebot
 
