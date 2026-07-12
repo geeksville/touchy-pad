@@ -93,6 +93,7 @@ jobs:
           - elecrow_s3_lcd_7_adv
           - squixl
           - matouch_43
+          - feather_esp32_s3
     runs-on: ubuntu-latest
     env:
       IDF_VERSION: ${{ needs.install-esp-idf.outputs.idf-version }}
