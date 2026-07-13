@@ -80,6 +80,8 @@ packages = [{ include = "touchy_pad", from = "src" }]
 include = [
     { path = "src/touchy_pad/assets/*.png", format = ["sdist", "wheel"] },
     { path = "src/touchy_pad/assets/*.gif", format = ["sdist", "wheel"] },
+    { path = "src/touchy_pad/assets/*.json", format = ["sdist", "wheel"] },
+    { path = "src/touchy_pad/assets/templates/*.json", format = ["sdist", "wheel"] },
     { path = "src/touchy_pad/_proto/*_pb2.py", format = ["sdist", "wheel"] },
 ]
 

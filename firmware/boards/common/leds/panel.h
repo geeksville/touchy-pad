@@ -11,7 +11,7 @@
 // stages can tile several panels into one LVGL display, or map several
 // LVGL displays onto several panels, without touching the display driver.
 //
-// This is a board-independent subsystem: it lives under firmware/main/leds/
+// This is a board-independent subsystem: it lives under firmware/boards/common/leds/
 // but is compiled by whichever board component drives LED panels (the
 // espressif/led_strip dependency is board-scoped), so boards without LED
 // matrices don't pull it in.

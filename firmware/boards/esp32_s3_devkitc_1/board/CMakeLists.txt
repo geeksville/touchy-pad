@@ -3,17 +3,20 @@
 # `board` component for the Adafruit ESP32-S3 Feather LED-matrix board
 # (Stage LB2). Implements main/board.h, main/display.h, main/touch.h. The
 # LVGL display + brightness seam are the shared WS2812B driver in
-# main/leds/led_display.cpp (board_pins.h supplies the GPIO / geometry).
+# main/leds/led_display.cpp (panel GPIO / geometry come from the persisted
+# BoardConfig preference — Stage lb6 — not board_pins.h). The LED shared
+# sources now live in firmware/boards/common/leds/ (moved from main/leds/
+# in Stage lb6 to silence IDF's cross-component source ownership warning).
 
 idf_component_register(
     SRCS
         "board.cpp"
-        "../../../main/leds/led_display.cpp"
+        "../../../boards/common/leds/led_display.cpp"
         "touch.cpp"
-        "../../../main/leds/led_panel.cpp"
-    INCLUDE_DIRS "../../../main"   # exports board.h / display.h / touch.h to deps
-    PRIV_INCLUDE_DIRS "." "../../../main/leds"   # local board_pins.h / led_panel.h / led_display.h
+        "../../../boards/common/leds/led_panel.cpp"
+    PRIV_INCLUDE_DIRS "." "../../../boards/common/leds"   # local board_pins.h / led_panel.h / led_display.h
     REQUIRES
+        main   # seam headers board.h / display.h / touch.h live in main
         driver
         esp_hw_support
         esp_lcd

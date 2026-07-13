@@ -575,20 +575,204 @@ consumer of this array, but is **out of scope** here.
 * **Per-link flow-control / backpressure** tuning beyond what the existing
   single-link path already does.
 
-## stage lb6: more flexible led panel config
+## stage lb6: runtime LED-panel config via `BoardConfig`
 
-currently files like firmware/boards/esp32_s3_devkitc_1/board/board_pins.h say things like
+**Status: implemented (host side; firmware not compiled on real ESP-IDF in
+this environment).** Proto (`Panel`/`Display`/`BoardConfig` +
+`PreferencesFile.board_config`, `Version` 5→6), nanopb caps
+(`max_count:1`), firmware merge/persist + proto-free `led_panel_config()`
+accessor, `led_display.cpp` reading it (headless when unset), removal of
+the `BOARD_LED_PANEL_*` macros, the `pref from-template` CLI (+ shared
+`_apply_prefs_json` helper), the bundled
+`assets/templates/led-32x8.json`, tests, and docs are all in place.
+`just app-test` + `just app-lint` pass.
 
+Move the LED-matrix hardware description off compile-time C macros and
+into a persisted, host-writable protobuf. Today each LED board hard-codes
+its panel in `board_pins.h`:
+
+```c
 #define BOARD_LED_PANEL_GPIO   GPIO_NUM_4
 #define BOARD_LED_PANEL_W      32
 #define BOARD_LED_PANEL_H      8
+```
 
-thats not ideal - it would better for this to be part of Preferences.board_config protobuf.
+After this stage an LED board owns **no** built-in panel geometry: the
+GPIO and dimensions come from a new `BoardConfig` message stored inside
+the device's `PreferencesFile`, provisioned by the host CLI from a JSON
+template. This is the first step toward the runtime-configurable,
+multi-panel lightbar; multi-display / multi-panel tiling stays deferred.
 
-* define a new BoardConfig protobuf.  it should contain hw config info which we will program at build time.  initially it will contain just an array of Display protobufs.
-* Display will for now contain just an array of Panel protobufs.  for now that array will have a max of one entries.
-* Panel will contain width, height, gpio.
-* if there is no Panel in the device settings, no LED based displays are connected.  this might mean BoardInfo will report a display height of 0,0
-* if the user writes new BoardConfig - no need to change displays on the fly.  instead we will just use those settings on the next boot
-* add a subcommand to the py app cli "pref" command.  "from-template <name>". it will install the json blob from our py assets in app/src/touchy_pad/assets/<name>.json (share code with "pref json-get"). move the existing firmware/boards/esp32_s3_devkitc_1/board/board_pins.h based init into app/src/touchy_pad/assets/led-32x8.json
-* note: SysBoardInfoResponse and in-fact the entire c++ rendering pipeline currently assumes exactly one display.  that's okay and for now you can use nanopb options to limit the max size of BoardConfig.displays to 1.
+### Background
+
+* `firmware/boards/common/leds/led_display.cpp` builds its single `LEDPanel` from
+  the `BOARD_LED_PANEL_*` macros at compile time (`display_init()`), and
+  `fill_board_info()` in `firmware/main/api/host_api.cpp` reports display
+  size straight off the live `lv_display`.
+* Boot order already favours us: `main.cpp` runs `fs_init()` →
+  `Prefs::instance().begin()` **before** `board_init()` / `display_init()`,
+  so `display_init()` can read the loaded preferences to decide what panel
+  (if any) to construct.
+* Only the two LED boards (`esp32_s3_devkitc_1`, `jc_esp32p4_m3`) use the
+  `BOARD_LED_PANEL_*` macros and the `firmware/boards/common/leds/` display driver.
+  LCD/touch boards use a different `display_init()` and are untouched here.
+
+### Decisions (locked in)
+
+* **`BoardConfig` lives on `PreferencesFile`** — a new
+  `optional BoardConfig board_config` field, persisted and merged through
+  the existing Stage 82 partial-update path, not a separate file.
+* **No compile-time default / no first-boot seed.** A fresh LED board has
+  empty prefs → no `Panel` → no LED display. It comes up **headless**
+  (`board-info` reports `display_width == display_height == 0`) until the
+  user pushes a template with `touchy pref from-template …`. This keeps
+  the firmware config-driven with a single source of truth.
+* **The `BOARD_LED_PANEL_*` macros are removed entirely.** LED boards ship
+  no built-in geometry; all panel config arrives over the wire.
+* **Scope: LED-panel boards only.** `BoardConfig.displays` is empty on
+  LCD/touch boards and their display pipeline is unchanged. The one-display
+  assumption is preserved (see work item 1).
+
+### Definition of done
+
+* New `BoardConfig` / `Display` / `Panel` messages exist; `PreferencesFile`
+  carries an `optional BoardConfig board_config`, `Version.CURRENT` bumps
+  6 → 7, and `SetPreferencesCmd` can write it (device merges + persists,
+  applied on **next boot**, not live).
+* `firmware/boards/common/leds/led_display.cpp` constructs its `LEDPanel` from
+  `prefs.board_config.displays[0].panels[0]` (gpio / width / height); with
+  no panel configured it stands up headless and `board-info` reports
+  `0×0`. No `BOARD_LED_PANEL_*` macros remain anywhere in the tree.
+* `touchy pref from-template <name>` installs
+  `app/src/touchy_pad/assets/<name>.json` as a partial preferences update,
+  sharing the JSON→proto plumbing with `pref json-set`; a shipped
+  `led-32x8.json` reproduces today's Feather config.
+* `just build-proto` regenerates Python `_proto`, C nanopb, and Rust
+  `prost` bindings cleanly; `just app-test` passes with a template
+  round-trip test; the two LED boards build via `just firmware-build`.
+
+### Work items
+
+1. **Proto — `BoardConfig` + nested messages**
+   (`proto/preferences.proto` and the Rust mirror
+   `rust/touchy-pad/proto/preferences.proto`):
+
+   ```proto
+   // One physical LED matrix on a single data GPIO.
+   message Panel {
+       uint32 width  = 1;   // logical pixel columns
+       uint32 height = 2;   // logical pixel rows
+       uint32 gpio   = 3;   // data GPIO number
+   }
+
+   // One LVGL display surface. For now exactly one Panel (see options).
+   message Display {
+       repeated Panel panels = 1;
+   }
+
+   // Build/hardware description programmed onto the device. For now just
+   // an array of at most one Display.
+   message BoardConfig {
+       repeated Display displays = 1;
+   }
+   ```
+
+   Add to `PreferencesFile` (next free tag is 7):
+   ```proto
+   optional BoardConfig board_config = 7;   // Stage lb6
+   ```
+   Bump the `Version` enum `V5/CURRENT=5` → `V6 = 6; CURRENT = 6`.
+   *(House convention: bump on any prefs-schema change.)*
+
+2. **nanopb options** (`proto/preferences.options`) — cap the repeated
+   fields so nanopb can stack-allocate (preserving the one-display
+   assumption):
+   ```
+   touchy.BoardConfig.displays  max_count:1
+   touchy.Display.panels        max_count:1
+   ```
+   These are `FT_STATIC` fixed arrays — no heap, matching the existing
+   prefs style.
+
+3. **Regenerate bindings** — `just build-proto` (Python `_proto` + C
+   nanopb `preferences.pb.{h,c}`); Rust `prost` rebuilds from the mirror.
+
+4. **Firmware — merge + persist** (`firmware/main/prefs.{h,cpp}`):
+   * Store `board_config` in the `Prefs` singleton; include it in
+     `to_proto()` and merge it in `apply_partial()` when present. Unlike
+     the live-effect prefs (backlight, log level), `board_config` has **no
+     side effect** — it is only read at the next `display_init()`. Add a
+     `const touchy_BoardConfig &board_config() const` accessor (or
+     `has_panel()` + `panel()` convenience getters).
+
+5. **Firmware — LED display reads prefs**
+   (`firmware/boards/common/leds/led_display.cpp`):
+   * Delete the `BOARD_LED_PANEL_W/H/GPIO` `constexpr` reads. Instead pull
+     `displays[0].panels[0]` from `Prefs::instance()`. If there is no
+     display/panel, log an info line and return `nullptr` (headless) — the
+     rest of the stack already tolerates a null display (`display_init`
+     failure path, `fill_board_info` reports 0×0).
+   * Guard against absurd sizes (e.g. `width*height == 0` or over a sane
+     max) so a bad template can't OOM the draw-buffer malloc.
+
+6. **Remove the macros** — delete `BOARD_LED_PANEL_GPIO/_W/_H` from
+   `firmware/boards/esp32_s3_devkitc_1/board/board_pins.h` and
+   `firmware/boards/jc_esp32p4_m3/board/board_pins.h`, plus any stray
+   references (`grep BOARD_LED_PANEL`). The board files keep only truly
+   board-fixed pins (C6-reset, etc.).
+
+7. **Python — `pref from-template`** (`app/src/touchy_pad/cli.py`):
+   * Add `@pref.command("from-template")` taking a `<name>` argument. It
+     loads `app/src/touchy_pad/assets/<name>.json`
+     (via `importlib.resources`), parses it into a `PreferencesFile` with
+     `google.protobuf.json_format.Parse`, clears the device-owned
+     `file_version`, and calls `c.set_preferences(prefs)` — refactor the
+     JSON→proto→`set_preferences` core out of `pref json-set` into a shared
+     helper both commands call.
+   * List available templates in the help / on unknown name (glob the
+     assets dir for `*.json`).
+
+8. **Ship `led-32x8.json`** — new asset
+   `app/src/touchy_pad/assets/led-32x8.json` encoding the Feather's old
+   config:
+   ```json
+   {
+     "fileVersion": "V6",
+     "boardConfig": { "displays": [ { "panels": [
+       { "width": 32, "height": 8, "gpio": 4 }
+     ] } ] }
+   }
+   ```
+   *(`fileVersion` is the `json-set`/`from-template` validity canary and is
+   stripped before send.)* Register `*.json` as package data in
+   `app/pyproject.toml` if the existing asset glob doesn't already include
+   it.
+
+9. **Rust mirror** (`rust/touchy-pad`) — the regenerated `prost` bindings
+   cover the new messages; add a `Touchy::set_board_config(...)` helper
+   only if a caller needs it (grep — none expected this stage, so this is
+   optional/skip).
+
+10. **Tests** (`app/tests/`):
+    * A template round-trip: load `led-32x8.json`, parse to
+      `PreferencesFile`, assert `board_config.displays[0].panels[0]` is
+      `{32, 8, 4}` and that it survives proto serialise → parse.
+    * A `from-template` CLI test against the simulator/fake client
+      asserting the sent `SetPreferencesCmd` carries the panel and omits
+      `file_version`.
+
+11. **Docs + memory** — note in `AGENTS.md`/`CLAUDE.md` that LED-panel
+    geometry is now a runtime pref (`BoardConfig` on `PreferencesFile`,
+    applied next boot; fresh board is headless until `pref from-template`)
+    and update the `PreferencesFile.Version.CURRENT == 6` line.
+
+### Deferred / out of scope
+
+* Multiple `Display`s, or multiple `Panel`s per display (tiling) — the
+  `max_count:1` caps hold the one-display assumption; lifting them is a
+  later lightbar stage.
+* Live re-configuration (rebuilding the LVGL display when `board_config`
+  changes without a reboot).
+* Moving **LCD/touch** board geometry into `BoardConfig`.
+* Panel wiring/serpentine/lane descriptors, colour order, gamma, and
+  brightness curves — still compile-time / firmware-side for now.

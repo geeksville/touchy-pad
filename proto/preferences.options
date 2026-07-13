@@ -7,3 +7,9 @@
 # Last-loaded screen path. Sized to match touchy.FileOpenWriteCmd.path so
 # any path the device can possibly load is representable here.
 touchy.PreferencesFile.current_screen   max_size:96
+
+# Stage lb6 — cap the LED-panel config arrays so nanopb stack-allocates
+# them (FT_STATIC). The C++ rendering pipeline assumes exactly one display
+# with one panel for now; multi-panel tiling is a future lightbar stage.
+touchy.BoardConfig.displays             max_count:1
+touchy.Display.panels                   max_count:1

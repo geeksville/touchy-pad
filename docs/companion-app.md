@@ -43,11 +43,37 @@ touchy pref <subcommand> [args…]
 | Subcommand | Description |
 |-----------|-------------|
 | `touchy pref backlight-timeout SECONDS` | Auto-sleep backlight after SECONDS of no input; `0` disables. Accepts fractional seconds (e.g. `30`, `0.5`). |
+| `touchy pref backlight-level PERCENT` | Display backlight brightness, `0` (off) … `100` (max). |
 | `touchy pref log-level LEVEL` | Minimum device log priority queued back to the host (`TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`). Records below it are dropped device-side. |
 | `touchy pref boot-delay SECONDS` | Sleep SECONDS early in boot so a debug-log connection can attach; `0` disables. |
+| `touchy pref json-get` | Dump the device's full `PreferencesFile` to stdout as JSON (round-trips through `json-set`). |
+| `touchy pref json-set` | Read a `PreferencesFile` JSON document from stdin and apply it as a partial update. |
+| `touchy pref from-template [NAME]` | Apply a bundled preferences template by NAME (run with no NAME to list them). |
 
-All three send a partial `SetPreferencesCmd`; the device merges and
-persists only the field you set.
+All of these send a partial `SetPreferencesCmd`; the device merges and
+persists only the fields you set.
+
+#### `pref from-template` — provisioning LED-panel boards
+
+LED-matrix boards (the lightbar family) ship with **no** built-in panel
+geometry: the data GPIO, width, and height live in the persisted
+`BoardConfig` preference, not in firmware. A freshly flashed board comes
+up headless (`board-info` reports a `0×0` display) until you push a
+config. Bundled templates cover the common panels:
+
+```
+touchy pref from-template            # list available templates
+touchy pref from-template led-32x8   # 32×8 WS2812B matrix on GPIO 4
+```
+
+The new geometry takes effect on the **next boot** (the display is not
+rebuilt live). Templates are ordinary `PreferencesFile` JSON documents, so
+you can also craft one by hand and pipe it through `pref json-set`:
+
+```
+echo '{"fileVersion":"V6","boardConfig":{"displays":[{"panels":[{"width":32,"height":8,"gpio":4}]}]}}' \
+  | touchy pref json-set
+```
 
 ### `touchy touchpad` subcommands
 

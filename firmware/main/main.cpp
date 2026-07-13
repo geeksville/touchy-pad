@@ -44,7 +44,10 @@ static void heap_alloc_failed_cb(size_t size, uint32_t caps, const char *func)
              (unsigned)heap_caps_get_largest_free_block(caps));
 }
 
-#if CONFIG_TOUCHY_NO_DISPLAY
+// fixme - should be in config instead
+#define CONFIG_TOUCHY_HEADLESS_HRES 320
+#define CONFIG_TOUCHY_HEADLESS_VRES 240
+
 // Stage 64.4: bring LVGL up against an off-screen framebuffer with a no-op
 // flush callback. This keeps the entire screen / host_api stack running
 // unchanged while the board's (possibly buggy) panel and touch drivers stay
@@ -87,7 +90,6 @@ static lv_display_t *display_init_headless(void)
     lvgl_port_unlock();
     return disp;
 }
-#endif  // CONFIG_TOUCHY_NO_DISPLAY
 
 extern "C" void app_main(void)
 {
@@ -157,6 +159,7 @@ extern "C" void app_main(void)
     // is fully ready — the runner blocks on its queue until macros arrive.
     macros_init();
 
+    esp_lcd_touch_handle_t tp = nullptr;
 #if CONFIG_TOUCHY_NO_DISPLAY
     // Stage 64.4: the display + touchscreen hardware is disabled at build
     // time. Skip board_init()/backlight/panel/touch entirely and stand up a
@@ -164,7 +167,6 @@ extern "C" void app_main(void)
     // warning here; no per-use logging anywhere else.
     ESP_LOGW(TAG, "Display hardware disabled due to build options.");
     lv_display_t *disp = display_init_headless();
-    esp_lcd_touch_handle_t tp = nullptr;
 #else
     board_init();
 
@@ -173,8 +175,13 @@ extern "C" void app_main(void)
     backlight_init(Prefs::instance().screen_timeout_ms());
 
     lv_display_t *disp = display_init();
-
-    esp_lcd_touch_handle_t tp = touch_init(disp);
+    if(!disp) {
+        ESP_LOGE(TAG, "display_init failed; running headless");
+        disp = display_init_headless();
+    }
+    else {
+        tp = touch_init(disp);
+    }
 #endif
     (void)disp;  // handle not needed past bring-up (LVGL tracks the default)
 

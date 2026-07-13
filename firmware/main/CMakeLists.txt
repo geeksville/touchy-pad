@@ -57,6 +57,7 @@ idf_component_register(
         "."
         "api"
         "fs"
+        "../boards/common/leds"
         "widgets"
         "proto"
         "${CMAKE_BINARY_DIR}"

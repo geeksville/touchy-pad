@@ -30,7 +30,8 @@ message PreferencesFile {
         V4 = 4;       // Stage 82: fields optional; + min_log_level,
                       //           boot_delay_s
         V5 = 5;       // Stage 94: + backlight_level
-        CURRENT = 5;  // alias: always equals the latest defined version
+        V6 = 6;       // Stage lb6: + board_config (LED-panel geometry)
+        CURRENT = 6;  // alias: always equals the latest defined version
     }
 
     // Written on every save so forward migrations can detect old files.
@@ -70,4 +71,30 @@ message PreferencesFile {
     // (each board may define a minimum-visible duty). Default (when unset
     // / first boot) is 100. Set via SetPreferencesCmd from the host.
     optional uint32 backlight_level = 6;
+
+    // Stage lb6 — hardware description programmed onto the device (LED
+    // panel geometry, etc.). Persisted like any other pref but has no
+    // live side effect: it is read once at boot by display_init(). A
+    // fresh device with no board_config brings up no LED display. Set
+    // via SetPreferencesCmd from the host (typically `pref from-template`).
+    optional BoardConfig board_config = 7;
+}
+
+// One physical LED matrix driven from a single data GPIO.
+message Panel {
+    uint32 width  = 1;   // logical pixel columns
+    uint32 height = 2;   // logical pixel rows
+    uint32 gpio   = 3;   // data GPIO number
+}
+
+// One LVGL display surface. For now exactly one Panel (capped in
+// preferences.options); multi-panel tiling is a future lightbar stage.
+message Display {
+    repeated Panel panels = 1;
+}
+
+// Build/hardware description programmed onto the device. For now just an
+// array of at most one Display (capped in preferences.options).
+message BoardConfig {
+    repeated Display displays = 1;
 }

@@ -43,6 +43,12 @@ public:
     // Update the backlight brightness and persist it immediately to flash.
     void set_backlight_level(uint8_t level);
 
+    // Stage lb6 — hardware/board description (LED panel geometry, etc.).
+    // Persisted like any other pref but with no live side effect: it is
+    // read once at boot by display_init(). Returns the merged config (all
+    // arrays default-empty when nothing was ever programmed).
+    const touchy_BoardConfig &board_config() const { return m_board_config; }
+
     // Stage LB4 — snapshot the current preferences as a fully-populated
     // `touchy_PreferencesFile` (file_version + every value field, all
     // has_* presence flags set). This is exactly what `save()` writes to
@@ -93,4 +99,8 @@ private:
 
     // Stage 94 — backlight brightness percent (0..100). Default full.
     uint8_t     m_backlight_level = 100;
+
+    // Stage lb6 — board hardware description (LED panel geometry). Empty
+    // (no displays) until the host programs it via SetPreferencesCmd.
+    touchy_BoardConfig m_board_config = touchy_BoardConfig_init_zero;
 };

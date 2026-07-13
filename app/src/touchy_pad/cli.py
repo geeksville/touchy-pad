@@ -710,25 +710,31 @@ def pref_json_get() -> None:
     click.echo(MessageToJson(prefs))
 
 
-@pref.command("json-set")
-def pref_json_set() -> None:
-    """Apply preferences from a JSON document on stdin.
+def _templates_dir():
+    """Return a traversable handle to the shipped ``pref`` JSON templates."""
+    from importlib.resources import files
 
-    Reads a JSON object matching the PreferencesFile schema from stdin
-    and sends it as a partial preferences update. Only fields present in
-    the JSON are changed; the device merges and persists the result.
+    return files("touchy_pad.assets") / "templates"
 
-    The device-owned ``file_version`` field is ignored if present.
 
-    Example::
+def _list_templates() -> list[str]:
+    """Names (without ``.json``) of the shipped ``pref from-template`` blobs."""
+    return sorted(
+        p.name[: -len(".json")] for p in _templates_dir().iterdir() if p.name.endswith(".json")
+    )
 
-        echo '{"backlightLevel": 50, "bootDelayS": 2}' | touchy pref json-set
+
+def _apply_prefs_json(data: str) -> None:
+    """Parse a PreferencesFile JSON document and apply it as a partial update.
+
+    Shared by ``pref json-set`` and ``pref from-template``. Requires the
+    ``file_version`` canary to be present (guards against a bogus blob),
+    strips it (device-owned), then sends the merge to the device.
     """
     from google.protobuf.json_format import Parse
 
     from . import _proto
 
-    data = sys.stdin.read()
     prefs = Parse(data, _proto.PreferencesFile())
     # file_version is a device-owned field, but we require it to be present
     # in the incoming JSON as a canary: a valid dump (e.g. from
@@ -743,6 +749,54 @@ def pref_json_set() -> None:
     prefs.ClearField("file_version")
     with _client() as c:
         c.set_preferences(prefs)
+
+
+@pref.command("json-set")
+def pref_json_set() -> None:
+    """Apply preferences from a JSON document on stdin.
+
+    Reads a JSON object matching the PreferencesFile schema from stdin
+    and sends it as a partial preferences update. Only fields present in
+    the JSON are changed; the device merges and persists the result.
+
+    The device-owned ``file_version`` field is ignored if present.
+
+    Example::
+
+        echo '{"backlightLevel": 50, "bootDelayS": 2}' | touchy pref json-set
+    """
+    _apply_prefs_json(sys.stdin.read())
+
+
+@pref.command("from-template")
+@click.argument("name", required=False)
+def pref_from_template(name: str | None) -> None:
+    """Apply a bundled preferences template by NAME.
+
+    Templates are JSON ``PreferencesFile`` blobs shipped with the package
+    (e.g. ``led-32x8`` provisions a 32×8 WS2812B LED panel on GPIO 4).
+    Applied as a partial update, exactly like ``pref json-set``.
+
+    Run without NAME to list the available templates.
+
+    Example::
+
+        touchy pref from-template led-32x8
+    """
+    available = _list_templates()
+    if not name:
+        if not available:
+            raise click.ClickException("no preference templates are bundled")
+        click.echo("Available templates:")
+        for t in available:
+            click.echo(f"  {t}")
+        return
+    if name not in available:
+        raise click.ClickException(
+            f"unknown template '{name}'. Available: {', '.join(available) or '(none)'}"
+        )
+    data = (_templates_dir() / f"{name}.json").read_text(encoding="utf-8")
+    _apply_prefs_json(data)
 
 
 # ---------------------------------------------------------------------------

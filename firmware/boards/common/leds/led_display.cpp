@@ -11,16 +11,17 @@
 // single full-frame buffer and one led_strip refresh per frame is simplest
 // and avoids partial-area bookkeeping.
 //
-// Board-specific pins / geometry come from the board's own `board_pins.h`
-// (BOARD_LED_PANEL_GPIO / _W / _H), pulled in via the board component's
-// PRIV_INCLUDE_DIRS ".". The LEDPanel + serpentine map live alongside in
-// led_panel.{h,cpp}.
+// Board-specific pins come from the board's own `board_pins.h`, but the
+// LED panel geometry (width / height / data GPIO) is now a runtime setting
+// read from the persisted BoardConfig (Stage lb6) via Prefs — a fresh,
+// unconfigured board brings up no LED display. The LEDPanel + serpentine
+// map live alongside in led_panel.{h,cpp}.
 
 #include "display.h"
 #include "led_display.h"
-#include "board_pins.h"
 #include "led_panel.h"
 
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_lvgl_port.h"
@@ -76,12 +77,29 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 
 extern "C" lv_display_t *display_init(void)
 {
-    constexpr int W = BOARD_LED_PANEL_W;
-    constexpr int H = BOARD_LED_PANEL_H;
+    // Stage lb6 — panel geometry comes from the persisted BoardConfig, not
+    // compile-time macros. A device that has never been programmed has no
+    // display/panel and comes up headless (host sees display 0×0) until the
+    // user pushes a config (e.g. `touchy pref from-template led-32x8`).
+    int W = 0, H = 0, gpio = 0;
+    if (!led_panel_config(&W, &H, &gpio)) {
+        ESP_LOGW(TAG, "No LED panel configured (board_config empty) — "
+                       "running headless; push a config with "
+                       "'touchy pref from-template <name>'");
+        return nullptr;
+    }
+
+    // Guard against a bogus template so a bad config can't OOM the draw
+    // buffer or trip lv_display_create.
+    if (W <= 0 || H <= 0 || (long)W * H > 4096) {
+        ESP_LOGE(TAG, "Invalid LED panel geometry %dx%d — running headless",
+                 W, H);
+        return nullptr;
+    }
 
     build_gamma_lut();
 
-    s_panel = new LEDPanel(BOARD_LED_PANEL_GPIO, W, H, s_brightness);
+    s_panel = new LEDPanel((gpio_num_t)gpio, W, H, s_brightness);
     if (!s_panel->begin()) {
         ESP_LOGE(TAG, "LED panel bring-up failed; continuing headless");
         delete s_panel;

@@ -29,7 +29,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 25`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
-`PreferencesFile.Version.CURRENT == 5`.
+`PreferencesFile.Version.CURRENT == 6`.
 Highlights worth remembering:
 
 - **Boards span two chips (Stage 65).** ESP32-S3 boards (`jc4827w543`,
@@ -392,6 +392,27 @@ Highlights worth remembering:
   `hold_time=300`, drag-n-drop (`on_hold=mouse_button_down()`,
   `on_move=mouse_move()`, `on_hold_release=mouse_button_up()`).
 
+- **Stage lb6 (runtime LED-panel config via `BoardConfig`).** LED-matrix
+  boards no longer hard-code panel geometry in `board_pins.h` — the
+  `BOARD_LED_PANEL_*` macros are gone. New proto messages `Panel`
+  (`width`/`height`/`gpio`), `Display` (`repeated Panel`, capped
+  `max_count:1`), and `BoardConfig` (`repeated Display`, capped
+  `max_count:1`) live in `preferences.proto`; `PreferencesFile` gained
+  `optional BoardConfig board_config = 7` and `Version.CURRENT` bumped
+  5→6. It merges/persists through the Stage 82 partial path
+  (`Prefs::apply_partial`) but has **no live side effect** — it's read
+  once at boot. `firmware/boards/common/leds/led_display.cpp` (board-compiled)
+  reads it via the proto-free accessor `led_panel_config(w,h,gpio)`
+  implemented in `prefs.cpp` (keeps nanopb out of the board component;
+  `main` now exports `leds` in `INCLUDE_DIRS`). A fresh/unconfigured
+  board has no panel → `display_init()` returns `nullptr` → **headless**
+  (`board-info` reports 0×0) until the host pushes a config. CLI:
+  `touchy pref from-template [NAME]` installs a bundled JSON
+  `PreferencesFile` from `app/src/touchy_pad/assets/templates/*.json`
+  (shared `_apply_prefs_json` core with `pref json-set`); ships
+  `led-32x8.json` (32×8 WS2812B on GPIO 4). Scope is LED boards only —
+  LCD/touch display init is untouched.
+
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /
 `protoc` unless a recipe is clearly missing:
@@ -406,6 +427,12 @@ just firmware-build    # ESP-IDF build for the current board
 just flash             # build + flash
 just streamcontroller-run [--sim | --sim-headless]
 ```
+
+**Never run `idf.py` directly** — a bare `idf.py` in the agent terminal
+fails because the ESP-IDF environment isn't sourced. `just firmware-build`
+(and `just firmware-reconfigure [board]` to switch board/chip) source the
+IDF `export.sh`/activate script for you, so always drive firmware builds
+through those recipes.
 
 CI: `.github/workflows/app-ci.yml` runs `build-app` on
 ubuntu/windows/macos. **Windows has no libusb** — any code path that

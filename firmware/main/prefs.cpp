@@ -7,6 +7,7 @@
 
 #include "backlight.h"
 #include "fs.h"
+#include "led_display.h"
 #include "log_proto.h"
 #include "protobuf.h"
 #include "preferences.pb.h"
@@ -23,11 +24,11 @@ static const char *TAG = TOUCHY_TAG("prefs");
 // preferences are never addressed by host paths.
 static constexpr const char *PREFS_PATH = "prefs/prefs.pb";
 
-// Encode buffer. `PreferencesFile` carries the scalars plus one
-// fixed-size string (current_screen, max 96 bytes via
-// preferences.options post-Stage 51). 256 bytes is comfortably above
-// the worst-case encoding.
-static constexpr size_t PREFS_BUF_SIZE = 256;
+// Encode buffer. `PreferencesFile` carries the scalars, one fixed-size
+// string (current_screen, max 96 bytes), and the Stage lb6 board_config
+// (one Display of one Panel). 512 bytes is comfortably above the
+// worst-case encoding.
+static constexpr size_t PREFS_BUF_SIZE = 512;
 
 Prefs &Prefs::instance()
 {
@@ -57,6 +58,7 @@ bool Prefs::begin()
         if (pf->has_min_log_level) m_min_log_level = pf->min_log_level;
         if (pf->has_boot_delay_s) m_boot_delay_s = pf->boot_delay_s;
         if (pf->has_backlight_level) m_backlight_level = (uint8_t)pf->backlight_level;
+        if (pf->has_board_config) m_board_config = pf->board_config;
         ESP_LOGI(TAG, "Loaded prefs: screen_timeout_ms=%" PRIu32
                       " current_screen='%s' min_log_level=%" PRIu32
                       " boot_delay_s=%" PRIu32 " backlight_level=%u",
@@ -110,6 +112,10 @@ bool Prefs::apply_partial(const touchy_PreferencesFile &p)
         m_backlight_level = (uint8_t)p.backlight_level;
         backlight_set_level(m_backlight_level);  // applies + persists
     }
+    if (p.has_board_config) {
+        // Stage lb6 — no live side effect; used at the next display_init().
+        m_board_config = p.board_config;
+    }
     if (p.has_current_screen) {
         // screens_load() updates g_current_path and calls back into
         // set_current_screen(), but we also mirror it here so the value
@@ -159,6 +165,13 @@ touchy_PreferencesFile Prefs::to_proto() const
     pf.boot_delay_s = m_boot_delay_s;
     pf.has_backlight_level = true;
     pf.backlight_level = m_backlight_level;
+    // Stage lb6 — board_config is only serialised when something was
+    // programmed (at least one display); an empty config stays absent so
+    // a never-configured device round-trips as "no board_config".
+    if (m_board_config.displays_count > 0) {
+        pf.has_board_config = true;
+        pf.board_config = m_board_config;
+    }
     // current_screen is a fixed-size char[N] in the generated struct;
     // snprintf truncates safely if the source ever exceeds the bound
     // (which it shouldn't — the bound matches FileOpenWriteCmd.path).
@@ -166,4 +179,20 @@ touchy_PreferencesFile Prefs::to_proto() const
     snprintf(pf.current_screen, sizeof(pf.current_screen), "%s",
              m_current_screen.c_str());
     return pf;
+}
+
+// Stage lb6 — proto-free accessor for the board-compiled LED display driver
+// (declared in led_display.h). Keeps the protobuf types out of the board
+// component. Reports the single configured LED panel, if any.
+bool led_panel_config(int *width, int *height, int *gpio)
+{
+    const touchy_BoardConfig &cfg = Prefs::instance().board_config();
+    if (cfg.displays_count == 0 || cfg.displays[0].panels_count == 0) {
+        return false;
+    }
+    const touchy_Panel &panel = cfg.displays[0].panels[0];
+    if (width)  *width  = (int)panel.width;
+    if (height) *height = (int)panel.height;
+    if (gpio)   *gpio   = (int)panel.gpio;
+    return true;
 }
