@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Shared LVGL display driver for WS2812B LED-matrix boards (Stages LB1 /
-// LB2). Used by jc_esp32p4_m3 and feather_esp32_s3; compiled into each
+// LB2). Used by jc_esp32p4_m3 and esp32-s3-devkitc-1; compiled into each
 // board component via its CMakeLists.txt SRCS list.
 //
 // There is no LCD: the LVGL display is a small (e.g. 32×8) RGB565 canvas

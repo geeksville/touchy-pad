@@ -3,6 +3,8 @@
 ## Next
 * [x] show friendly error messages in py and rust plugin for device permissions errors, point to webpage
 * [x] add udev instructions (or possibly automate?)
+* [ ] retest all the old boards for serial fixes
+* [ ] fix touch on the really cheap cyd
 * [ ] update autopage and do steam background and sys info pages (cpu %, gpu %, temp, frame rate, graph)
 * [ ] finish [user widgets](user-widgets.md) 
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.

@@ -101,14 +101,14 @@ work in this stage.
 - Multi-lane / PARLIO parallel output (4 lanes × 4 modules, 16 panels).
 - 12V power, fan, OTA — tracked in `lightbar.md`.
 
-## stage LB2 — 2nd LED-matrix board (`feather_esp32_s3`)
+## stage LB2 — 2nd LED-matrix board (`esp32-s3-devkitc-1`)
 
 **Status: implemented (firmware not yet compiled on real ESP-IDF in this
 environment).** Shared `Panel`/`LEDPanel` code was relocated from
 `firmware/boards/common/` to `firmware/main/leds/` (compiled by the board
 component, not `main`, so the `espressif/led_strip` dependency stays
 board-scoped); `jc_esp32p4_m3` was repointed at the new location. The new
-`firmware/boards/feather_esp32_s3/` board (target `esp32s3`, LED on
+`firmware/boards/esp32-s3-devkitc-1/` board (target `esp32s3`, LED on
 GPIO 4) reuses the LB1 display driver, touch-less no-op touch, brightness
 path, and touch-less default screen unchanged.
 
@@ -129,7 +129,7 @@ Multi-panel tiling / multi-lane output stay deferred (see below).
 - **Module:** Adafruit ESP32-S3 Feather (N16R8 variant — 16 MB flash,
   8 MB PSRAM), native USB-OTG. ESP-IDF already supports this chip
   (`set-target esp32s3`), so no custom chip support is needed. See
-  `docs/hardware/feather_esp32_s3/README.md`.
+  `docs/hardware/esp32-s3-devkitc-1/README.md`.
 - **Display:** one 8x32 WS2812B matrix (256 LEDs) on **GPIO 4**.
 - **No LCD, no touch panel.**
 
@@ -151,7 +151,7 @@ No tiling / multi-panel work in this stage.
    the new Feather board) to point at the new location, and rebuild LB1
    to confirm no regression.
 
-2. **Board scaffold** — create `firmware/boards/feather_esp32_s3/`,
+2. **Board scaffold** — create `firmware/boards/esp32-s3-devkitc-1/`,
    mirroring the S3 boards (e.g. `waveshare_s3_lcd_7b`) for the
    chip/USB/PSRAM setup and `jc_esp32p4_m3` for the LED-display half:
    - `target` → `esp32s3`
@@ -174,9 +174,9 @@ No tiling / multi-panel work in this stage.
      shared LED sources.
 
 3. **Reconfigure + build plumbing** — confirm `just firmware-reconfigure
-   feather_esp32_s3` reads the `target` file and runs `set-target
+   esp32-s3-devkitc-1` reads the `target` file and runs `set-target
    esp32s3`, and that `just firmware-build` / `just flash` work for the
-   new board. Add an `sdkconfig.feather_esp32_s3` snapshot if the repo
+   new board. Add an `sdkconfig.esp32-s3-devkitc-1` snapshot if the repo
    commits per-board sdkconfigs.
 
 4. **Reuse, don't re-implement** — the touch-less default screen
@@ -385,7 +385,7 @@ extend the python cli with new subcommands under the existing "pref"
 ## stage lb5: multi interface api access
 
 **Status: implemented.** Firmware compiles for both a native-USB board
-(`feather_esp32_s3`: vendor-USB + UART links) and a no-USB board
+(`esp32-s3-devkitc-1`: vendor-USB + UART links) and a no-USB board
 (`esp32_2432s028rv3`: UART-only), verified with `just firmware-build`.
 The host-API code moved to `firmware/main/api/`
 (`host_api.{cpp,h}` + `host_api_link.h` base + `vendor_link` / `serial_link`
@@ -547,10 +547,10 @@ consumer of this array, but is **out of scope** here.
 6. **Feather board config.** With the new defaults the Feather already
    gets vendor-USB (`y` + USB-OTG) **and** the hardware UART (`y`), so no
    flag flip is strictly required — but pin the intent in
-   `firmware/boards/feather_esp32_s3/sdkconfig.defaults` (explicit
+   `firmware/boards/esp32-s3-devkitc-1/sdkconfig.defaults` (explicit
    `CONFIG_TOUCHY_PROTO_OVER_UART=y` plus the `UART_NUM` / baud /
    console-routing settings, and `CONFIG_TOUCHY_PROTO_OVER_CDCACM` left
-   off). Verify with `just firmware-reconfigure feather_esp32_s3` +
+   off). Verify with `just firmware-reconfigure esp32-s3-devkitc-1` +
    `just firmware-build` that both links start (two `host_api dispatcher
    started (…)` log lines) and that `touchy board-info` answers over each.
 

@@ -10,7 +10,7 @@
 // (x, y) coordinate space of the Panel base class.
 //
 // Board-independent: shared by every LED-matrix board (jc_esp32p4_m3,
-// feather_esp32_s3, …). It lives under firmware/main/leds/ but is compiled
+// esp32-s3-devkitc-1, …). It lives under firmware/main/leds/ but is compiled
 // by the selected board component, which owns the espressif/led_strip
 // dependency.
 
