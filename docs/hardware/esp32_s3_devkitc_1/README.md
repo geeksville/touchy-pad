@@ -7,3 +7,4 @@ https://learn.adafruit.com/adafruit-esp32-s3-feather/overview
 https://forum.arduino.cc/t/esp32-s3-onboard-rgb-led/1198754/11?page=2
 ![pinout](image.png)
 ![alt text](image-1.png)
+![alt text](image-2.png)

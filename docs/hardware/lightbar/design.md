@@ -574,3 +574,21 @@ consumer of this array, but is **out of scope** here.
   at a time; arbitration / per-client event queues are not built here.
 * **Per-link flow-control / backpressure** tuning beyond what the existing
   single-link path already does.
+
+## stage lb6: more flexible led panel config
+
+currently files like firmware/boards/esp32_s3_devkitc_1/board/board_pins.h say things like
+
+#define BOARD_LED_PANEL_GPIO   GPIO_NUM_4
+#define BOARD_LED_PANEL_W      32
+#define BOARD_LED_PANEL_H      8
+
+thats not ideal - it would better for this to be part of Preferences.board_config protobuf.
+
+* define a new BoardConfig protobuf.  it should contain hw config info which we will program at build time.  initially it will contain just an array of Display protobufs.
+* Display will for now contain just an array of Panel protobufs.  for now that array will have a max of one entries.
+* Panel will contain width, height, gpio.
+* if there is no Panel in the device settings, no LED based displays are connected.  this might mean BoardInfo will report a display height of 0,0
+* if the user writes new BoardConfig - no need to change displays on the fly.  instead we will just use those settings on the next boot
+* add a subcommand to the py app cli "pref" command.  "from-template <name>". it will install the json blob from our py assets in app/src/touchy_pad/assets/<name>.json (share code with "pref json-get"). move the existing firmware/boards/esp32_s3_devkitc_1/board/board_pins.h based init into app/src/touchy_pad/assets/led-32x8.json
+* note: SysBoardInfoResponse and in-fact the entire c++ rendering pipeline currently assumes exactly one display.  that's okay and for now you can use nanopb options to limit the max size of BoardConfig.displays to 1.
