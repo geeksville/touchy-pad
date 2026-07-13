@@ -38,7 +38,20 @@
 
 static const char *TAG = TOUCHY_TAG("display");
 
-extern "C" lv_display_t *display_init(void)
+// Stage lb7 — this board's Display subclass + factory.
+namespace {
+class BoardLCDDisplay : public Display {
+protected:
+    lv_display_t *hw_init() override;
+};
+}  // namespace
+
+Display *display_create(void)
+{
+    return new BoardLCDDisplay();
+}
+
+lv_display_t *BoardLCDDisplay::hw_init(void)
 {
     // ----- Backlight -----
     // Owned by the shared LEDC PWM driver (configured in board_init() via

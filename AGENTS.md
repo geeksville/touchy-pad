@@ -413,6 +413,26 @@ Highlights worth remembering:
   `led-32x8.json` (32×8 WS2812B on GPIO 4). Scope is LED boards only —
   LCD/touch display init is untouched.
 
+- **Stage lb7 (`Display` class seam).** The board→main display seam is a
+  C++ `Display` ABC (`firmware/main/display.{h,cpp}`) instead of the old
+  free `extern "C" lv_display_t *display_init(void)`. `Display::init()`
+  runs the pure-virtual `hw_init()` (board/panel bring-up, returns the
+  `lv_display_t*`) then the virtual `post_init()` (dim-blue background —
+  set via `lv_obj_set_style_bg_color` on the active screen, since LVGL v9
+  dropped `lv_disp_set_bg_color`); `raw()` returns the handle. Each board
+  component defines a strong factory `Display *display_create(void)`
+  returning a local `namespace { class …Display : public Display; }` whose
+  `hw_init()` holds that board's original bring-up. The LED family shares
+  `LEDMatrixDisplay` in `firmware/boards/common/leds/led_display.cpp`; each
+  LCD board's `display.cpp` (or `cyd_common`) has its own `BoardLCDDisplay`
+  (they inherit `Display` directly — no shared LCD base). `HeadlessDisplay`
+  (in `display.cpp`) replaces `main.cpp`'s old `display_init_headless()`;
+  `main.cpp` owns a `static Display*`, calls `display_create()`/`init()`,
+  and falls back to `HeadlessDisplay` on failure. Board components already
+  link `Display` from `main` (the IDF component group resolves the
+  board→main symbol references). Every board + all three target chips
+  build.
+
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /
 `protoc` unless a recipe is clearly missing:

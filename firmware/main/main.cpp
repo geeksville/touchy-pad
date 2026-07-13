@@ -44,53 +44,6 @@ static void heap_alloc_failed_cb(size_t size, uint32_t caps, const char *func)
              (unsigned)heap_caps_get_largest_free_block(caps));
 }
 
-// fixme - should be in config instead
-#define CONFIG_TOUCHY_HEADLESS_HRES 320
-#define CONFIG_TOUCHY_HEADLESS_VRES 240
-
-// Stage 64.4: bring LVGL up against an off-screen framebuffer with a no-op
-// flush callback. This keeps the entire screen / host_api stack running
-// unchanged while the board's (possibly buggy) panel and touch drivers stay
-// completely out of the boot path. Returns the headless LVGL display, or
-// nullptr if the draw buffer could not be allocated.
-static lv_display_t *display_init_headless(void)
-{
-    lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    port_cfg.task_priority   = 4;
-    port_cfg.task_stack      = 8 * 1024;
-    port_cfg.timer_period_ms = 5;
-    ESP_ERROR_CHECK(lvgl_port_init(&port_cfg));
-
-    constexpr int    W             = CONFIG_TOUCHY_HEADLESS_HRES;
-    constexpr int    H             = CONFIG_TOUCHY_HEADLESS_VRES;
-    constexpr size_t LINES_PER_BUF = 40;
-    const size_t     buf_bytes     = (size_t)W * LINES_PER_BUF * sizeof(uint16_t);
-
-    auto *buf = heap_caps_malloc(buf_bytes, MALLOC_CAP_DEFAULT);
-    if (!buf) {
-        ESP_LOGE(TAG, "headless: failed to allocate %u-byte draw buffer",
-                 (unsigned)buf_bytes);
-        return nullptr;
-    }
-
-    lvgl_port_lock(0);
-    lv_display_t *disp = lv_display_create(W, H);
-    if (disp) {
-        lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
-        lv_display_set_buffers(disp, buf, nullptr, buf_bytes,
-                               LV_DISPLAY_RENDER_MODE_PARTIAL);
-        // Discard every rendered slice; just acknowledge it immediately.
-        lv_display_set_flush_cb(disp,
-            [](lv_display_t *d, const lv_area_t *, uint8_t *) {
-                lv_display_flush_ready(d);
-            });
-    } else {
-        ESP_LOGE(TAG, "headless: lv_display_create failed");
-    }
-    lvgl_port_unlock();
-    return disp;
-}
-
 extern "C" void app_main(void)
 {
     // Stage 64.1: hook esp_log_set_vprintf() before any other ESP_LOG
@@ -160,13 +113,16 @@ extern "C" void app_main(void)
     macros_init();
 
     esp_lcd_touch_handle_t tp = nullptr;
+    static Display *s_display = nullptr;
 #if CONFIG_TOUCHY_NO_DISPLAY
     // Stage 64.4: the display + touchscreen hardware is disabled at build
     // time. Skip board_init()/backlight/panel/touch entirely and stand up a
     // headless LVGL display so the rest of the app runs unchanged. One
     // warning here; no per-use logging anywhere else.
     ESP_LOGW(TAG, "Display hardware disabled due to build options.");
-    lv_display_t *disp = display_init_headless();
+    s_display = new HeadlessDisplay();
+    s_display->init();
+    lv_display_t *disp = s_display->raw();
 #else
     board_init();
 
@@ -174,12 +130,18 @@ extern "C" void app_main(void)
     // A timeout of 0 disables auto-sleep.
     backlight_init(Prefs::instance().screen_timeout_ms());
 
-    lv_display_t *disp = display_init();
-    if(!disp) {
-        ESP_LOGE(TAG, "display_init failed; running headless");
-        disp = display_init_headless();
+    // Stage lb7: the board provides a Display subclass via display_create();
+    // main owns it and drives its lifecycle. On failure fall back to a
+    // headless display so the rest of the app still runs.
+    s_display = display_create();
+    if (!s_display->init()) {
+        ESP_LOGE(TAG, "display init failed; running headless");
+        delete s_display;
+        s_display = new HeadlessDisplay();
+        s_display->init();
     }
-    else {
+    lv_display_t *disp = s_display->raw();
+    if (disp) {
         tp = touch_init(disp);
     }
 #endif
@@ -189,7 +151,7 @@ extern "C" void app_main(void)
     // via CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y
     log_proto_enable();
 
-    // display_init() calls lv_init() which clears LVGL's FS driver
+    // Display bring-up calls lv_init() which clears LVGL's FS driver
     // linked list. (Re)register our 'R:' driver now so host-uploaded
     // images in PSRAM are reachable via lv_image_set_src("R:...").
     fs_register_lvgl_drivers();

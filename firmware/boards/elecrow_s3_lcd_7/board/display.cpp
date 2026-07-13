@@ -12,7 +12,20 @@
 
 static const char *TAG = "display";
 
-extern "C" lv_disp_t *display_init(void)
+// Stage lb7 — this board's Display subclass + factory.
+namespace {
+class BoardLCDDisplay : public Display {
+protected:
+    lv_display_t *hw_init() override;
+};
+}  // namespace
+
+Display *display_create(void)
+{
+    return new BoardLCDDisplay();
+}
+
+lv_display_t *BoardLCDDisplay::hw_init(void)
 {
     const ElecrowBoardConfig *c = board_get_config();
 

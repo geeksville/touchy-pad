@@ -776,3 +776,199 @@ multi-panel lightbar; multi-display / multi-panel tiling stays deferred.
 * Moving **LCD/touch** board geometry into `BoardConfig`.
 * Panel wiring/serpentine/lane descriptors, colour order, gamma, and
   brightness curves — still compile-time / firmware-side for now.
+
+## stage lb7: `Display` class abstraction
+
+**Status: implemented + firmware-built for every board (LED + all LCD
+variants, all three target chips).** `Display` ABC
+(`firmware/main/display.{h,cpp}`) with `init()` → `hw_init()` +
+`post_init()` (dim-blue background via the LVGL-v9 active-screen style,
+since `lv_disp_set_bg_color` is gone) and `raw()`; a board-agnostic
+`HeadlessDisplay`; a board factory `Display *display_create(void)`. The
+old `extern "C" display_init()` and `main.cpp`'s `display_init_headless()`
+are gone; `main.cpp` owns a `Display*`. Every board's `display.cpp` now
+defines a local `namespace { class …Display : public Display; }` whose
+`hw_init()` holds the previous bring-up, plus `display_create()`. The LED
+family uses the shared `LEDMatrixDisplay` in
+`firmware/boards/common/leds/`. **Deviation from the plan below:** the
+`LCDPanelDisplay` shared base was dropped as adding no value — LCD board
+subclasses inherit `Display` directly.
+
+Replace the free `lv_display_t *display_init(void)` C seam — implemented
+eight different ways across the boards (`firmware/boards/common/leds/
+led_display.cpp` for the LED family, plus seven per-board LCD
+`display.cpp` files) — with a small C++ `Display` class hierarchy. Each
+board provides a concrete subclass; `main.cpp` owns the instance and
+drives its lifecycle. This turns today's copy-pasted bring-up into a
+shared base with a single overridable hardware hook, and folds the
+existing headless path into the same hierarchy.
+
+### Background
+
+* Today every board's `board` component exports
+  `extern "C" lv_display_t *display_init(void)`. `main.cpp` calls it,
+  falls back to a private `display_init_headless()` on `nullptr`, then
+  calls `touch_init(disp)`. The returned handle is otherwise unused
+  (LVGL tracks the default display internally).
+* The eight implementations share a lot of boilerplate — `lvgl_port_init`,
+  `lv_display_create`, `lv_display_set_color_format`,
+  `lv_display_set_buffers`, `lv_display_set_flush_cb` — and differ only in
+  the panel/bus bring-up (LED strip vs RGB-DPI vs SPI vs QSPI) and the
+  flush callback.
+* `firmware/main/display.h` is the seam header (currently just the C
+  `display_init()` prototype). `firmware/main/main.cpp` holds
+  `display_init_headless()` (gated on `CONFIG_TOUCHY_NO_DISPLAY` /
+  `CONFIG_TOUCHY_HEADLESS_*`).
+
+### Decisions (locked in)
+
+* **Convert every board this stage** — the LED family (`LEDMatrixDisplay`)
+  **and** all seven LCD `display.cpp` variants. No board keeps the old C
+  `display_init()`.
+* **Replace the C seam.** `main.cpp` owns a `Display*` and calls
+  `init()` / `raw()` directly; the free `display_init()` function is
+  removed. The board→main seam becomes a board-provided **factory**
+  `Display *display_create(void)` (declared in `display.h`) that returns
+  the board's concrete subclass.
+* **Shared `post_init()` blue background on every display** — LED and LCD
+  alike. `post_init()` is virtual so a board can override, but the base
+  behaviour (dim blue `lv_disp_set_bg_color`) applies to all by default.
+* **`LCDPanelDisplay` is a shared base**, not a leaf: it carries the
+  common LVGL wiring, and a board that needs to tweak LCD bring-up
+  subclasses it and overrides the relevant virtual (adding new virtual
+  hooks as needed). LED boards get `LEDMatrixDisplay`. The headless path
+  becomes a first-class `HeadlessDisplay` subclass.
+
+### The `Display` hierarchy
+
+```cpp
+// firmware/main/display.h
+class Display {
+public:
+    virtual ~Display() = default;
+
+    // Bring the panel up: hw_init() then (on success) post_init().
+    // Returns false if the hardware display could not be created.
+    bool init();
+
+    // The LVGL display handle created by hw_init(), or nullptr if init()
+    // failed / hasn't run.
+    lv_display_t *raw() const { return m_disp; }
+
+protected:
+    // Board/panel-specific bring-up. Must create and return an
+    // lv_display_t* (stored into m_disp by init()), or nullptr on failure.
+    virtual lv_display_t *hw_init() = 0;
+
+    // Post-bring-up tweaks common to all displays. Base sets a dim blue
+    // background via lv_disp_set_bg_color(); override to customise.
+    virtual void post_init();
+
+    lv_display_t *m_disp = nullptr;
+};
+
+// Board factory — one strong definition per board component.
+Display *display_create(void);
+```
+
+`bool Display::init()` (in a new `firmware/main/display.cpp`):
+```cpp
+bool Display::init() {
+    m_disp = hw_init();
+    if (!m_disp) return false;
+    post_init();
+    return true;
+}
+void Display::post_init() {
+    // Dim blue so a blank screen / bg-behind-widgets is clearly "on".
+    lv_disp_set_bg_color(m_disp, lv_color_hex(0x000020));
+}
+```
+
+### Definition of done
+
+* `firmware/main/display.h` declares the `Display` ABC + the
+  `display_create()` factory; `firmware/main/display.cpp` implements
+  `init()` / `post_init()`. No `extern "C" display_init()` remains.
+* Each board component defines exactly one `display_create()` returning
+  its concrete subclass:
+  - LED boards (`esp32_s3_devkitc_1`, `jc_esp32p4_m3`) →
+    `LEDMatrixDisplay` (in `firmware/boards/common/leds/`).
+  - The seven LCD boards → an `LCDPanelDisplay` subclass each (a shared
+    `LCDPanelDisplay` base holds the common LVGL wiring; per-board
+    subclasses implement `hw_init()`).
+* `main.cpp` owns `Display *g_display = display_create();` calls
+  `g_display->init()`, uses `g_display->raw()` for `touch_init()` and the
+  rest, and on failure constructs a `HeadlessDisplay` instead. The old
+  `display_init_headless()` free function is gone.
+* Every board still builds (`just firmware-build` for a representative
+  LED + LCD board) and the display comes up with the dim-blue background.
+
+### Work items
+
+1. **`Display` ABC + factory** — rewrite `firmware/main/display.h` with
+   the class above (keep the `#include "lvgl.h"`; drop the `extern "C"`
+   block). Add `firmware/main/display.cpp` (new entry in
+   `firmware/main/CMakeLists.txt` `SRCS`) implementing `init()` +
+   `post_init()`.
+
+2. **`HeadlessDisplay`** — move `display_init_headless()` out of
+   `main.cpp` into a `HeadlessDisplay : Display` (its `hw_init()` is the
+   current headless body). Put it somewhere board-agnostic
+   (`firmware/main/display.cpp` or a `headless_display.{h,cpp}`) since it
+   depends only on `CONFIG_TOUCHY_HEADLESS_*`.
+
+3. **`LEDMatrixDisplay`** — convert
+   `firmware/boards/common/leds/led_display.cpp`'s `display_init()` into
+   `LEDMatrixDisplay::hw_init()`; keep the Stage lb6 `led_panel_config()`
+   read, the geometry guard, and the gamma/serpentine flush. Provide the
+   board factory `display_create()` for the two LED boards returning
+   `new LEDMatrixDisplay(...)` (the shared source can define
+   `display_create()` since both LED boards want the same subclass).
+
+4. **`LCDPanelDisplay` base + per-board subclasses** — add a shared
+   `LCDPanelDisplay` (e.g. `firmware/boards/common/lcd_panel_display.{h,cpp}`)
+   holding the boilerplate common to the LCD boards (LVGL display create,
+   colour format, buffer alloc, flush-cb registration). Convert each of
+   the seven LCD `display.cpp` files
+   (`waveshare_s3_lcd_7b`, `elecrow_s3_lcd_7`, `elecrow_p4_lcd_7`,
+   `cyd_common`, `matouch_43`, `jc4827w543`, `squixl`) into an
+   `LCDPanelDisplay` subclass implementing `hw_init()` (the panel/bus
+   bring-up) and, where a board diverges, overriding a virtual (add new
+   virtuals to the base as the concrete conversions reveal the seams —
+   e.g. a `flush()` hook, an `orientation()` hook). Each board's
+   `display_create()` returns its subclass.
+
+5. **`main.cpp` lifecycle** — replace the `display_init()` /
+   `display_init_headless()` dance with:
+   ```cpp
+   Display *disp = display_create();
+   if (!disp->init()) { delete disp; disp = new HeadlessDisplay(); disp->init(); }
+   lv_display_t *raw = disp->raw();
+   ...
+   tp = touch_init(raw);
+   ```
+   Keep the `CONFIG_TOUCHY_NO_DISPLAY` branch (construct `HeadlessDisplay`
+   directly). Stash `disp` in a file-scope owner so it outlives boot.
+
+6. **CMake** — every board's `board/CMakeLists.txt` already compiles its
+   `display.cpp`; update the LCD boards to also pull the shared
+   `../../common/lcd_panel_display.cpp` (mirroring how the LED boards pull
+   `common/leds/led_display.cpp`), and confirm `Display` (declared in
+   main via `REQUIRES main` from Stage lb6's fix) is on the include path.
+
+7. **Docs + memory** — update `firmware/README.md` (the
+   `display.h : lv_disp_t *display_init(void)` line) and add an AGENTS.md /
+   CLAUDE.md note describing the `Display` ABC, the `display_create()`
+   factory seam, `HeadlessDisplay`, and the shared blue-bg `post_init()`.
+
+### Deferred / out of scope
+
+* Multi-display support (`main.cpp` still owns exactly one `Display`).
+* Merging `touch_init()` into `Display` — touch stays its own seam for
+  now (a `Display` may or may not have an indev).
+* Reworking the LVGL flush/port internals or buffer strategy beyond
+  moving the existing per-board code into subclasses.
+* Any behaviour change to the panels themselves — this is a structural
+  refactor; the only intended runtime change is the shared dim-blue
+  background.

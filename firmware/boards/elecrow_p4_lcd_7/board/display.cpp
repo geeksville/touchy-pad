@@ -41,7 +41,20 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
     esp_lcd_panel_draw_bitmap(s_lcd, 0, 0, BOARD_LCD_H_RES, BOARD_LCD_V_RES, px_map);
 }
 
-extern "C" lv_disp_t *display_init(void)
+// Stage lb7 — this board's Display subclass + factory.
+namespace {
+class BoardLCDDisplay : public Display {
+protected:
+    lv_display_t *hw_init() override;
+};
+}  // namespace
+
+Display *display_create(void)
+{
+    return new BoardLCDDisplay();
+}
+
+lv_display_t *BoardLCDDisplay::hw_init(void)
 {
     ESP_LOGI(TAG, "Initialising MIPI-DSI display (EK79007) %dx%d",
              BOARD_LCD_H_RES, BOARD_LCD_V_RES);

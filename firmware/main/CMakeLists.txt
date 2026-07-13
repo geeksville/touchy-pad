@@ -31,6 +31,7 @@ idf_component_register(
         "fs/ram_fs.cpp"
         "fs/temp_fs.cpp"
         "prefs.cpp"
+        "display.cpp"
         "backlight.cpp"
         "debug.cpp"
         "lv_throttled.cpp"

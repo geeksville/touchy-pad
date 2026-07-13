@@ -75,7 +75,22 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
     lv_display_flush_ready(disp);
 }
 
-extern "C" lv_display_t *display_init(void)
+// Stage lb7 — the LED-matrix board's Display subclass. Both LED boards
+// (esp32_s3_devkitc_1, jc_esp32p4_m3) share this driver, so display_create()
+// is defined here once.
+namespace {
+class LEDMatrixDisplay : public Display {
+protected:
+    lv_display_t *hw_init() override;
+};
+}  // namespace
+
+Display *display_create(void)
+{
+    return new LEDMatrixDisplay();
+}
+
+lv_display_t *LEDMatrixDisplay::hw_init(void)
 {
     // Stage lb6 — panel geometry comes from the persisted BoardConfig, not
     // compile-time macros. A device that has never been programmed has no

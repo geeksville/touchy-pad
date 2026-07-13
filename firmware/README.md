@@ -94,7 +94,7 @@ firmware/
     ├── CMakeLists.txt          # REQUIRES board
     ├── idf_component.yml       # common deps (lvgl, esp_lvgl_port, tinyusb, ...)
     ├── board.h                 # public API: board_init(), board_get_i2c_bus()
-    ├── display.h               # public API: lv_disp_t *display_init(void)
+    ├── display.h               # public API: Display ABC + display_create()
     ├── touch.h                 # public API: esp_lcd_touch_handle_t touch_init()
     ├── main.cpp                # app_main entry point
     ├── usb_hid.{h,cpp}         # TinyUSB HID-mouse wrapper
@@ -130,9 +130,9 @@ firmware/
 ### Adding a new board
 
 1. Create `boards/<name>/board/` with a `CMakeLists.txt` that registers a
-   component called `board` and implements `board_init()`, `display_init()`,
-   and `touch_init()` (signatures in `main/board.h`, `main/display.h`,
-   `main/touch.h`).
+   component called `board` and implements `board_init()`, a `Display`
+   subclass returned from `display_create()`, and `touch_init()`
+   (signatures in `main/board.h`, `main/display.h`, `main/touch.h`).
 2. Add `boards/<name>/target` — a one-line file naming the IDF chip
    (`esp32s3`, `esp32`, …). `just firmware-reconfigure <name>` reads it.
 3. Add `boards/<name>/sdkconfig.defaults` with flash/PSRAM/partition

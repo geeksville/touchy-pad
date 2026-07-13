@@ -59,7 +59,20 @@ static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
                          flush_done_isr, disp);
 }
 
-extern "C" lv_display_t *display_init(void)
+// Stage lb7 — this board's Display subclass + factory.
+namespace {
+class BoardLCDDisplay : public Display {
+protected:
+    lv_display_t *hw_init() override;
+};
+}  // namespace
+
+Display *display_create(void)
+{
+    return new BoardLCDDisplay();
+}
+
+lv_display_t *BoardLCDDisplay::hw_init(void)
 {
     // Backlight is owned by the shared LEDC PWM driver (configured in
     // board_init() via backlight_pwm_init(); switched on by backlight_init()).

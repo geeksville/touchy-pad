@@ -13,7 +13,20 @@
 
 static const char *TAG = TOUCHY_TAG("display");
 
-extern "C" lv_disp_t *display_init(void)
+// Stage lb7 — this board's Display subclass + factory.
+namespace {
+class BoardLCDDisplay : public Display {
+protected:
+    lv_display_t *hw_init() override;
+};
+}  // namespace
+
+Display *display_create(void)
+{
+    return new BoardLCDDisplay();
+}
+
+lv_display_t *BoardLCDDisplay::hw_init(void)
 {
     ESP_LOGI(TAG, "Configuring %dx%d RGB panel @ %d MHz",
              BOARD_LCD_H_RES, BOARD_LCD_V_RES,

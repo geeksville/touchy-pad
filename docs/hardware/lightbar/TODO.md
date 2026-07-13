@@ -6,13 +6,9 @@
 * !add to ci
 * post to reddit
 
+https://docs.espressif.com/projects/esp-protocols/mdns/docs/latest/en/index.html
+
 https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html
-Yes, you're looking for the ESP32-S3-DevKitC-1 reference design. That 44-pin (2x22) layout is the official Espressif form factor that pretty much all the generic clone boards copy.
-If you need the pin map, just search for the Espressif DevKitC-1 documentation—it will match your clone perfectly.
-A quick heads up for the NeoPixel (WS2812 RGB LED) on those boards:
-GPIO48: This is the default NeoPixel pin for the original v1.0 hardware.  
-GPIO38: If 48 doesn't work, try this. Espressif moved the RGB LED to pin 38 on their v1.1 revision, and some newer clones follow the updated schematic.  
-For your other core connections, GPIO 19 and 20 handle the native USB (D- and D+), while UART0 (GPIO 43 and 44) runs the default serial console.
 
 https://easyeda.com/ https://jlcpcb.com/ 
 contact adafruit? lily?

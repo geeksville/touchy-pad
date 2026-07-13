@@ -107,7 +107,20 @@ static void init_st7701s(Lca9555 &ioex)
     send_st7701s_commands(ioex, st7701s_init_commands);
 }
 
-extern "C" lv_disp_t *display_init(void)
+// Stage lb7 — this board's Display subclass + factory.
+namespace {
+class BoardLCDDisplay : public Display {
+protected:
+    lv_display_t *hw_init() override;
+};
+}  // namespace
+
+Display *display_create(void)
+{
+    return new BoardLCDDisplay();
+}
+
+lv_display_t *BoardLCDDisplay::hw_init(void)
 {
     Lca9555 *ioex = board_get_ioex();
 
