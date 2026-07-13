@@ -3,12 +3,13 @@
 #include "touch.h"
 #include "board.h"
 #include "board_pins.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 #include "esp_lcd_touch_gt911.h"
 #include "esp_lvgl_port.h"
 
-static const char *TAG = "touch";
+static const char *TAG = TOUCHY_TAG("touch");
 
 static lv_indev_t            *s_indev = nullptr;
 static esp_lcd_touch_handle_t s_tp    = nullptr;

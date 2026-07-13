@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "lca9555.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 
-static const char *TAG = "lca9555";
+static const char *TAG = TOUCHY_TAG("lca9555");
 
 static constexpr uint8_t REG_INPUT0  = 0x00;
 static constexpr uint8_t REG_INPUT1  = 0x01;

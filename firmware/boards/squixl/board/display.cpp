@@ -3,6 +3,7 @@
 #include "display.h"
 #include "board.h"
 #include "board_pins.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 #include "esp_lcd_panel_ops.h"
@@ -11,7 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "display";
+static const char *TAG = TOUCHY_TAG("display");
 
 // ST7701S init command sequence (ported from SQUiXL squixl.h / CIC project).
 // Format: [len, cmd, data...] where len=0xff is a delay and next byte is ms.

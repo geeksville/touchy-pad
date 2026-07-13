@@ -6,6 +6,7 @@
 
 #include "display.h"
 #include "board_pins.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 #include "esp_err.h"
@@ -16,7 +17,7 @@
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
 
-static const char *TAG = "display";
+static const char *TAG = TOUCHY_TAG("display");
 
 static esp_lcd_panel_handle_t   s_lcd   = nullptr;
 static lv_display_t            *s_disp  = nullptr;

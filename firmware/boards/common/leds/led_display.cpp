@@ -20,6 +20,7 @@
 #include "display.h"
 #include "led_display.h"
 #include "led_panel.h"
+#include "tc_tag.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -29,7 +30,7 @@
 
 #include <cmath>
 
-static const char *TAG = "display";
+static const char *TAG = TOUCHY_TAG("display");
 
 static LEDPanel     *s_panel      = nullptr;
 static lv_display_t *s_disp       = nullptr;

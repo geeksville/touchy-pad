@@ -12,6 +12,7 @@
 #include "macros.h"
 #include "prefs.h"
 #include "screens.h"
+#include "tc_tag.h"
 #include "touch.h"
 #include "usb_hid.h"
 
@@ -26,7 +27,7 @@
 #include <cinttypes>
 #include <string>
 
-static const char *TAG = "main";
+static const char *TAG = TOUCHY_TAG("main");
 
 // Fires on *every* failed heap allocation (malloc / calloc / realloc /
 // heap_caps_* / C++ new — they all route through the heap component).

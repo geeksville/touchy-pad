@@ -5,12 +5,13 @@
 // board's own Display) live in their board components.
 
 #include "display.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "esp_heap_caps.h"
 
-static const char *TAG = "display";
+static const char *TAG = TOUCHY_TAG("display");
 
 bool Display::init()
 {

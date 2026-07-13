@@ -9,7 +9,7 @@
 
 #include "esp_log.h"
 
-static const char *TAG = "touch";
+static const char *TAG = TOUCHY_TAG("touch");
 
 lv_indev_t *touch_get_indev(void) { return nullptr; }
 

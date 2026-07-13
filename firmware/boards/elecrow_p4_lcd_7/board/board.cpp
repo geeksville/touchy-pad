@@ -3,7 +3,8 @@
 #include "board.h"
 #include "board_pins.h"
 #include "platform.h"
-#include "backlight_pwm.h"   // shared LEDC backlight driver (Stage 94)
+#include "backlight_pwm.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 #include "esp_err.h"
@@ -11,7 +12,7 @@
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
 
-static const char *TAG = "board";
+static const char *TAG = TOUCHY_TAG("board");
 
 static i2c_master_bus_handle_t s_i2c_bus = nullptr;
 

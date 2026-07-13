@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "display.h"
+#include "tc_tag.h"
 
 #include "board.h"
 #include "board_pins.h"
@@ -10,7 +11,7 @@
 #include "esp_lcd_panel_rgb.h"
 #include "esp_lvgl_port.h"
 
-static const char *TAG = "display";
+static const char *TAG = TOUCHY_TAG("display");
 
 // Stage lb7 — this board's Display subclass + factory.
 namespace {

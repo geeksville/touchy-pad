@@ -5,8 +5,9 @@
 
 #include "backlight_pwm.h"
 
-#include "board.h"        // backlight_set() declaration
-#include "board_pins.h"   // BOARD_BL_GPIO + optional tuning knobs
+#include "board.h"
+#include "board_pins.h"
+#include "tc_tag.h"
 
 #include "driver/ledc.h"
 #include "esp_log.h"
@@ -35,7 +36,7 @@
 #define BACKLIGHT_LEDC_CLK LEDC_AUTO_CLK
 #endif
 
-static const char *TAG = "backlight_pwm";
+static const char *TAG = TOUCHY_TAG("backlight_pwm");
 
 // Maximum LEDC duty for the configured resolution.
 static constexpr uint32_t BL_FULL = (1u << BACKLIGHT_PWM_BITS) - 1u;

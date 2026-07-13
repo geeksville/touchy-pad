@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "led_panel.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 
-static const char *TAG = "led_panel";
+static const char *TAG = TOUCHY_TAG("led_panel");
 
 LEDPanel::LEDPanel(int gpio, int width, int height, uint8_t brightness)
     : _gpio(gpio), _width(width), _height(height), _brightness(brightness)
@@ -42,6 +43,8 @@ bool LEDPanel::begin()
     rmt_cfg.mem_block_symbols = 64;
     rmt_cfg.flags.with_dma = true;
 
+    ESP_LOGI(TAG, "Creating LED strip: gpio=%d %u LEDs, RMT+DMA",
+             _gpio, (unsigned)led_count);
     esp_err_t err = led_strip_new_rmt_device(&strip_cfg, &rmt_cfg, &_strip);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "led_strip_new_rmt_device failed: %s",
@@ -50,7 +53,7 @@ bool LEDPanel::begin()
         return false;
     }
 
-    led_strip_clear(_strip);
+    // led_strip_clear(_strip);
     ESP_LOGI(TAG, "LEDPanel up: gpio=%d %dx%d (%u LEDs), RMT+DMA",
              _gpio, _width, _height, (unsigned)led_count);
     return true;
@@ -94,6 +97,11 @@ void LEDPanel::set_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 void LEDPanel::flush()
 {
     if (_strip) {
+        static bool first = false;
+        if (1 || !first) {
+            ESP_LOGI(TAG, "First flush: showing staged pixels for the first time");
+            first = true;
+        }
         led_strip_refresh(_strip);
     }
 }
@@ -101,6 +109,11 @@ void LEDPanel::flush()
 void LEDPanel::clear()
 {
     if (_strip) {
+        static bool first = false;
+        if (!first) {
+            ESP_LOGI(TAG, "First clear: clearing staged pixels for the first time");
+            first = true;
+        }        
         led_strip_clear(_strip);
     }
 }

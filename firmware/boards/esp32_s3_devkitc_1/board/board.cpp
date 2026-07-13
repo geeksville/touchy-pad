@@ -13,10 +13,11 @@
 #include "board_pins.h"
 #include "led_display.h"
 #include "platform.h"
+#include "tc_tag.h"
 
 #include "esp_log.h"
 
-static const char *TAG = "board";
+static const char *TAG = TOUCHY_TAG("board");
 
 i2c_master_bus_handle_t board_get_i2c_bus(void) { return nullptr; }
 
