@@ -93,7 +93,7 @@ jobs:
           - elecrow_s3_lcd_7_adv
           - squixl
           - matouch_43
-          - esp32-s3-devkitc-1
+          - esp32_s3_devkitc_1
     runs-on: ubuntu-latest
     env:
       IDF_VERSION: ${{ needs.install-esp-idf.outputs.idf-version }}
