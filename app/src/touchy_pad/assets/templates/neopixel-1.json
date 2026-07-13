@@ -1,0 +1,12 @@
+{
+  "fileVersion": "V6",
+  "boardConfig": {
+    "displays": [
+      {
+        "panels": [
+          { "width": 1, "height": 1, "gpio": 48 }
+        ]
+      }
+    ]
+  }
+}
