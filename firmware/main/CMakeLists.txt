@@ -21,7 +21,10 @@ idf_component_register(
     SRCS
         "main.cpp"
         "${touchy_usb_src}"
-        "host_api.cpp"
+        "api/host_api.cpp"
+        "api/vendor_link.cpp"
+        "api/serial_link.cpp"
+        "api/uart_link.cpp"
         "platform.cpp"
         "fs/fs.cpp"
         "fs/flash_fs.cpp"
@@ -52,6 +55,7 @@ idf_component_register(
         "proto/preferences.pb.c"
     INCLUDE_DIRS
         "."
+        "api"
         "fs"
         "widgets"
         "proto"

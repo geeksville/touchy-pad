@@ -6,7 +6,7 @@
 * !add to ci
 * post to reddit
 
-https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html#hardware-reference 
+https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html
 Yes, you're looking for the ESP32-S3-DevKitC-1 reference design. That 44-pin (2x22) layout is the official Espressif form factor that pretty much all the generic clone boards copy.
 If you need the pin map, just search for the Espressif DevKitC-1 documentation—it will match your clone perfectly.
 A quick heads up for the NeoPixel (WS2812 RGB LED) on those boards:

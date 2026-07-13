@@ -21,6 +21,12 @@
 #include "pb_decode.h"
 #include "pb_encode.h"
 
+// Stage LB5 — per-transport link classes now live in their own files.
+#include "host_api_link.h"
+#include "serial_link.h"
+#include "uart_link.h"
+#include "vendor_link.h"
+
 #include "version.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -29,14 +35,8 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#if CONFIG_SOC_USB_OTG_SUPPORTED
-#include "tinyusb.h"
-#include "tusb.h"
-#endif
-#if CONFIG_TOUCHY_PROTO_OVER_SERIAL && (!CONFIG_SOC_USB_OTG_SUPPORTED || !CONFIG_TINYUSB_CDC_COUNT)
-#include "driver/uart.h"
-#endif
 
+#include <atomic>
 #include <string.h>
 #include <string>
 
@@ -50,13 +50,9 @@ static const char *TAG = TOUCHY_TAG("host_api");
 //     of EventConsumeCmd (no dedicated interrupt-IN mailbox endpoint).
 #define TOUCHY_PROTOCOL_VERSION  touchy_SysBoardInfoResponse_ProtocolVersion_CURRENT
 
-// Largest serialised Command we accept. With streaming writes (Stage 51)
-// every individual `FileWriteCmd` carries at most ~4 KiB of payload, so
-// the on-wire frame cap shrinks from the old 32 KiB FileSave budget down
-// to roughly one USB-HS bulk transfer's worth of data plus nanopb
-// framing overhead.
-#define HOST_API_RX_MAX  (5 * 1024)
-#define HOST_API_TX_MAX  (4  * 1024)
+// HOST_API_RX_MAX / HOST_API_TX_MAX and the HostApiLink base live in
+// host_api_link.h (shared with the per-transport link .cpp files).
+
 
 // ---------------------------------------------------------------------------
 // Stage 64.3 — self-synchronising frame.
@@ -124,163 +120,28 @@ extern "C" void host_api_post_event(const struct _touchy_LvEvent *evt)
 }
 
 // ---------------------------------------------------------------------------
-// Transport links (Stage 64.3)
+// Transport links (Stage 64.3, generalised to an array in Stage LB5)
 //
-// A HostApiLink abstracts the byte stream the dispatcher reads commands
-// from / writes responses to. VendorLink rides the TinyUSB vendor bulk
-// pair (native-USB chips only); SerialLink rides a USB-CDC ACM port; and
-// UartLink rides a hardware UART on chips with no native USB at all. The
-// serial links are compiled in only when CONFIG_TOUCHY_PROTO_OVER_SERIAL is
-// set. Each link owns its own rx/tx scratch buffers and wake semaphore so
-// the dispatcher tasks never alias state.
+// A HostApiLink (host_api_link.h) abstracts the byte stream the dispatcher
+// reads Commands from / writes Responses to. The concrete subclasses live
+// in their own files: VendorLink (vendor_link.cpp, USB vendor bulk),
+// SerialLink (serial_link.cpp, USB-CDC ACM) and UartLink (uart_link.cpp,
+// hardware UART). Each is gated by its own CONFIG_TOUCHY_PROTO_OVER_* flag
+// AND the backing hardware, so a board only builds the links it can use.
+// host_api_start() registers every available link into s_links[] and spawns
+// one dispatcher task per link.
+//
+// "Last used wins" (Stage LB5): responses are always written back on the
+// link their Command arrived on, so request/response routes per-link for
+// free. Events are drained by EventConsumeCmd polling, so they too flow to
+// whichever link the host is currently polling. s_active_link records the
+// most-recently-used link — the anchor for any future unsolicited push
+// (e.g. a TCPLink event mailbox); under the one-active-client assumption it
+// is otherwise advisory.
 // ---------------------------------------------------------------------------
 
-struct HostApiLink {
-    SemaphoreHandle_t rx_sem = nullptr;
-    uint8_t rx_buf[HOST_API_RX_MAX];
-    uint8_t tx_buf[HOST_API_TX_MAX];
+static std::atomic<HostApiLink *> s_active_link{nullptr};
 
-    virtual ~HostApiLink() {}
-    virtual const char *name() const = 0;
-    virtual bool connected() = 0;
-    // Non-blocking: copy up to `max` available bytes into `dst`, return count.
-    virtual size_t read_some(uint8_t *dst, size_t max) = 0;
-    // Blocking write of exactly `n` bytes; false if the link drops.
-    virtual bool write_all(const uint8_t *p, size_t n) = 0;
-    virtual void flush() {}
-
-    void wait_rx(uint32_t ms) {
-        if (rx_sem) xSemaphoreTake(rx_sem, pdMS_TO_TICKS(ms));
-        else        vTaskDelay(pdMS_TO_TICKS(ms));
-    }
-};
-
-#if CONFIG_SOC_USB_OTG_SUPPORTED
-struct VendorLink : HostApiLink {
-    const char *name() const override { return "vendor"; }
-    bool connected() override { return tud_mounted(); }
-    size_t read_some(uint8_t *dst, size_t max) override {
-        return tud_vendor_read(dst, max);
-    }
-    bool write_all(const uint8_t *p, size_t n) override {
-        size_t sent = 0;
-        while (sent < n) {
-            uint32_t w = tud_vendor_write(p + sent, n - sent);
-            if (w == 0) {
-                if (!tud_mounted()) return false;
-                tud_vendor_write_flush();
-                vTaskDelay(1);
-                continue;
-            }
-            sent += w;
-        }
-        return true;
-    }
-    void flush() override { tud_vendor_write_flush(); }
-};
-
-static VendorLink s_vendor_link;
-#endif  // CONFIG_SOC_USB_OTG_SUPPORTED
-
-#if CONFIG_TOUCHY_PROTO_OVER_SERIAL && CONFIG_SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_CDC_COUNT
-struct SerialLink : HostApiLink {
-    const char *name() const override { return "serial"; }
-    // tud_cdc_connected() tracks DTR; pyserial asserts it on open.
-    bool connected() override { return tud_cdc_connected(); }
-    size_t read_some(uint8_t *dst, size_t max) override {
-        if (!tud_cdc_available()) return 0;
-        return tud_cdc_read(dst, max);
-    }
-    bool write_all(const uint8_t *p, size_t n) override {
-        size_t sent = 0;
-        while (sent < n) {
-            uint32_t w = tud_cdc_write(p + sent, n - sent);
-            if (w == 0) {
-                if (!tud_cdc_connected()) return false;
-                tud_cdc_write_flush();
-                vTaskDelay(1);
-                continue;
-            }
-            sent += w;
-        }
-        return true;
-    }
-    void flush() override { tud_cdc_write_flush(); }
-};
-
-static SerialLink s_serial_link;
-#endif  // CONFIG_TOUCHY_PROTO_OVER_SERIAL && CONFIG_SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_CDC_COUNT
-
-#if CONFIG_TOUCHY_PROTO_OVER_SERIAL && (!CONFIG_SOC_USB_OTG_SUPPORTED || !CONFIG_TINYUSB_CDC_COUNT)
-// Hardware-UART transport for chips with no native USB (Stage 65). The
-// CH340 bridge on boards like the esp32_2432s028rv3 is wired to UART0, so we
-// reuse the console UART at the standard protocol baud. The IDF console must
-// be routed off UART0 (CONFIG_ESP_CONSOLE_UART_NONE) on such boards so it
-// doesn't interleave bytes with the protocol frames.
-#ifndef HOST_API_UART_NUM
-#define HOST_API_UART_NUM UART_NUM_0
-#endif
-#ifndef HOST_API_UART_BAUD
-#define HOST_API_UART_BAUD 460800
-#endif
-
-struct UartLink : HostApiLink {
-    QueueHandle_t evt_queue = nullptr;
-
-    const char *name() const override { return "uart"; }
-    // A UART has no link-up notion; the host is "connected" whenever bytes
-    // can flow. Report true so the dispatcher always services frames.
-    bool connected() override { return true; }
-    size_t read_some(uint8_t *dst, size_t max) override {
-        int n = uart_read_bytes(HOST_API_UART_NUM, dst, max, 0);
-        return n > 0 ? (size_t)n : 0;
-    }
-    bool write_all(const uint8_t *p, size_t n) override {
-        int w = uart_write_bytes(HOST_API_UART_NUM, (const char *)p, n);
-        return w == (int)n;
-    }
-    void flush() override {
-        uart_wait_tx_done(HOST_API_UART_NUM, pdMS_TO_TICKS(100));
-    }
-};
-
-static UartLink s_uart_link;
-
-// Pumps UART rx events into the link's wake semaphore so the dispatcher
-// task blocks (rather than polling) while waiting for the next frame.
-static void uart_rx_pump_task(void *arg)
-{
-    UartLink *link = (UartLink *)arg;
-    uart_event_t evt;
-    for (;;) {
-        if (xQueueReceive(link->evt_queue, &evt, portMAX_DELAY)) {
-            if (evt.type == UART_DATA && link->rx_sem) {
-                xSemaphoreGive(link->rx_sem);
-            }
-        }
-    }
-}
-
-// Install the UART driver + rx pump. Safe to call once from host_api_start().
-static void uart_link_init(UartLink *link)
-{
-    uart_config_t cfg = {};
-    cfg.baud_rate = HOST_API_UART_BAUD;
-    cfg.data_bits = UART_DATA_8_BITS;
-    cfg.parity = UART_PARITY_DISABLE;
-    cfg.stop_bits = UART_STOP_BITS_1;
-    cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-    cfg.source_clk = UART_SCLK_DEFAULT;
-
-    ESP_ERROR_CHECK(uart_driver_install(HOST_API_UART_NUM, HOST_API_RX_MAX * 2,
-                                        HOST_API_TX_MAX * 2, 16,
-                                        &link->evt_queue, 0));
-    ESP_ERROR_CHECK(uart_param_config(HOST_API_UART_NUM, &cfg));
-    // Keep the default console pins for UART0; explicit boards may override.
-    xTaskCreatePinnedToCore(uart_rx_pump_task, "uart_rx", 2048, link,
-                            tskIDLE_PRIORITY + 2, nullptr, tskNO_AFFINITY);
-}
-#endif  // CONFIG_TOUCHY_PROTO_OVER_SERIAL && (!CONFIG_SOC_USB_OTG_SUPPORTED || !CONFIG_TINYUSB_CDC_COUNT)
 
 // ---------------------------------------------------------------------------
 // Framing helpers (blocking on the dispatcher task)
@@ -670,6 +531,11 @@ static void host_api_task(void *arg)
         // Dispatch.
         dispatch(cmd.get(), resp.get());
 
+        // Stage LB5 — this link just carried a Command, so it is now the
+        // active client. Records the anchor for any future unsolicited push
+        // (see s_active_link); responses/events already route per-link.
+        s_active_link.store(link, std::memory_order_relaxed);
+
         // Encode + send.
         std::size_t n = 0;
         if (!resp.encode(link->tx_buf, HOST_API_TX_MAX, &n)) {
@@ -682,6 +548,33 @@ static void host_api_task(void *arg)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Link registry + startup (Stage LB5)
+// ---------------------------------------------------------------------------
+
+// Every transport link the build enabled *and* the board has hardware for.
+// Capacity 3 = vendor + cdcacm + uart (the current maximum).
+static HostApiLink *s_links[3];
+static size_t       s_link_count = 0;
+
+// Create the link's wake semaphore, run its one-time driver bring-up, and
+// spawn its dispatcher task. No-op on nullptr / registry overflow.
+static void register_link(HostApiLink *link)
+{
+    if (!link || s_link_count >= (sizeof(s_links) / sizeof(s_links[0]))) return;
+    link->rx_sem = xSemaphoreCreateBinary();
+    if (!link->init()) {
+        ESP_LOGE(TAG, "link '%s' init failed — skipping", link->name());
+        return;
+    }
+    s_links[s_link_count++] = link;
+    // 10 KB stack: pb_decode uses static buffers (the generated struct is
+    // heap/.bss), so this is mostly for nanopb's small call stack. Pin to
+    // APP CPU to keep TinyUSB on the PRO CPU.
+    xTaskCreatePinnedToCore(host_api_task, link->name(), 10 * 1024, link,
+                            tskIDLE_PRIORITY + 4, nullptr, 1);
+}
+
 extern "C" void host_api_start(void)
 {
     static bool started = false;
@@ -690,52 +583,37 @@ extern "C" void host_api_start(void)
 
     s_evt_queue = xQueueCreate(EVENT_QUEUE_DEPTH, sizeof(touchy_LvEvent));
 
-#if CONFIG_SOC_USB_OTG_SUPPORTED
-    // Vendor (USB bulk) dispatcher — present on native-USB chips.
-    s_vendor_link.rx_sem = xSemaphoreCreateBinary();
-    // 10 KB stack: pb_decode of an ImageSaveCmd uses static buffers (the
-    // generated struct is heap/.bss), so this is mostly for nanopb's small
-    // call stack. Pin to APP CPU to keep TinyUSB on the PRO CPU.
-    xTaskCreatePinnedToCore(host_api_task, "host_api", 10 * 1024,
-                            &s_vendor_link, tskIDLE_PRIORITY + 4, nullptr, 1);
+#if CONFIG_TOUCHY_PROTO_OVER_VENDORUSB && CONFIG_SOC_USB_OTG_SUPPORTED
+    register_link(vendor_link_instance());
+#endif
+#if CONFIG_TOUCHY_PROTO_OVER_CDCACM && CONFIG_SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_CDC_COUNT
+    register_link(serial_link_instance());
+#endif
+#if CONFIG_TOUCHY_PROTO_OVER_UART && CONFIG_TOUCHY_HAS_PROTO_UART
+    register_link(uart_link_instance());
 #endif
 
-#if CONFIG_TOUCHY_PROTO_OVER_SERIAL && CONFIG_SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_CDC_COUNT
-    // Serial (USB-CDC ACM) dispatcher — same protocol, second link.
-    s_serial_link.rx_sem = xSemaphoreCreateBinary();
-    xTaskCreatePinnedToCore(host_api_task, "host_api_ser", 10 * 1024,
-                            &s_serial_link, tskIDLE_PRIORITY + 4, nullptr, 1);
-#endif
-
-#if CONFIG_TOUCHY_PROTO_OVER_SERIAL && (!CONFIG_SOC_USB_OTG_SUPPORTED || !CONFIG_TINYUSB_CDC_COUNT)
-    // Hardware-UART dispatcher — for no-USB chips and S3 boards where USB pins
-    // are unavailable (e.g. shared with I2C, so CDC cannot be used).
-    s_uart_link.rx_sem = xSemaphoreCreateBinary();
-    uart_link_init(&s_uart_link);
-    xTaskCreatePinnedToCore(host_api_task, "host_api_uart", 10 * 1024,
-                            &s_uart_link, tskIDLE_PRIORITY + 4, nullptr, 1);
-#endif
+    if (s_link_count == 0) {
+        ESP_LOGW(TAG, "no host-API transport links enabled for this board");
+    }
 }
 
-#if CONFIG_SOC_USB_OTG_SUPPORTED
+#if CONFIG_TOUCHY_PROTO_OVER_VENDORUSB && CONFIG_SOC_USB_OTG_SUPPORTED
 extern "C" void host_api_on_rx(void)
 {
-    if (s_vendor_link.rx_sem) {
-        BaseType_t hpw = pdFALSE;
-        xSemaphoreGiveFromISR(s_vendor_link.rx_sem, &hpw);
-        portYIELD_FROM_ISR(hpw);
-    }
+    vendor_link_instance()->wake_from_isr();
 }
+#else
+extern "C" void host_api_on_rx(void) {}
 #endif
 
-#if CONFIG_TOUCHY_PROTO_OVER_SERIAL && CONFIG_SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_CDC_COUNT
+#if CONFIG_TOUCHY_PROTO_OVER_CDCACM && CONFIG_SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_CDC_COUNT
 extern "C" void host_api_on_cdc_rx(void)
 {
-    if (s_serial_link.rx_sem) {
-        BaseType_t hpw = pdFALSE;
-        xSemaphoreGiveFromISR(s_serial_link.rx_sem, &hpw);
-        portYIELD_FROM_ISR(hpw);
-    }
+    serial_link_instance()->wake_from_isr();
 }
+#else
+extern "C" void host_api_on_cdc_rx(void) {}
 #endif
+
 

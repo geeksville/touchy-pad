@@ -65,21 +65,38 @@ Highlights worth remembering:
 - Host ↔ device wire protocol = self-synchronising frames
   `MAGIC(0xA5 0x5A) | LEN(u16 LE) | payload | CRC8` (Stage 64.3) over the
   bulk pair. Identical framing on every transport (USB, simulator TCP,
-  serial). One decoder per side: `firmware/main/host_api.cpp` (the
+  serial). One decoder per side: `firmware/main/api/host_api.cpp` (the
   `HostApiLink` abstraction), `app/src/touchy_pad/transport.py`
   (`_StreamFramedTransport` / `_FrameDecoder`), and
   `rust/touchy-pad/src/transport.rs` (`FrameDecoder`). The serial
   transport (`transport_serial.py`; Rust `transport_serial.rs` behind the
   `serial` feature) always runs at 115200 baud and carries only protocol
   frames — device logs ride the Stage 64.1 `LogRecord` tunnel, never raw
-  text on the protocol port. Firmware serial path is gated on
-  `CONFIG_TOUCHY_PROTO_OVER_SERIAL` (default n; `y` for the CYD board,
-  which has a `UartLink` on `UART_NUM_0` gated `#if
-  CONFIG_TOUCHY_PROTO_OVER_SERIAL && !CONFIG_SOC_USB_OTG_SUPPORTED`).
-  `firmware/main/CMakeLists.txt` REQUIRES `esp_driver_uart` for this
-  (IDF v6 split out `driver/uart.h`). Gotcha: in `sdkconfig.defaults`,
-  `# CONFIG_X is not set` is **not** a comment — it's the `X=n` directive
-  and will silently override an earlier `CONFIG_X=y`.
+  text on the protocol port.
+- **Multi-interface host API (Stage LB5).** The device can serve the
+  protocol over several transports at once: `host_api_start()` registers
+  every *available* `HostApiLink` into an array and runs one dispatcher
+  task each; a client connects over any of them ("last used wins" —
+  responses go back on the originating link, events flow to whoever polls;
+  `s_active_link` tracks the most-recent for future unsolicited pushes).
+  The host-API code lives under `firmware/main/api/`: `host_api.{cpp,h}` +
+  the shared `host_api_link.h` base + one file per transport —
+  `vendor_link.{h,cpp}` (USB vendor bulk), `serial_link.{h,cpp}` (USB-CDC
+  ACM), `uart_link.{h,cpp}` (hardware UART). Three **independent** Kconfig
+  flags gate them, each only *instantiated* when the board also has the
+  backing hardware: `CONFIG_TOUCHY_PROTO_OVER_VENDORUSB` (default `y`,
+  needs `CONFIG_SOC_USB_OTG_SUPPORTED`), `CONFIG_TOUCHY_PROTO_OVER_CDCACM`
+  (default `n`, needs USB-OTG + `CONFIG_TINYUSB_CDC_COUNT`),
+  `CONFIG_TOUCHY_PROTO_OVER_UART` (default `y`, needs the board to declare
+  `CONFIG_TOUCHY_HAS_PROTO_UART=y` + `CONFIG_TOUCHY_PROTO_UART_NUM` /
+  `_BAUD`). The old single `CONFIG_TOUCHY_PROTO_OVER_SERIAL` tri-state is
+  retired: CYD boards now set `HAS_PROTO_UART=y` (UART0) and the Feather
+  runs vendor-USB **and** UART0 together (console routed to USB-Serial-JTAG).
+  `firmware/main/CMakeLists.txt` REQUIRES `esp_driver_uart` (IDF v6 split
+  out `driver/uart.h`) and lists `api/` in `INCLUDE_DIRS`. Gotcha: in
+  `sdkconfig.defaults`, `# CONFIG_X is not set` is **not** a comment —
+  it's the `X=n` directive and will silently override an earlier
+  `CONFIG_X=y`.
 - nanopb uses `FT_POINTER` (heap) for `repeated` widget/action/step
   fields and the `FileWrite` payload. RAII via `PbMessage<T>` in
   `firmware/main/protobuf.h`.

@@ -29,19 +29,89 @@ config TOUCHY_LOG_TO_UART
         with no usable physical console (e.g. CYD2USB) to skip the
         forward and save a few cycles per log line.
 
-config TOUCHY_PROTO_OVER_SERIAL
-    bool "Also serve the touchy protobuf protocol over a serial port"
+config TOUCHY_PROTO_OVER_VENDORUSB
+    bool "Serve the touchy protobuf protocol over the USB vendor-bulk interface"
+    default y
+    help
+        Enables the USB vendor-bulk host_api link (VendorLink). Only
+        instantiated when the chip actually has a native USB-OTG
+        controller (CONFIG_SOC_USB_OTG_SUPPORTED); on a board without one
+        the flag has no effect. This is the primary transport on every
+        native-USB board, so it defaults on.
+
+config TOUCHY_PROTO_OVER_CDCACM
+    bool "Also serve the touchy protobuf protocol over a USB-CDC ACM port"
     default n
     help
-        When enabled, a second host_api dispatcher task speaks the same
-        self-synchronising protobuf framing (MAGIC | uint16 LEN |
-        payload | CRC8) over a serial port in addition to the USB
-        vendor interface. On boards with native USB this rides the
-        USB-CDC ACM port (TINYUSB_CDC_ENABLED must also be set); on
-        boards without native USB (e.g. the future CYD2USB) it will
-        ride a hardware UART. The serial port must carry *only*
-        protocol frames — route ESP-IDF logs to the host via
-        TOUCHY_LOG_OVER_PROTO instead of the protocol CDC/UART console.
+        Enables the USB-CDC ACM host_api link (SerialLink). Only
+        instantiated when the chip has native USB-OTG *and* the TinyUSB
+        CDC class is compiled in (CONFIG_TINYUSB_CDC_ENABLED, so
+        CONFIG_TINYUSB_CDC_COUNT > 0). Off by default because most boards
+        keep the CDC port for the human-readable console rather than the
+        binary protocol; the CDC port must carry *only* protocol frames
+        when this is set (route logs to the host via
+        TOUCHY_LOG_OVER_PROTO instead).
+
+config TOUCHY_PROTO_OVER_UART
+    bool "Also serve the touchy protobuf protocol over a hardware UART"
+    default y
+    help
+        Enables the hardware-UART host_api link (UartLink). Only
+        instantiated when the board declares it wires a dedicated UART for
+        the protocol (TOUCHY_HAS_PROTO_UART); a board that declares none
+        never builds the link even though this defaults on. Used on
+        boards with no usable native USB (e.g. the classic-ESP32 CYD
+        boards, reached through their USB-UART bridge).
+
+config TOUCHY_HAS_PROTO_UART
+    bool "Board wires a dedicated hardware UART for the protocol"
+    default n
+    help
+        Set by a board's sdkconfig.defaults when it has a hardware UART
+        wired for the touchy protocol (e.g. a CH340 USB-UART bridge on
+        UART0). This is the "required hardware" gate for the UartLink:
+        TOUCHY_PROTO_OVER_UART only creates the link when this is also y.
+        See TOUCHY_PROTO_UART_NUM / TOUCHY_PROTO_UART_BAUD.
+
+config TOUCHY_PROTO_UART_NUM
+    int "Hardware UART port number for the protocol link"
+    depends on TOUCHY_HAS_PROTO_UART
+    default 0
+    help
+        The UART controller the protocol UartLink drives. Defaults to
+        UART0, which on the CYD boards is wired to the CH340 bridge. Keep
+        the IDF console off this port (CONFIG_ESP_CONSOLE_UART_NONE or a
+        different console UART) so log text never interleaves with the
+        binary protocol frames.
+
+config TOUCHY_PROTO_UART_BAUD
+    int "Protocol UART baud rate"
+    depends on TOUCHY_HAS_PROTO_UART
+    default 460800
+    help
+        Baud rate for the protocol UartLink. Must match the host-side
+        serial transport.
+
+config TOUCHY_PROTO_UART_TXD
+    int "Protocol UART TXD GPIO (-1 = hardware default)"
+    depends on TOUCHY_HAS_PROTO_UART
+    default -1
+    help
+        GPIO number for the protocol UART's TX pin. -1 keeps the
+        hardware-default pin assignment (UART_PIN_NO_CHANGE). Set to the
+        board's wired TXD GPIO when the default pin is wrong for your
+        board (e.g. shared with another peripheral).
+
+config TOUCHY_PROTO_UART_RXD
+    int "Protocol UART RXD GPIO (-1 = hardware default)"
+    depends on TOUCHY_HAS_PROTO_UART
+    default -1
+    help
+        GPIO number for the protocol UART's RX pin. -1 keeps the
+        hardware-default pin assignment (UART_PIN_NO_CHANGE). Set to the
+        board's wired RXD GPIO when the default pin is wrong for your
+        board.
+
 
 config TOUCHY_NO_TOUCH
     bool "Board has no touch panel"

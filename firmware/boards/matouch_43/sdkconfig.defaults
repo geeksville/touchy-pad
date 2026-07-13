@@ -17,4 +17,5 @@ CONFIG_SPIRAM_RODATA=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 
 # GPIO19/20 are not used by display or touch, so native USB-OTG is available.
-# No CONFIG_TOUCHY_PROTO_OVER_SERIAL needed.
+# The default vendor-USB link (CONFIG_TOUCHY_PROTO_OVER_VENDORUSB=y) is used;
+# no hardware protocol UART is wired, so CONFIG_TOUCHY_HAS_PROTO_UART stays n.

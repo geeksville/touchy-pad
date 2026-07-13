@@ -20,7 +20,7 @@ CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 # Exposes the touchy protobuf protocol over the USB-CDC ACM port so Stage 64.3
 # can be validated on this board without CYD2USB hardware. CDC was disabled in
 # Stage 64.2; re-enabling it here is intentional for this debug build only.
-#CONFIG_TOUCHY_PROTO_OVER_SERIAL=y
+#CONFIG_TOUCHY_PROTO_OVER_CDCACM=y
 #CONFIG_TINYUSB_CDC_ENABLED=y
 
 # ----- LVGL: feed pixels to the NV3041A QSPI panel in big-endian RGB565.

@@ -24,8 +24,19 @@ CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 
-# ----- Host transport: native USB via USB-OTG -----
+# ----- Host transport: native USB via USB-OTG + a hardware UART (Stage LB5) -----
+# The vendor-USB link is on by default (CONFIG_TOUCHY_PROTO_OVER_VENDORUSB=y
+# + native USB-OTG). Stage LB5 additionally brings up the hardware-UART link
+# so a client can connect over *either* interface. Declare the board's
+# protocol UART (UART0); CONFIG_TOUCHY_PROTO_OVER_UART defaults y so the link
+# is created. Route the IDF console to the separate USB-Serial-JTAG so its
+# log text never interleaves with the binary protocol frames on UART0.
 CONFIG_TOUCHY_LOG_OVER_PROTO=y
+CONFIG_TOUCHY_HAS_PROTO_UART=y
+CONFIG_TOUCHY_PROTO_UART_NUM=0
+CONFIG_TOUCHY_PROTO_UART_TXD=43
+CONFIG_TOUCHY_PROTO_UART_RXD=44
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
 # ----- Stage LB2: touch-less board -----
 # No touch panel; select the colour-swatch built-in default screen and skip

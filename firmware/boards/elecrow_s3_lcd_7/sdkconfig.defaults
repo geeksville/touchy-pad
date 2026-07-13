@@ -21,6 +21,12 @@ CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 # ----- Host transport: touchy protocol over serial (UART fallback) -----
 # GPIO19/20 (USB D+/D-) are also the I2C bus for PCA9557 and GT911,
 # so native USB is not usable.  Use UART0 via the USB-UART bridge instead.
-CONFIG_TOUCHY_PROTO_OVER_SERIAL=y
+# Stage LB5: declare the board's protocol UART (UART0); the UartLink is
+# created because CONFIG_TOUCHY_PROTO_OVER_UART defaults y. The vendor-USB
+# link's flag also defaults y, but USB is unwired here so it never
+# enumerates (harmless); set CONFIG_TOUCHY_PROTO_OVER_VENDORUSB=n if you
+# want to drop that idle task.
+CONFIG_TOUCHY_HAS_PROTO_UART=y
+CONFIG_TOUCHY_PROTO_UART_NUM=0
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_TOUCHY_LOG_OVER_PROTO=y

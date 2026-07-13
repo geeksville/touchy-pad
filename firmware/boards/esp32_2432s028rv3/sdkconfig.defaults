@@ -27,8 +27,12 @@ CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 # ----- Host transport: touchy protocol over the CH340 UART (UART0) -----
 # This board has no USB-OTG (CONFIG_SOC_USB_OTG_SUPPORTED is unset for the
 # classic ESP32), so the vendor-bulk link does not exist. The protocol
-# instead rides UART0 via the Stage 65 UartLink.
-CONFIG_TOUCHY_PROTO_OVER_SERIAL=y
+# instead rides UART0 via the Stage 65 UartLink. Stage LB5: declare the
+# board's protocol UART; CONFIG_TOUCHY_PROTO_OVER_UART defaults y so the
+# link is created. (The default vendor-USB / CDC-ACM links are absent —
+# no USB-OTG hardware.)
+CONFIG_TOUCHY_HAS_PROTO_UART=y
+CONFIG_TOUCHY_PROTO_UART_NUM=0
 
 # Keep the IDF console OFF UART0 so its log text never interleaves with the
 # binary protocol frames. Device ESP_LOG output reaches the host through the
@@ -47,8 +51,8 @@ CONFIG_TOUCHY_LOG_OVER_PROTO=y
 # Before the protocol link is trusted it can be handy to see boot logs on a
 # serial monitor. For that, temporarily edit the options above:
 #   - replace CONFIG_ESP_CONSOLE_UART_NONE=y with CONFIG_ESP_CONSOLE_UART_DEFAULT=y
-#   - replace CONFIG_TOUCHY_PROTO_OVER_SERIAL=y with CONFIG_TOUCHY_PROTO_OVER_SERIAL=n
-# CONFIG_TOUCHY_PROTO_OVER_SERIAL=n
+#   - replace CONFIG_TOUCHY_HAS_PROTO_UART=y with CONFIG_TOUCHY_HAS_PROTO_UART=n
+# CONFIG_TOUCHY_HAS_PROTO_UART=n
 # That re-routes the console to UART0 (human-readable text) and disables the
 # binary protocol so the port carries logs only. NEVER ship with that config.
 #

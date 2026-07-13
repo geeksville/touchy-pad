@@ -213,13 +213,13 @@ extern "C" void usb_hid_init(void)
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
 
 #if CFG_TUD_CDC
-#if CONFIG_TOUCHY_PROTO_OVER_SERIAL
+#if CONFIG_TOUCHY_PROTO_OVER_CDCACM
     // Stage 64.3: the CDC-ACM port carries the protobuf protocol, not log
     // text. Use the raw TinyUSB CDC API (tud_cdc_*) directly from
-    // host_api.cpp; deliberately skip tinyusb_cdcacm_init / the console
-    // hookup so esp_log output is never written onto the protocol port
-    // (it would corrupt frames). Logs reach the host via the Stage 64.1
-    // LogRecord tunnel instead.
+    // the SerialLink (api/serial_link.cpp); deliberately skip
+    // tinyusb_cdcacm_init / the console hookup so esp_log output is never
+    // written onto the protocol port (it would corrupt frames). Logs reach
+    // the host via the Stage 64.1 LogRecord tunnel instead.
 #else
     // If the call returns ESP_ERR_INVALID_STATE, ESP_ERROR_CHECK aborts, and
     // the chip reboots in a loop — preventing USB enumeration.
@@ -248,9 +248,9 @@ extern "C" void tud_vendor_rx_cb(uint8_t /*itf*/, uint8_t const * /*buffer*/,
     host_api_on_rx();
 }
 
-#if CFG_TUD_CDC && CONFIG_TOUCHY_PROTO_OVER_SERIAL
+#if CFG_TUD_CDC && CONFIG_TOUCHY_PROTO_OVER_CDCACM
 // Stage 64.3: bytes arrived on the CDC port that carries the protocol.
-// Nudge the serial host_api dispatcher (see host_api.cpp).
+// Nudge the serial host_api dispatcher (see api/serial_link.cpp).
 extern "C" void tud_cdc_rx_cb(uint8_t /*itf*/)
 {
     host_api_on_cdc_rx();

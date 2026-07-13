@@ -381,3 +381,196 @@ extend the python cli with new subcommands under the existing "pref"
 
 * json-get: use the protocol to read the Preferences protobuf from the device and emit it to stdout as json
 * json-set: read prefs json from stdin and set them on the device.  it is okay for optional fields to be missing from the json.
+
+## stage lb5: multi interface api access
+
+**Status: implemented.** Firmware compiles for both a native-USB board
+(`feather_esp32_s3`: vendor-USB + UART links) and a no-USB board
+(`esp32_2432s028rv3`: UART-only), verified with `just firmware-build`.
+The host-API code moved to `firmware/main/api/`
+(`host_api.{cpp,h}` + `host_api_link.h` base + `vendor_link` / `serial_link`
+/ `uart_link` file pairs); `host_api_start()` now registers every available
+link into `s_links[]` and spawns a task each, with `s_active_link` tracking
+the most-recently-used link. The single `CONFIG_TOUCHY_PROTO_OVER_SERIAL`
+tri-state was replaced by three independent flags
+(`PROTO_OVER_VENDORUSB` = y, `PROTO_OVER_UART` = y, `PROTO_OVER_CDCACM` = n),
+each only instantiated when the board also has the backing hardware
+(`CONFIG_SOC_USB_OTG_SUPPORTED`, `+CONFIG_TINYUSB_CDC_COUNT`, or a
+board-declared `CONFIG_TOUCHY_HAS_PROTO_UART`). The CYD boards + elecrow_s3
+migrated to `HAS_PROTO_UART=y` (UART0); the Feather now runs vendor-USB **and**
+UART0 with its console routed to USB-Serial-JTAG. `usb_hid.cpp` CDC gating
+moved to `PROTO_OVER_CDCACM`. `TCPLink` remains future work.
+
+Today the firmware runs the host-API dispatcher over **exactly one**
+transport, chosen at build time by mutually-exclusive `#if` guards in
+`firmware/main/host_api.cpp` (`VendorLink` = USB vendor bulk, `SerialLink`
+= USB-CDC ACM, or `UartLink` = hardware UART). This stage generalises that
+to an **array of `HostApiLink` instances** so a single board can expose the
+protocol over several transports at once and a client may connect over any
+of them. It also relocates the host-API code into its own
+`firmware/main/api/` subdirectory and splits the per-transport link classes
+into their own files. A future `TCPLink` (WiFi) is the motivating next
+consumer of this array, but is **out of scope** here.
+
+### Background
+
+* `host_api_start()` currently spawns one `host_api_task` per compiled-in
+  link; each task owns its own rx/tx scratch buffers + wake semaphore and
+  loops `read_frame → dispatch → write_frame` independently. Because a
+  Response is written back on the *same* link its Command arrived on,
+  request/response already routes correctly per-link with no extra work.
+* Asynchronous **events** are the only output that isn't naturally
+  request-scoped: `host_api_post_event()` enqueues onto the shared
+  `s_evt_queue`, and the host drains it by polling `EventConsumeCmd`.
+  Whichever link the host polls on receives the drained events, so under
+  the "one active client at a time" simplifying assumption this also works
+  — but the USB "event ready" interrupt-IN mailbox (`host_api_on_rx`) is
+  hard-wired to the vendor link. Routing that notification to the
+  most-recently-used link is the one genuinely new behaviour.
+* The transport guards are mutually exclusive by construction:
+  `UartLink` is gated `#if CONFIG_TOUCHY_PROTO_OVER_SERIAL &&
+  (!CONFIG_SOC_USB_OTG_SUPPORTED || !CONFIG_TINYUSB_CDC_COUNT)`, so a
+  native-USB board can never compile the hardware-UART link. The Feather
+  (`esp32s3`, has USB-OTG) is the first board that wants *both* USB and a
+  hardware UART live simultaneously. This stage replaces the single
+  `CONFIG_TOUCHY_PROTO_OVER_SERIAL` tri-state with **three independent
+  per-transport flags** — `PROTO_OVER_VENDORUSB` (default `y`),
+  `PROTO_OVER_UART` (default `y`), `PROTO_OVER_CDCACM` (default `n`) — see
+  work item 5.
+
+### Definition of done
+
+* `firmware/main/api/` holds the relocated host-API code
+  (`host_api.{cpp,h}`) plus one file per transport
+  (`vendor_link.{h,cpp}`, `serial_link.{h,cpp}`, `uart_link.{h,cpp}`) and
+  a shared `host_api_link.h` base; `main` builds cleanly with the new
+  include paths and every existing includer of `host_api.h`
+  (`main.cpp`, `usb_hid.cpp`, `widgets/widget_actions.cpp`) still resolves.
+* `host_api_start()` registers **all** available links into an array and
+  spawns a dispatcher task per link; a board with two live transports
+  answers `board-info` / uploads / events over **either** one.
+* "Last used wins": a Command arriving on link *B* while link *A* was
+  previously active atomically re-points the event mailbox / any unsolicited
+  output at *B*; responses continue to go back on the originating link.
+* Three independent flags — `CONFIG_TOUCHY_PROTO_OVER_VENDORUSB` (default
+  `y`), `CONFIG_TOUCHY_PROTO_OVER_UART` (default `y`), and
+  `CONFIG_TOUCHY_PROTO_OVER_CDCACM` (default `n`) — each gate one link, and
+  each link is only *instantiated* when the board also has the backing
+  hardware. On the Feather this yields a live vendor-USB link **and** a
+  live hardware-UART link, and both enumerate.
+* No wire-protocol change — this is a firmware-internal refactor plus a
+  board config change, so no `ProtocolVersion` bump and no host-side edits.
+
+
+### Work items
+
+1. **Relocate into `firmware/main/api/`** — `git mv` (or create + delete)
+   `host_api.cpp` and `host_api.h` into a new `api/` subdir. Update:
+   - `firmware/main/CMakeLists.txt`: change the `SRCS` entry
+     `"host_api.cpp"` → `"api/host_api.cpp"` (plus the new link `.cpp`s
+     below), and add `"api"` to `INCLUDE_DIRS` so `#include "host_api.h"`
+     keeps working for the three current includers without touching them.
+   - Confirm `main.cpp`, `usb_hid.cpp`, and `widgets/widget_actions.cpp`
+     still compile (include path preserved, so no edit expected).
+
+2. **Extract the link classes into their own files.** Split out of
+   `host_api.cpp`:
+   - `api/host_api_link.h` — the abstract `HostApiLink` base (rx/tx
+     buffers, `rx_sem`, `name()/connected()/read_some()/write_all()/
+     flush()/wait_rx()`), transport-independent.
+   - `api/vendor_link.{h,cpp}` — `VendorLink` (TinyUSB vendor bulk),
+     guarded `#if CONFIG_SOC_USB_OTG_SUPPORTED`.
+   - `api/serial_link.{h,cpp}` — `SerialLink` (USB-CDC ACM).
+   - `api/uart_link.{h,cpp}` — `UartLink` + its `uart_rx_pump_task` /
+     `uart_link_init()` + the `HOST_API_UART_NUM` / `HOST_API_UART_BAUD`
+     knobs.
+   The framing helpers (`crc8_update`, `read_frame`, `write_frame`,
+   `link_read_exact`, `link_sync_magic`) and `host_api_task` stay in
+   `host_api.cpp` and operate on `HostApiLink*` as they do now.
+
+3. **Link registry + per-link dispatch.** Replace the three static
+   link singletons with a small registry: a fixed-capacity
+   `HostApiLink *s_links[N]` (or `std::vector`) populated in
+   `host_api_start()` from whichever links the build config enables, then
+   `for (link : s_links) xTaskCreatePinnedToCore(host_api_task, …, link,
+   …)`. The task body is unchanged; only construction moves to a loop.
+
+4. **"Last used wins" active-link tracking.** Add a
+   `std::atomic<HostApiLink*> s_active_link`. In `host_api_task`, set
+   `s_active_link = link` immediately after a frame decodes successfully
+   (i.e. this link just carried a Command). Route the unsolicited event
+   mailbox notification to `s_active_link` instead of the hard-wired
+   vendor link:
+   - Generalise `host_api_post_event()` — after enqueuing, poke the
+     current `s_active_link`'s wake path (its `rx_sem`, or, on USB, the
+     interrupt-IN mailbox) so the active client learns events are
+     waiting. Since events are still drained by `EventConsumeCmd` polling
+     on that same link, responses/events stay coherent.
+   - `host_api_on_rx` / `host_api_on_cdc_rx` keep waking their specific
+     link's `rx_sem` (they fire from the USB ISR for their own endpoint);
+     no active-link logic needed on the *input* side.
+
+5. **Replace the tri-state guard with three independent flags.** Make
+   link availability additive rather than exclusive so USB + hardware
+   UART (and optionally USB-CDC) can coexist. Retire
+   `CONFIG_TOUCHY_PROTO_OVER_SERIAL` in favour of three per-transport
+   Kconfig bools in `firmware/main/Kconfig.projbuild`:
+   - `CONFIG_TOUCHY_PROTO_OVER_VENDORUSB` — **default `y`** — the USB
+     vendor-bulk `VendorLink`.
+   - `CONFIG_TOUCHY_PROTO_OVER_UART` — **default `y`** — the hardware
+     `UartLink`, with its own `UART_NUM` / baud / pin config.
+   - `CONFIG_TOUCHY_PROTO_OVER_CDCACM` — **default `n`** — the USB-CDC ACM
+     `SerialLink` (the old `PROTO_OVER_SERIAL` behaviour; off by default
+     because most boards use the CDC port for the console instead).
+
+   The flag only *enables* a link; the link is **instantiated only when
+   the board also has the backing hardware**, so a flag defaulting `y`
+   never forces a link a board can't support:
+   - `VendorLink` needs `CONFIG_SOC_USB_OTG_SUPPORTED`.
+   - `SerialLink` needs `CONFIG_SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_CDC_COUNT`.
+   - `UartLink` needs a board-declared protocol `UART_NUM` / pins (a board
+     with none simply doesn't build it even with the flag `y`).
+
+   Concretely: `#if CONFIG_TOUCHY_PROTO_OVER_VENDORUSB &&
+   CONFIG_SOC_USB_OTG_SUPPORTED` around `VendorLink`, and likewise for the
+   other two — the flag AND the hardware capability must both hold. This
+   also means the default config (`y`/`y`/`n`) "just works" per board with
+   zero per-board overrides: a native-USB board gets vendor-USB, a no-USB
+   board silently drops it and keeps UART.
+   - **Console conflict:** the hardware `UartLink` defaults to `UART_NUM_0`,
+     which is also the IDF console UART. On a board enabling both USB and
+     UART, route the IDF console off the protocol UART
+     (`CONFIG_ESP_CONSOLE_*`, or point `UartLink` at a spare `UART_NUM`)
+     so log bytes don't interleave with protocol frames. Capture the
+     chosen pins in the board's `board_pins.h` / `sdkconfig.defaults`.
+
+6. **Feather board config.** With the new defaults the Feather already
+   gets vendor-USB (`y` + USB-OTG) **and** the hardware UART (`y`), so no
+   flag flip is strictly required — but pin the intent in
+   `firmware/boards/feather_esp32_s3/sdkconfig.defaults` (explicit
+   `CONFIG_TOUCHY_PROTO_OVER_UART=y` plus the `UART_NUM` / baud /
+   console-routing settings, and `CONFIG_TOUCHY_PROTO_OVER_CDCACM` left
+   off). Verify with `just firmware-reconfigure feather_esp32_s3` +
+   `just firmware-build` that both links start (two `host_api dispatcher
+   started (…)` log lines) and that `touchy board-info` answers over each.
+
+7. **Docs + memory + migration.** Update `AGENTS.md` / `CLAUDE.md`'s
+   transport section (which currently states the serial/USB paths are
+   mutually exclusive and that `# CONFIG_X is not set` disables a link) to
+   describe the multi-link array and the three independent flags. Sweep the
+   codebase + every `sdkconfig.defaults` for the retired
+   `CONFIG_TOUCHY_PROTO_OVER_SERIAL` and migrate each occurrence to the
+   appropriate new flag (`PROTO_OVER_CDCACM` for the boards that used it
+   for USB-CDC, `PROTO_OVER_UART` for the no-USB CYD boards). No
+   `docs/host-api.md` wire changes.
+
+
+### Deferred / out of scope
+
+* **`TCPLink` (WiFi transport).** The array is the enabler; the actual
+  TCP/socket link, its lifecycle, and WiFi bring-up land in a later stage.
+* **Concurrent multi-client** use (two hosts driving the device at once).
+  The "last used wins" assumption explicitly means only one active client
+  at a time; arbitration / per-client event queues are not built here.
+* **Per-link flow-control / backpressure** tuning beyond what the existing
+  single-link path already does.
