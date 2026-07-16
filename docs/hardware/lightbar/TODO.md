@@ -1,5 +1,5 @@
 
-* generalize so that panel config comes from preferences
+* !generalize so that panel config comes from preferences
 * fix background
 * update readme
 * add hw build instructions

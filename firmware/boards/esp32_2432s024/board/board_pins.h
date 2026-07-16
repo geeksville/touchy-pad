@@ -56,15 +56,15 @@
 #define BOARD_TOUCH_SPI_HOST            SPI3_HOST       // VSPI on classic ESP32
 #define BOARD_TOUCH_PIXEL_CLOCK_HZ      (2 * 1000 * 1000)
 
-#define BOARD_TOUCH_GPIO_MOSI           GPIO_NUM_32
+#define BOARD_TOUCH_GPIO_MOSI           GPIO_NUM_32 // xpt pin 14 - FIXME, cant find by using multimeter!
 /* FIXME once home with access to a multimeter to find where MISO is attached to
 XPT2046.  Supposedly it is 39, but tried 12 and not there either.  Need to ohm it out.
 Until then both of the CYD boards are unsupported.  For the time being I'm leaving the
 test/debug code in touch.cpp. */
-#define BOARD_TOUCH_GPIO_MISO           GPIO_NUM_39 
-#define BOARD_TOUCH_GPIO_SCK            GPIO_NUM_25
-#define BOARD_TOUCH_GPIO_CS             GPIO_NUM_33
-#define BOARD_TOUCH_GPIO_IRQ            GPIO_NUM_36
+#define BOARD_TOUCH_GPIO_MISO           GPIO_NUM_12 // xpt pin 12 - gpio12?
+#define BOARD_TOUCH_GPIO_SCK            GPIO_NUM_25 // xpt pin 16 - gpio14? but if selected kills display - because shared spi?
+#define BOARD_TOUCH_GPIO_CS             GPIO_NUM_33 // xpt pin 15 - verified
+#define BOARD_TOUCH_GPIO_IRQ            GPIO_NUM_36 // xpt pin 11 - verified
 
 // XPT2046 is resistive: the raw ADC range maps to screen coordinates. These
 // match esp_lcd_touch_xpt2046's default full-scale mapping; per-unit
