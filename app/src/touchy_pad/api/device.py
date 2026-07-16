@@ -48,7 +48,14 @@ HostEventCallback = Callable[["_proto.LvEvent"], None]
 #: The firmware reports its current protocol version via
 #: ``sys_board_info_get()``; :func:`touchy_open` raises
 #: :class:`IncompatibleFirmwareError` if the device is older than this.
-MINIMUM_FIRMWARE_VERSION: int = int(_proto.SysBoardInfoResponse.ProtocolVersion.CURRENT)
+MINIMUM_FIRMWARE_VERSION: int = int(
+    _proto.SysBoardInfoResponse.ProtocolVersion.MIN_FIRMWARE_VERSION
+)
+
+#: Maximum USB-protocol version this library understands (the version it was
+#: built against).  Devices reporting a higher version require a library
+#: upgrade (``pip install -U touchy-pad``).
+CURRENT_FIRMWARE_VERSION: int = int(_proto.SysBoardInfoResponse.ProtocolVersion.CURRENT)
 
 
 class IncompatibleFirmwareError(RuntimeError):
@@ -689,10 +696,10 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
         if device_version < MINIMUM_FIRMWARE_VERSION:
             client.close()
             raise IncompatibleFirmwareError(device_version, MINIMUM_FIRMWARE_VERSION)
-        if device_version > MINIMUM_FIRMWARE_VERSION:
+        if device_version > CURRENT_FIRMWARE_VERSION:
             client.close()
             raise IncompatibleFirmwareError(
-                device_version, MINIMUM_FIRMWARE_VERSION, device_too_new=True
+                device_version, CURRENT_FIRMWARE_VERSION, device_too_new=True
             )
 
     return Touchy(client, board_info=ver)
@@ -730,6 +737,7 @@ def _open_first_real_device() -> Transport | None:
 # Public alias for star-imports.
 __all__ = [
     "IncompatibleFirmwareError",
+    "CURRENT_FIRMWARE_VERSION",
     "MINIMUM_FIRMWARE_VERSION",
     "Touchy",
     "touchy_get_pad_ids",

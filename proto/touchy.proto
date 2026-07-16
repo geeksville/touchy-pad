@@ -236,7 +236,8 @@ message SysBoardInfoResponse {
         UNSPECIFIED = 0;
 
         CURRENT = 12;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
-                
+        MIN_FIRMWARE_VERSION = 10;  // minimum version the PC library supports 
+
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
                  //           LvEvent.host_code added; events via host polling
