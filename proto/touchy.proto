@@ -427,31 +427,7 @@ message Event {
 // nanopb ignores `service` blocks, so adding this here has no embedded-side
 // cost.
 service Touchy {
-    // ----- Generic filesystem (XML, images, fonts, …) -----------------
-    // Stage 51: file writes are streamed via FileOpenWrite + FileWrite*
-    // + FileClose triplet; the Python client wraps this back into a
-    // single `file_save(path, data)` call.
-    rpc FileDelete(FileDeleteCmd) returns (Response);
-    rpc FileOpenWrite(FileOpenWriteCmd) returns (Response);
-    rpc FileWrite(FileWriteCmd) returns (Response);
-    rpc FileClose(FileCloseCmd) returns (Response);
-
-    // ----- Screen management ------------------------------------------
-    // Stage 82 — ScreenLoad removed; use SetPreferences { current_screen }.
-
-    // ----- Backlight / power ------------------------------------------
-    rpc ScreenWake(ScreenWakeCmd) returns (Response);
-    // Stage 82 — ScreenSleepTimeout removed; use
-    // SetPreferences { screen_timeout_ms }.
-
-    // ----- Preferences ------------------------------------------------
-    rpc SetPreferences(SetPreferencesCmd) returns (Response);
-
-    // ----- System -----------------------------------------------------
-    rpc SysRebootBootloader(SysRebootBootloaderCmd) returns (Response);
-    rpc SysBoardInfoGet(SysBoardInfoGetCmd) returns (Response);
-
-    // ----- Async events -----------------------------------------------
-    rpc EventConsume(EventConsumeCmd) returns (Response);
+    // API calls or even polling are through this repated command
+    rpc ProcessCommand(Command) returns (Response);
 }
 

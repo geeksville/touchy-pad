@@ -16,6 +16,10 @@
 #include "touch.h"
 #include "usb_hid.h"
 
+#if CONFIG_TOUCHY_WIFI
+#include "network.h"
+#endif
+
 #include "lvgl.h"
 
 #include "esp_log.h"
@@ -195,12 +199,19 @@ extern "C" void app_main(void)
         screens_load(nullptr);
     }
 
+#if CONFIG_TOUCHY_WIFI
+    // Stage lb8 — bring up WiFi + the HTTP(S) command API if the host has
+    // programmed credentials into NetworkConfig. Connection is async
+    // (event-driven), so this returns immediately and never blocks boot;
+    // with no credentials it's a no-op (radio stays off).
+    network_apply(Prefs::instance().network());
+#endif
+
     ESP_LOGI(TAG, "Ready");
 
     // FIXME - in early boot for some reason we often crash if DEBUG logs are enabled.  leave the the default
     //level at at least INFO level until late boot
     log_proto_set_min_level(log_level);
-
     // Nothing else to do here — host_api dispatches screen loads driven
     // by the host CLI, Trackpad widgets inside loaded screens react to
     // LVGL touch events on the LVGL task, and TinyUSB runs in its own

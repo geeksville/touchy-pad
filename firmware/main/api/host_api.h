@@ -51,6 +51,16 @@ void host_api_on_cdc_rx(void);
 struct _touchy_LvEvent;
 void host_api_post_event(const struct _touchy_LvEvent *evt);
 
+// Stage lb8 — dispatch a single *bare* (unframed) serialized Command and
+// produce a *bare* serialized Response. Used by transports that delimit the
+// payload themselves (the HTTP(S) network API), so they reuse the exact
+// same command handlers as the byte-stream links without the
+// MAGIC | LEN | CRC8 wrapper. `in`/`in_len` is the serialized Command; the
+// serialized Response is written into `out` (capacity `out_cap`) with its
+// length in `*out_len`. Returns false only if the Response failed to encode.
+bool host_api_dispatch_serialized(const uint8_t *in, size_t in_len,
+                                  uint8_t *out, size_t out_cap, size_t *out_len);
+
 #ifdef __cplusplus
 }
 #endif

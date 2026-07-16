@@ -97,6 +97,22 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
     help="After the subcommand finishes, stream device logs and host events "
     "until Ctrl-C. Works with any subcommand.",
 )
+@click.option(
+    "--url",
+    "url",
+    default=None,
+    metavar="URL",
+    help="Talk to a Touchy-Pad over its network API instead of USB/serial: "
+    "an http://HOST[:PORT] or https://HOST[:PORT] endpoint (Stage lb8). "
+    "https:// requires --tls-psk. Also read from the TOUCHY_URL env var.",
+)
+@click.option(
+    "--tls-psk",
+    "tls_psk",
+    default=None,
+    metavar="HEXKEY",
+    help="TLS-PSK key (hex) for an https:// --url endpoint.",
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -109,6 +125,8 @@ def cli(
     sim_dir: Path | None,
     port: str | None,
     listen: bool,
+    url: str | None,
+    tls_psk: str | None,
 ) -> None:
     """Talk to a connected Touchy-Pad USB device."""
     # Configure logging level
@@ -126,6 +144,8 @@ def cli(
     if sum(sim_modes) > 1:
         raise click.UsageError("--sim-remote, --sim-headless and --sim-gui are mutually exclusive.")
     sim_active = any(sim_modes)
+    if sim_active and url:
+        raise click.UsageError("--url cannot be combined with the --sim-* modes.")
     ctx.obj["sim"] = sim_active
     ctx.obj["sim_remote"] = sim_remote
     ctx.obj["sim_headless"] = sim_headless
@@ -135,6 +155,14 @@ def cli(
     ctx.obj["sim_dir"] = sim_dir
     ctx.obj["port"] = port
     ctx.obj["listen"] = listen
+
+    # Stage lb8 — network endpoint selection (CLI flag, then TOUCHY_URL).
+    import os
+
+    from .api._transport_http import API_URL_ENV
+
+    ctx.obj["url"] = url or os.environ.get(API_URL_ENV) or None
+    ctx.obj["tls_psk"] = tls_psk
 
     if not sim_active:
         if ctx.invoked_subcommand is None:
@@ -298,6 +326,13 @@ def _make_transport() -> Transport | None:
         if inner is None:
             return None
         return _SharedSimTransport(inner)
+    # Stage lb8 — a network endpoint (--url / TOUCHY_URL) talks the protocol
+    # over HTTP(S) instead of a local cable.
+    url = ctx.obj.get("url")
+    if url:
+        from .api._transport_http import HttpTransport
+
+        return HttpTransport(url, tls_psk=ctx.obj.get("tls_psk"))
     # Not a sim run: if the user pointed us at a serial port, talk the
     # protocol over it instead of auto-discovering a USB device.
     port = ctx.obj.get("port")
@@ -413,8 +448,25 @@ def _open_pad():
     metavar="PORT",
     help="TCP port (default: TOUCHY_SIM_PORT constant, currently 8935).",
 )
+@click.option(
+    "--http-port",
+    "http_port",
+    type=int,
+    default=None,
+    is_flag=False,
+    flag_value="0",
+    metavar="PORT",
+    help="Also serve the bare-HTTP command API (Stage lb8). Bare flag uses "
+    "the default port 8083; pass a PORT to override. Plaintext only.",
+)
 @click.pass_context
-def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int | None) -> None:
+def simulator_cmd(
+    ctx: click.Context,
+    headless: bool,
+    bind: str,
+    sim_port: int | None,
+    http_port: int | None,
+) -> None:
     """Run the device simulator as a standalone TCP server.
 
     Speaks the same length-prefixed nanopb framing the real device's
@@ -443,6 +495,20 @@ def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int |
     )
     click.echo(f"sim listening on {server.host}:{server.port}", err=True)
 
+    http_server = None
+    if http_port is not None:
+        from .sim.http_server import DEFAULT_SIM_HTTP_PORT, SimHttpServer
+
+        try:
+            http_server = SimHttpServer(
+                server.device,
+                host=bind,
+                port=http_port or DEFAULT_SIM_HTTP_PORT,
+            )
+            click.echo(f"sim HTTP API on {http_server.url}", err=True)
+        except OSError as exc:
+            logger.warning("sim: could not start HTTP API: %s", exc)
+
     if headless:
         import signal
         import threading
@@ -453,6 +519,8 @@ def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int |
         try:
             stop.wait()
         finally:
+            if http_server is not None:
+                http_server.close()
             server.close()
         return
 
@@ -467,6 +535,8 @@ def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int |
             "--headless to skip the window: %s",
             e,
         )
+        if http_server is not None:
+            http_server.close()
         server.close()
         sys.exit(2)
 
@@ -482,6 +552,8 @@ def simulator_cmd(ctx: click.Context, headless: bool, bind: str, sim_port: int |
     try:
         app.exec()
     finally:
+        if http_server is not None:
+            http_server.close()
         server.close()
 
 
@@ -679,6 +751,43 @@ def pref_backlight_level(level: int) -> None:
     """Set the display brightness (0 = off … 100 = max). Persists."""
     with _client() as c:
         c.set_backlight_level(level)
+
+
+def _set_network_field(field: str, value: str) -> None:
+    """Send a partial PreferencesFile setting one NetworkConfig sub-field.
+
+    The device merges the NetworkConfig field-by-field, so setting one
+    (e.g. ``wifi_ssid``) leaves the others (``wifi_psk``, …) untouched.
+    """
+    from . import _proto
+
+    prefs = _proto.PreferencesFile()
+    setattr(prefs.network, field, value)
+    with _client() as c:
+        c.set_preferences(prefs)
+
+
+@pref.command("wifi-set-ssid")
+@click.argument("ssid")
+def pref_wifi_set_ssid(ssid: str) -> None:
+    """Set the WiFi SSID the device joins (Stage lb8). Persists.
+
+    Setting a non-empty SSID (with a matching ``wifi-set-psk``) makes the
+    device join that network on the next apply/boot and start the HTTP(S)
+    command API. Pass an empty string ("") to disconnect and stop the
+    network servers.
+    """
+    _set_network_field("wifi_ssid", ssid)
+
+
+@pref.command("wifi-set-psk")
+@click.argument("psk")
+def pref_wifi_set_psk(psk: str) -> None:
+    """Set the WiFi WPA2 passphrase (Stage lb8). Persists.
+
+    Stored in plaintext on the device flash, like every other preference.
+    """
+    _set_network_field("wifi_psk", psk)
 
 
 @pref.command("json-get")

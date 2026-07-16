@@ -38,3 +38,10 @@ dependencies:
   # /littlefs/host and device prefs under /littlefs/prefs (see
   # docs/design.md stages 14 and 51).
   joltwallet/littlefs: "^1.21.1"
+
+  # Stage lb8 — mDNS advertisement for the WiFi network command API.
+  # Only meaningful when CONFIG_TOUCHY_WIFI is on (WiFi-capable chips);
+  # harmless to pull in otherwise. esp_wifi / esp_http_server /
+  # esp_https_server / esp-tls are built-in IDF components (declared in
+  # CMakeLists REQUIRES), so only mDNS needs the component manager.
+  espressif/mdns: "^1.2"

@@ -156,5 +156,20 @@ config TOUCHY_HEADLESS_VRES
         Vertical resolution of the off-screen LVGL display used when
         TOUCHY_NO_DISPLAY is set.
 
+config TOUCHY_WIFI
+    bool "Enable WiFi + the HTTP(S) network command API (Stage lb8)"
+    default y if SOC_WIFI_SUPPORTED
+    default n
+    help
+        Compiles the WiFi station bring-up, mDNS advertisement, and the
+        HTTP(S) protobuf command API (firmware/main/net/). At runtime the
+        radio stays off until the host programs WiFi credentials into the
+        NetworkConfig preference (`touchy pref wifi-set-ssid/-psk`), at
+        which point the device joins the network and serves the protocol
+        over POST /touchy/api/v1/command. When a NetworkConfig.tls_psk_key
+        is set the API is HTTPS-only (TLS-PSK) and the plaintext port is
+        disabled. Automatically off on chips with no WiFi radio (e.g. the
+        ESP32-P4), where the whole subsystem is compiled out.
+
 endmenu
 

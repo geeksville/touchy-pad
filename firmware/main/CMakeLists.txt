@@ -17,6 +17,17 @@ else()
     set(touchy_usb_src "usb_hid_stub.cpp")
 endif()
 
+# Stage lb8 — the WiFi + HTTP(S) network API is only compiled on
+# WiFi-capable chips (CONFIG_TOUCHY_WIFI). The net/*.cpp bodies are
+# #if-guarded on the same flag. The component dependencies are added
+# *after* idf_component_register via idf_component_optional_requires so
+# non-WiFi targets (esp32p4, classic-esp32) that don't have esp_wifi etc.
+# installed never fail the CMake configure step.
+set(touchy_net_srcs "")
+if(CONFIG_TOUCHY_WIFI)
+    set(touchy_net_srcs "net/network.cpp" "net/http_api.cpp")
+endif()
+
 idf_component_register(
     SRCS
         "main.cpp"
@@ -25,6 +36,7 @@ idf_component_register(
         "api/vendor_link.cpp"
         "api/serial_link.cpp"
         "api/uart_link.cpp"
+        ${touchy_net_srcs}
         "platform.cpp"
         "fs/fs.cpp"
         "fs/flash_fs.cpp"
@@ -58,6 +70,7 @@ idf_component_register(
         "."
         "api"
         "fs"
+        "net"
         "../boards/common/leds"
         "widgets"
         "proto"
@@ -73,3 +86,20 @@ idf_component_register(
         espcoredump
         joltwallet__littlefs
 )
+
+# Stage lb8 — optional WiFi + HTTP(S) component dependencies. Must be
+# declared AFTER idf_component_register. idf_component_optional_requires
+# skips any component that isn't present in the current target's build
+# (so esp32p4 / classic-esp32 builds never fail on missing WiFi
+# components). mdns is a managed component; its short name works here.
+if(CONFIG_TOUCHY_WIFI)
+    idf_component_optional_requires(PRIVATE
+        esp_wifi
+        esp_netif
+        esp_event
+        nvs_flash
+        esp_http_server
+        mdns
+        esp-tls
+    )
+endif()

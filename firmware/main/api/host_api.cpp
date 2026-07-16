@@ -477,6 +477,40 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
 }
 
 // ---------------------------------------------------------------------------
+// Stage lb8 — bare (unframed) dispatch entry point.
+//
+// Transports that already delimit the payload themselves (the HTTP(S)
+// network API — HTTP Content-Length frames each body) hand us a raw
+// serialized Command and want a raw serialized Response back, without the
+// MAGIC | LEN | CRC8 wrapper the byte-stream links use. This shares the
+// exact same `dispatch()` core as host_api_task().
+// ---------------------------------------------------------------------------
+
+bool host_api_dispatch_serialized(const uint8_t *in, size_t in_len,
+                                  uint8_t *out, size_t out_cap, size_t *out_len)
+{
+    if (out_len) *out_len = 0;
+
+    PbMessage<touchy_Command>  cmd(touchy_Command_fields);
+    PbMessage<touchy_Response> resp(touchy_Response_fields);
+
+    if (!cmd.decode(in, in_len)) {
+        ESP_LOGE(TAG, "http: pb_decode failed");
+        resp->code = touchy_ResultCode_INVALID_ARG;
+    } else {
+        dispatch(cmd.get(), resp.get());
+    }
+
+    std::size_t n = 0;
+    if (!resp.encode(out, out_cap, &n)) {
+        ESP_LOGE(TAG, "http: pb_encode failed");
+        return false;
+    }
+    if (out_len) *out_len = n;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher task
 // ---------------------------------------------------------------------------
 

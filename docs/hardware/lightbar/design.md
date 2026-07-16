@@ -972,3 +972,272 @@ void Display::post_init() {
 * Any behaviour change to the panels themselves — this is a structural
   refactor; the only intended runtime change is the shared dim-blue
   background.
+
+## lb8: expose protobuf API over HTTP/HTTPS sockets
+
+**Status: implemented (host + firmware code written; firmware not compiled
+on real ESP-IDF in this environment).** Proto (`NetworkConfig` +
+`PreferencesFile.network`, `Version` 6→7), nanopb string caps, firmware
+`net/network.{h,cpp}` + `net/http_api.{h,cpp}` (gated on `CONFIG_TOUCHY_WIFI`,
+default `y` on WiFi chips), the reusable `host_api_dispatch_serialized()`
+seam, prefs per-sub-field merge + live `network_apply()`, the boot call,
+CMake/Kconfig/sdkconfig wiring, the host `HttpTransport` +
+`touchy_open(url=, tls_psk=)` + CLI `--url`/`--tls-psk` +
+`pref wifi-set-ssid`/`wifi-set-psk`, the simulator's plaintext-HTTP server
+on 8083, and tests are all in place. `just app-test` + `just app-lint` pass.
+
+Give the device an optional WiFi network presence and a request/response
+HTTP(S) API so a host can drive the same protobuf `Command`/`Response`
+protocol over the network — no USB/UART cable required. This is the
+natural next consumer of the Stage lb5 multi-link `HostApiLink` array (a
+`TCPLink` was explicitly deferred there) but is implemented here as an
+HTTP request handler layered on the existing command dispatcher rather
+than a raw framed link, because the transport is one-shot request/response
+(`POST … → Response`) instead of a persistent byte stream.
+
+### Background
+
+* The wire protocol is normally self-synchronising frames over a byte
+  stream (`MAGIC | LEN | payload | CRC8`). HTTP already delimits the
+  request body, so the HTTP transport carries a **bare, unframed**
+  serialized `Command` in the POST body and a bare serialized `Response`
+  in the reply body — no MAGIC/LEN/CRC8 (HTTP `Content-Length` + TCP
+  already provide framing and integrity). The single dispatch seam
+  (`host_api` command handler on the device;
+  `SimDevice.handle_command(payload) -> bytes` in the simulator) is reused
+  unchanged; only the framing wrapper differs per transport.
+* Preferences already carry all persisted device config
+  (`PreferencesFile`, merged via the Stage 82 partial path in
+  `Prefs::apply_partial`) and are read at boot **before** `board_init()`.
+  WiFi credentials therefore live naturally on `PreferencesFile`, and
+  network bring-up hangs off the same apply path as every other pref.
+* `main.cpp` boot order: `fs_init()` → `Prefs::begin()` → `board_init()` →
+  `display_init()` → `host_api_start()`. Network bring-up + the HTTP
+  server start after `Prefs::begin()` so they can read the config, gated
+  on WiFi being configured.
+* Events remain **poll-based** (`EventConsumeCmd`) exactly as on every
+  other transport — each HTTP POST is an independent command, and a host
+  that wants events simply POSTs `EventConsumeCmd` in a loop.
+
+### Decisions (locked in)
+
+* **One combined stage** (not split): NetworkConfig + WiFi/mDNS + the
+  HTTP/HTTPS server + the host client + docs all land together.
+* **`NetworkConfig` lives on `PreferencesFile`** as
+  `optional NetworkConfig network = 8`, persisted/merged through the
+  existing partial path, `Version.CURRENT` bumps 6 → 7. WiFi
+  bring-up/teardown is a **live side effect** in `apply_partial` (like
+  backlight/log-level), so `pref json-set` can join a network without a
+  reboot.
+* **Secrets stored plaintext** in `PreferencesFile` on flash, same as any
+  other pref (documented as such). No redaction of `wifi_psk` /
+  `tls_psk_key` in this stage — the flash is already fully host-readable
+  over the protocol.
+* **TLS-PSK is full-stack this stage** — device (`esp_https_server` with
+  a PSK hint/key) **and** the Python client. Python PSK requires
+  `ssl.SSLContext` PSK callbacks (**Python 3.13+**); on older Pythons the
+  HTTPS-PSK client path raises a clear "requires Python 3.13+" error while
+  the plain-HTTP path keeps working.
+* **`tls_psk_key` gates security:** when set, the device serves **only**
+  HTTPS (PSK-secured) and the plaintext HTTP port is disabled; when unset,
+  the device serves **only** plaintext HTTP. (Never both — avoids a
+  downgrade path.)
+* **Simulator: bare HTTP only**, on a fixed port **8083**, reusing its
+  in-process `SimDevice.handle_command`. No TLS in the sim.
+* **Host selector is URL-style**, mirroring `TOUCHY_SIM_URL`: a
+  `http://host[:port]` / `https://host[:port]` string selects the HTTP
+  transport, plus a `--tls-psk KEY` flag (and `touchy_open(url=...,
+  tls_psk=...)`) for the HTTPS-PSK case.
+
+### Ports
+
+* Device plaintext HTTP: **80**. Device HTTPS: **443**.
+* Simulator plaintext HTTP: **8083** (fixed; no TLS).
+* mDNS advertises the chosen scheme/port under the resolved hostname.
+
+### Definition of done
+
+* `PreferencesFile` carries `optional NetworkConfig network = 8`
+  (`wifi_ssid`, `wifi_psk`, `hostname`, `tls_psk_key`), `Version.CURRENT
+  == 7`; `just build-proto` regenerates Python `_proto`, C nanopb, and
+  Rust `prost` cleanly.
+* When `wifi_ssid`/`wifi_psk` are set, the device joins the network,
+  brings up mDNS as `<hostname>` (defaulting to `touchypad_<serial-suffix>`
+  when `hostname` is unset), and starts the HTTP **or** HTTPS server
+  (HTTPS iff `tls_psk_key` set). With no WiFi config the device behaves
+  exactly as today (no radio, no server).
+* `POST /touchy/api/v1/command` with `Content-Type: application/protobuf`
+  and a serialized `Command` body returns a serialized `Response` body;
+  the same request works against the simulator on `http://<host>:8083`.
+* `touchy --url http://<host> board-info` (and the HTTPS-PSK variant with
+  `--tls-psk`) round-trips against a real device and the simulator;
+  `touchy_open(url=..., tls_psk=...)` exposes the same from the API.
+* `just app-test` passes with new HTTP-transport + NetworkConfig
+  round-trip tests; docs/readmes updated.
+
+### Work items
+
+1. **Proto — `NetworkConfig` + `PreferencesFile.network`**
+   (`proto/preferences.proto` and the Rust mirror
+   `rust/touchy-pad/proto/preferences.proto`):
+
+   ```proto
+   // Optional WiFi + network-API configuration. When wifi_ssid/wifi_psk
+   // are set the device joins that network and starts the HTTP(S) API.
+   message NetworkConfig {
+       optional string wifi_ssid  = 1;   // 2.4 GHz SSID to join
+       optional string wifi_psk   = 2;   // WPA2 passphrase (plaintext)
+       optional string hostname   = 3;   // mDNS name; unset → touchypad_<serial>
+       optional string tls_psk_key = 4;  // hex/base64 PSK; set ⇒ HTTPS-only
+   }
+   ```
+
+   Add to `PreferencesFile` (next free tag is 8):
+   ```proto
+   optional NetworkConfig network = 8;   // Stage lb8
+   ```
+   Bump the `Version` enum: add `V7 = 7;` and move `CURRENT = 7;`.
+
+2. **nanopb options** (`proto/preferences.options`) — bound the strings so
+   nanopb can stack-allocate (matching the existing `FT_STATIC` prefs
+   style):
+   ```
+   touchy.NetworkConfig.wifi_ssid   max_size:33
+   touchy.NetworkConfig.wifi_psk    max_size:64
+   touchy.NetworkConfig.hostname    max_size:32
+   touchy.NetworkConfig.tls_psk_key max_size:64
+   ```
+
+3. **Regenerate bindings** — `just build-proto` (Python `_proto` + C
+   nanopb `preferences.pb.{h,c}`); Rust `prost` rebuilds from the mirror.
+
+4. **Firmware — network subsystem** (new
+   `firmware/main/net/network.{h,cpp}`):
+   * `network_apply(const touchy_NetworkConfig &)` — idempotent: if the
+     SSID/PSK differ from the currently-joined network, (re)connect;
+     when SSID is cleared, disconnect and stop the servers. Uses the
+     IDF `esp_wifi` STA APIs + `esp_netif`.
+   * mDNS via the `espressif/mdns` managed component: advertise
+     `_touchy._tcp` under the resolved hostname. Default hostname is
+     `touchypad_<suffix>` where `<suffix>` is the low bytes of the board
+     serial (reuse whatever `sys_board_info` uses for the USB serial
+     string).
+   * On WiFi-got-IP, start the HTTP server (see item 5); on disconnect,
+     stop it and retry the join with backoff.
+   * Gated on `CONFIG_TOUCHY_WIFI` (default `y` on chips with WiFi:
+     esp32s3/esp32; the esp32p4 has no radio → default `n` / compiled
+     out). No-radio boards compile the whole subsystem out.
+
+5. **Firmware — HTTP(S) API server** (new
+   `firmware/main/net/http_api.{h,cpp}`):
+   * Register a single `POST /touchy/api/v1/command` URI handler on
+     `esp_http_server` (plaintext) or `esp_https_server` (TLS-PSK).
+   * Handler: read the full body (a bare serialized `Command`, no
+     MAGIC/LEN/CRC8), call the **shared** command dispatcher already used
+     by every `HostApiLink` (factor the per-command switch in
+     `api/host_api.cpp` into a reusable
+     `host_api_dispatch(const uint8_t*, size_t, ...) -> serialized Response`
+     if it isn't already callable standalone), and write the serialized
+     `Response` back with `Content-Type: application/protobuf`.
+   * **Scheme selection:** `tls_psk_key` set → start `esp_https_server`
+     with the PSK hint/key, port 443, and do **not** start the plaintext
+     server; unset → start plaintext `esp_http_server` on port 80.
+   * Because a POST is a full command exchange, this reuses the existing
+     dispatch seam and needs no `HostApiLink` streaming machinery. Events
+     are still served by the host POSTing `EventConsumeCmd`.
+
+6. **Firmware — prefs wiring** (`firmware/main/prefs.{h,cpp}`):
+   * Store `network` in the `Prefs` singleton; include in `to_proto()`,
+     merge in `apply_partial()`, and (unlike `board_config`) fire the
+     **live** side effect `network_apply(network)` so `pref json-set`
+     joins/leaves a network without a reboot. Add a
+     `const touchy_NetworkConfig &network() const` accessor.
+
+7. **Firmware — boot + CMake** (`firmware/main/main.cpp`,
+   `firmware/main/CMakeLists.txt`):
+   * After `Prefs::begin()` (and after `board_init()` so the netif stack
+     is ready), call `network_apply(Prefs::instance().network())` under
+     `#if CONFIG_TOUCHY_WIFI`.
+   * Add `net/network.cpp` + `net/http_api.cpp` to `SRCS`, `"net"` to
+     `INCLUDE_DIRS`, and `REQUIRES esp_wifi esp_http_server
+     esp_https_server mdns esp-tls`.
+   * New `CONFIG_TOUCHY_WIFI` bool in `Kconfig.projbuild` (default `y`
+     when `CONFIG_SOC_WIFI_SUPPORTED`, else `n`).
+
+8. **Host — HTTP transport** (new
+   `app/src/touchy_pad/api/_transport_http.py`):
+   * `HttpTransport(Transport)` posting a **bare** serialized `Command`
+     to `<base>/touchy/api/v1/command` and returning the bare `Response`
+     body. Unlike `_StreamFramedTransport` there is no frame decoder —
+     override the command/response methods directly (or add a thin
+     `_UnframedTransport` base) since HTTP delimits the payload.
+   * Plain HTTP uses `http.client`/`urllib`. HTTPS-PSK builds an
+     `ssl.SSLContext` with `set_psk_client_callback` (**Python 3.13+**);
+     on older Pythons raise `TransportError("HTTPS-PSK requires Python
+     3.13+")`.
+   * A `parse_api_url()` helper accepting `http://host[:port]` /
+     `https://host[:port]` (defaults 80/443), analogous to
+     `parse_sim_url`.
+
+9. **Host — `touchy_open` + CLI selector**
+   (`app/src/touchy_pad/api/device.py`, `cli.py`):
+   * `touchy_open(url=None, tls_psk=None, ...)`: when `url` starts with
+     `http://` / `https://`, build an `HttpTransport` (before USB/UART
+     enumeration, mirroring the `TOUCHY_SIM_URL` short-circuit). `https://`
+     with no `tls_psk` is an error; `tls_psk` with `http://` is an error.
+   * CLI: global `--url URL` and `--tls-psk KEY` options; when `--url` is
+     given, all subcommands (`board-info`, `pref …`, `screen …`) talk to
+     that endpoint. Also honour a `TOUCHY_URL` env var for parity with
+     `TOUCHY_SIM_URL`.
+
+10. **Simulator — bare HTTP server** (`app/src/touchy_pad/sim/`):
+    * Add an HTTP endpoint (a `http.server.ThreadingHTTPServer` on port
+      **8083**, or extend `SimServer`) exposing
+      `POST /touchy/api/v1/command` that calls
+      `SimDevice.handle_command(body) -> bytes`. No TLS.
+    * Start it alongside the existing TCP `SimServer` when the simulator
+      runs (guarded so a port clash is a warning, not a crash).
+
+11. **Rust mirror** (`rust/touchy-pad`) — the regenerated `prost`
+    bindings cover `NetworkConfig`. Add a `Touchy::set_network(...)`
+    helper and an HTTP transport (`transport_http.rs`, `reqwest` behind an
+    `http` feature) only if a caller needs it — otherwise defer (grep;
+    likely optional this stage).
+
+12. **Tests** (`app/tests/`):
+    * `NetworkConfig` round-trip: build a `PreferencesFile` with a
+      `network` block, assert it survives serialize → parse and that
+      `file_version` handling is unchanged.
+    * `HttpTransport` against the sim's 8083 endpoint (or a local
+      `ThreadingHTTPServer` wrapping a `SimDevice`): `board-info`
+      round-trips; `pref json-set` with a `network` block reaches the
+      device.
+    * A `--url http://…` CLI test against the sim HTTP endpoint.
+    * HTTPS-PSK: on Python < 3.13 assert the clear "requires 3.13+"
+      error; on 3.13+ a loopback PSK round-trip if feasible in CI
+      (otherwise skip with a reason).
+
+13. **Docs + memory** — new `docs/network-api.md` (endpoint, framing
+    difference vs. the byte-stream transports, TLS-PSK setup, mDNS
+    naming, port table); update `docs/host-api.md`, `docs/companion-app.md`,
+    the CLI reference, and `README`s; add an `AGENTS.md`/`CLAUDE.md` note
+    covering `NetworkConfig`, `PreferencesFile.Version.CURRENT == 7`, the
+    HTTP transport's unframed payload, the `--url`/`--tls-psk` selectors,
+    and the sim's 8083 endpoint.
+
+### Deferred / out of scope
+
+* **Persistent `TCPLink`** (a framed byte-stream link registered in the
+  Stage lb5 `HostApiLink` array) — the HTTP request/response server
+  covers the near-term need; a streaming socket link with push events is
+  future work.
+* **WiFi provisioning UX** (SoftAP/BLE onboarding, captive portal) —
+  credentials arrive via `pref json-set` / `from-template` over an
+  existing USB/UART link for now.
+* **WiFi AP mode**, static IP, enterprise/EAP auth, and multi-AP roaming.
+* **Certificate-based TLS** (server certs / mutual TLS) — only TLS-PSK is
+  supported this stage.
+* **Server-pushed events** (WebSocket / SSE / long-poll) — events stay
+  `EventConsumeCmd`-polled.
+* **Secret redaction / at-rest encryption** of `wifi_psk` / `tls_psk_key`.
+* Simulator HTTPS/TLS — the sim is plaintext-HTTP-only.

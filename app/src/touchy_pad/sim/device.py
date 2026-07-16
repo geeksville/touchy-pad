@@ -327,6 +327,13 @@ class SimDevice:
             self._prefs.boot_delay_s = p.boot_delay_s
         if p.HasField("backlight_level"):
             self._prefs.backlight_level = p.backlight_level  # brightness: no-op in sim
+        if p.HasField("board_config"):
+            self._prefs.board_config.CopyFrom(p.board_config)  # read at boot: no-op in sim
+        if p.HasField("network"):
+            # Merge per-field so setting only wifi_ssid doesn't wipe wifi_psk
+            # (matches the firmware's NetworkConfig sub-field merge). WiFi
+            # bring-up itself is a no-op in the sim.
+            self._prefs.network.MergeFrom(p.network)
         if p.HasField("current_screen"):
             self._prefs.current_screen = p.current_screen
             try:

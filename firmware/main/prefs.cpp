@@ -15,6 +15,10 @@
 
 #include "esp_log.h"
 
+#if CONFIG_TOUCHY_WIFI
+#include "network.h"
+#endif
+
 #include <cstdio>
 
 static const char *TAG = TOUCHY_TAG("prefs");
@@ -59,6 +63,7 @@ bool Prefs::begin()
         if (pf->has_boot_delay_s) m_boot_delay_s = pf->boot_delay_s;
         if (pf->has_backlight_level) m_backlight_level = (uint8_t)pf->backlight_level;
         if (pf->has_board_config) m_board_config = pf->board_config;
+        if (pf->has_network) m_network = pf->network;
         ESP_LOGI(TAG, "Loaded prefs: screen_timeout_ms=%" PRIu32
                       " current_screen='%s' min_log_level=%" PRIu32
                       " boot_delay_s=%" PRIu32 " backlight_level=%u",
@@ -116,6 +121,35 @@ bool Prefs::apply_partial(const touchy_PreferencesFile &p)
         // Stage lb6 — no live side effect; used at the next display_init().
         m_board_config = p.board_config;
     }
+    if (p.has_network) {
+        // Stage lb8 — merge the NetworkConfig sub-fields individually (so a
+        // host that sets only wifi_ssid doesn't wipe a previously-set psk),
+        // then apply live: (re)join WiFi / restart the API.
+        const touchy_NetworkConfig &n = p.network;
+        if (n.has_wifi_ssid) {
+            m_network.has_wifi_ssid = true;
+            strncpy(m_network.wifi_ssid, n.wifi_ssid, sizeof(m_network.wifi_ssid) - 1);
+            m_network.wifi_ssid[sizeof(m_network.wifi_ssid) - 1] = '\0';
+        }
+        if (n.has_wifi_psk) {
+            m_network.has_wifi_psk = true;
+            strncpy(m_network.wifi_psk, n.wifi_psk, sizeof(m_network.wifi_psk) - 1);
+            m_network.wifi_psk[sizeof(m_network.wifi_psk) - 1] = '\0';
+        }
+        if (n.has_hostname) {
+            m_network.has_hostname = true;
+            strncpy(m_network.hostname, n.hostname, sizeof(m_network.hostname) - 1);
+            m_network.hostname[sizeof(m_network.hostname) - 1] = '\0';
+        }
+        if (n.has_tls_psk_key) {
+            m_network.has_tls_psk_key = true;
+            strncpy(m_network.tls_psk_key, n.tls_psk_key, sizeof(m_network.tls_psk_key) - 1);
+            m_network.tls_psk_key[sizeof(m_network.tls_psk_key) - 1] = '\0';
+        }
+#if CONFIG_TOUCHY_WIFI
+        network_apply(m_network);
+#endif
+    }
     if (p.has_current_screen) {
         // screens_load() updates g_current_path and calls back into
         // set_current_screen(), but we also mirror it here so the value
@@ -171,6 +205,14 @@ touchy_PreferencesFile Prefs::to_proto() const
     if (m_board_config.displays_count > 0) {
         pf.has_board_config = true;
         pf.board_config = m_board_config;
+    }
+    // Stage lb8 — network config is only serialised when something was
+    // programmed (any field present); an all-absent config stays out so a
+    // never-configured device round-trips as "no network".
+    if (m_network.has_wifi_ssid || m_network.has_wifi_psk ||
+        m_network.has_hostname || m_network.has_tls_psk_key) {
+        pf.has_network = true;
+        pf.network = m_network;
     }
     // current_screen is a fixed-size char[N] in the generated struct;
     // snprintf truncates safely if the source ever exceeds the bound

@@ -49,6 +49,12 @@ public:
     // arrays default-empty when nothing was ever programmed).
     const touchy_BoardConfig &board_config() const { return m_board_config; }
 
+    // Stage lb8 — WiFi + network-API configuration. Persisted like any
+    // other pref; applying it (via apply_partial or boot) joins/leaves the
+    // WiFi network and starts/stops the HTTP(S) command API. Returns the
+    // merged config (all fields default-absent when never programmed).
+    const touchy_NetworkConfig &network() const { return m_network; }
+
     // Stage LB4 — snapshot the current preferences as a fully-populated
     // `touchy_PreferencesFile` (file_version + every value field, all
     // has_* presence flags set). This is exactly what `save()` writes to
@@ -103,4 +109,9 @@ private:
     // Stage lb6 — board hardware description (LED panel geometry). Empty
     // (no displays) until the host programs it via SetPreferencesCmd.
     touchy_BoardConfig m_board_config = touchy_BoardConfig_init_zero;
+
+    // Stage lb8 — WiFi + network-API config. Empty until the host
+    // programs it via SetPreferencesCmd.
+    touchy_NetworkConfig m_network = touchy_NetworkConfig_init_zero;
 };
+

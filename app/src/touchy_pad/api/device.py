@@ -608,7 +608,13 @@ class Touchy:
                 traceback.print_exc()
 
 
-def touchy_open(serial: str | None = None, *, transport: Transport | None = None) -> Touchy:
+def touchy_open(
+    serial: str | None = None,
+    *,
+    url: str | None = None,
+    tls_psk: str | None = None,
+    transport: Transport | None = None,
+) -> Touchy:
     """Open a connected Touchy-Pad and return a :class:`Touchy`.
 
     With no arguments, opens the first device found, in this precedence
@@ -622,6 +628,14 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
     ``serial`` selects a specific device by USB serial number (see
     :func:`touchy_get_pad_ids`). A value of ``"uart:<path>"`` opens the
     serial port at *path* directly via :class:`SerialTransport`.
+
+    ``url`` (Stage lb8) opens the device's network API instead of a local
+    cable: an ``http://host[:port]`` / ``https://host[:port]`` endpoint.
+    An ``https://`` URL requires ``tls_psk`` (the device's TLS-PSK key as
+    a hex string); passing ``tls_psk`` with a plain ``http://`` URL is an
+    error. When ``url`` is ``None`` the ``TOUCHY_URL`` environment
+    variable is consulted before any local enumeration.
+
     ``transport`` is an internal escape hatch used by tests — production
     code should leave it ``None``.
 
@@ -637,8 +651,23 @@ def touchy_open(serial: str | None = None, *, transport: Transport | None = None
     hardware uses.
     """
     if transport is None:
+        # Stage lb8 — an explicit network endpoint (or TOUCHY_URL) wins over
+        # any local cable/sim discovery.
+        if url is None:
+            import os
+
+            from ._transport_http import API_URL_ENV
+
+            url = os.environ.get(API_URL_ENV) or None
+        if url is None and tls_psk is not None:
+            raise ValueError("tls_psk given without a url= network endpoint")
+        if url is not None:
+            from ._transport_http import HttpTransport
+
+            del serial
+            transport = HttpTransport(url, tls_psk=tls_psk)
         # Stage 83 — explicit "uart:<path>" selector opens that serial port.
-        if serial is not None and serial.startswith("uart:"):
+        elif serial is not None and serial.startswith("uart:"):
             from ._transport_serial import SerialTransport
 
             transport = SerialTransport(serial[len("uart:") :])

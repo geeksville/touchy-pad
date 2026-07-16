@@ -29,7 +29,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 25`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
-`PreferencesFile.Version.CURRENT == 6`.
+`PreferencesFile.Version.CURRENT == 7`.
 Highlights worth remembering:
 
 - **Boards span two chips (Stage 65).** ESP32-S3 boards (`jc4827w543`,
@@ -432,6 +432,34 @@ Highlights worth remembering:
   link `Display` from `main` (the IDF component group resolves the
   board→main symbol references). Every board + all three target chips
   build.
+
+- **Stage lb8 (protobuf API over HTTP/HTTPS + WiFi).** New
+  `optional NetworkConfig network = 8` on `PreferencesFile`
+  (`wifi_ssid`/`wifi_psk`/`hostname`/`tls_psk_key`; `Version.CURRENT` 6→7),
+  merged **per sub-field** in `Prefs::apply_partial` (setting only `wifi_ssid`
+  keeps a prior `wifi_psk`) and applied as a **live** side effect via
+  `network_apply()`. Firmware WiFi/mDNS + the HTTP(S) command server live in
+  `firmware/main/net/` (`network.{h,cpp}`, `http_api.{h,cpp}`), gated on
+  `CONFIG_TOUCHY_WIFI` (default `y` on WiFi chips, auto-off on esp32p4); the
+  net sources + their REQUIRES (`esp_wifi esp_netif esp_event nvs_flash
+  esp_http_server esp_https_server mdns esp-tls`) are only pulled into the
+  `main` CMake when the flag is on. The endpoint is
+  `POST /touchy/api/v1/command` (`Content-Type: application/protobuf`)
+  carrying a **bare, unframed** `Command`/`Response` — **no** MAGIC/LEN/CRC8
+  (HTTP delimits it); the handler reuses `host_api_dispatch_serialized()`
+  (the same `dispatch()` core as the byte-stream links). `tls_psk_key` set ⇒
+  **HTTPS-only** (TLS-PSK, port 443, plaintext port disabled); unset ⇒
+  plaintext HTTP on port 80 — never both. Host side: `HttpTransport`
+  (`app/src/touchy_pad/api/_transport_http.py`), `touchy_open(url=,
+  tls_psk=)`, CLI global `--url` / `--tls-psk` (+ `TOUCHY_URL` env) and
+  `pref wifi-set-ssid` / `pref wifi-set-psk`. HTTPS-PSK on the client needs
+  **Python 3.13+** (`ssl.SSLContext.set_psk_client_callback`); older
+  Pythons raise a clear error but plaintext still works. The simulator
+  serves **plaintext HTTP only** on port **8083** (`sim/http_server.py`,
+  `touchy simulator --http-port`), reusing `SimDevice.handle_command`.
+  Events stay `EventConsumeCmd`-polled (a persistent WiFi `TCPLink` with
+  push events is still future work). No `ProtocolVersion` bump — the API is
+  a new transport, not a new command.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /
