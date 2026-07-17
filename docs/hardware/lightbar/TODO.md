@@ -1,9 +1,7 @@
 
-* !generalize so that panel config comes from preferences
 * fix background
-* update readme
+* !update readme
 * add hw build instructions
-* !add to ci
 * post to reddit
 
 https://docs.espressif.com/projects/esp-protocols/mdns/docs/latest/en/index.html
@@ -26,9 +24,6 @@ Capacitor: Add a large capacitor (e.g., 1000 µF, 16V or higher) across the 12V 
 Resistor: Place a 300 to 500 Ω resistor in series on the data line between the level shifter and the NeoPixel's DIN pin to prevent signal reflections.
 
 * property or name lookup api for changing field contents on the fly - possibly html dom like?
-* wifi from preferences
-* https based auth?
-* protocol api on multiple interfaces (only the one that shows client activity?)
 
 The background color is a simple color to fill the display. It can be adjusted with lv_disp_set_bg_color(disp, color).
 The opacity of the background color or image can be adjusted with lv_disp_set_bg_opa(disp, opa).

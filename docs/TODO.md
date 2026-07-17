@@ -4,15 +4,20 @@
 * [x] show friendly error messages in py and rust plugin for device permissions errors, point to webpage
 * [x] add udev instructions (or possibly automate?)
 * [x] retest all the old boards for serial fixes
+* [x] generalize so that panel config comes from preferences
+* [x] add to ci
+* [x] wifi from preferences
+* [x] https based auth?
+* [x] protocol api on multiple interfaces (only the one that shows client activity?)
+* [x] add photo of the small board
 * [ ] fix touch on the really cheap cyd
 * [ ] update autopage and do steam background and sys info pages (cpu %, gpu %, temp, frame rate, graph)
 * [ ] finish [user widgets](user-widgets.md) 
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] add a which hw/why guide (psram etc...)
-* [ ] add photo of the small board
 * [ ] change recommended board in hardware.md
 * [ ] explain plans w.r.t. 3d printing and knobs on the screen
-* [ ] write a hackster.io article for buzz.  Reference old Meshtastic article.
+* [ ] write a hackster.io article.  Reference old Meshtastic article.
 * [ ] Post here https://www.reddit.com/r/esp32
 
 # Alpha n
