@@ -56,6 +56,7 @@ SUPPORTED_BOARDS: tuple[str, ...] = (
     "jc4827w543r",
     "waveshare_s3_lcd_7b",
     "esp32_2432s028rv3",
+    "esp32_s3_devkitc_1",
     "elecrow_p4_lcd_7",
     "elecrow_s3_lcd_7",
     "elecrow_s3_lcd_7_adv",

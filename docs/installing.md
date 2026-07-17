@@ -25,7 +25,7 @@ Chip type:          ESP32-S3 (QFN56) (revision v0.2)
 Features:           Wi-Fi, BT 5 (LE), Dual Core + LP Core, 240MHz, Embedded PSRAM 8MB (AP_3v3)
 Crystal frequency:  40MHz
 USB mode:           USB-Serial/JTAG
-MAC:                a4:cb:8f:ec:1c:e8
+MAC:                a4:...:e8
 
 Stub flasher running.
 Changing baud rate to 460800...
@@ -42,3 +42,34 @@ Hard resetting via RTS pin...
 │ Please unplug and replug your Touchy-Pad to run the application. │
 ╰──────────────────────────────────────────────────────────────────╯
 ```
+
+## Configuring WiFi
+
+If you want your touchypad to be accessible by wifi:
+
+```bash
+touchy pref wifi-set-ssid "my-network"
+touchy pref wifi-set-psk  "my-passphrase"
+```
+
+By default the network API is **plaintext HTTP** — anyone on the LAN can
+drive the device. To lock it down, provision **mutual TLS (mTLS)** over the
+trusted USB (or UART) link:
+
+```bash
+touchy pref provision-mtls              # uses the device's mDNS hostname
+```
+
+## Connecting a wifi touchy
+
+Point any `touchy` CLI subcommand at the endpoint with `--url`:
+
+```bash
+# plaintext (before provisioning)
+touchy --url http://touchypad_ab12.local board-info
+
+# mutual TLS (after provisioning) — credentials are loaded automatically
+touchy --url https://touchypad_ab12.local board-info
+```
+
+`--url` may also be supplied via the `TOUCHY_URL` environment variable.

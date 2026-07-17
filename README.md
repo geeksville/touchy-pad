@@ -9,7 +9,8 @@
 Touchy-pad is an open-source app that turns various cheap ($15-$30) 'aliexpress' displays into:
 * A high end graphical USB HID touchpad, with multitouch gestures, scrolling, dragging, keyboard macros, etc...
 * A 'StreamDeck' like graphical macropad via an [OpenDeck](https://github.com/nekename/OpenDeck) plugin.
-* A tool to allow you to run your own custom python (or other language) code on your PC, but attached to cheap-embeddable LCD panels (with no embedded programming required).  Great for custom user interfaces, status displays etc...
+* A tool to allow you to run your own custom python (or other language) code on your PC, but attached to cheap-embeddable LCD panels or enormous LED arrays (with no embedded programming required).  Great for custom user interfaces, status displays etc...
+* Accessible by USB or (optionally) wifi
 
 Read on for more info...
 
@@ -37,6 +38,7 @@ Disclaimer: This project is young, but moving at a fast pace.  You can already u
 * When used as a touchpad provides a pretty water droplet touch/grab/turn/gesture visualization.
 * Allows simple key/mouse shortcut/macros without the need for leaving the (optional) sister app running.  Generated entirely natively as USB events from our device.
 * Also works like a "StreamDeck" via the [OpenDeck](https://github.com/nekename/OpenDeck) application.  Many different plugins automatically supported, bind behaviors and displays to your touchy-deck with a polished GUI app.
+* (optional) Wifi access - so you can control your touchypads from across the room or the internet.  Fully encrypted mTLS based connection - no servers required.
 * Linux, macOS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
 * Includes full (easy) python and rust API libraries for making your own host side apps with cool graphical controls/displays on small/cheap USB devices.
 
