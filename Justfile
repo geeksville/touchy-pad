@@ -748,3 +748,8 @@ clean:
     rm -rf {{c_proto_dst}}
     rm -f {{default_screen_out}}
     rm -rf {{justfile_directory()}}/app/dist {{justfile_directory()}}/app/build {{justfile_directory()}}/app/src/*.egg-info
+
+# generate pretty markdown changelog between two version tags
+# usage: just diff v0.3.1 v0.3.4
+diff FROM TO:
+    @git log {{FROM}}..{{TO}} --pretty=format:"- %s ([%h](https://github.com/geeksville/touchy-pad/commit/%H))"
