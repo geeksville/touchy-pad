@@ -1241,3 +1241,201 @@ than a raw framed link, because the transport is one-shot request/response
   `EventConsumeCmd`-polled.
 * **Secret redaction / at-rest encryption** of `wifi_psk` / `tls_psk_key`.
 * Simulator HTTPS/TLS — the sim is plaintext-HTTP-only.
+
+## lb9: secure the network API with mutual TLS (mTLS)
+
+**Status: implemented (host + firmware; firmware builds via `just
+firmware-build`).** `NetworkConfig.tls_psk_key` was removed (tag 4
+reserved; `PreferencesFile.Version` 7→8). mTLS certs are uploaded as files
+(`F:tls/server.crt`, `F:tls/server.key`, `F:tls/client_ca.crt`) via the
+normal FileWrite API by `touchy pref provision-mtls`, which generates a
+one-shot EC P-256 CA + device + client certs with `cryptography`
+(`app/src/touchy_pad/api/mtls.py`), pushes the device trio over USB, and
+saves the host client cert/key + CA under the user config dir. Firmware
+`net/http_api.cpp` reads those PEMs and, when present, starts
+`esp_https_server` with `servercert`/`prvtkey_pem`/`cacert_pem` (→
+`MBEDTLS_SSL_VERIFY_REQUIRED`, i.e. client-cert required) on 443 and skips
+the plaintext port; `net/network.cpp` picks HTTPS-vs-HTTP by cert-file
+presence. Host `HttpTransport` builds the mTLS `ssl.SSLContext`
+(`load_cert_chain` + CA verify, `check_hostname=False`); the lb8
+`--tls-psk` flag is gone. `just app-test` + `just app-lint` pass. Decisions
+locked from discussion: single client cert, long-lived certs (re-provision
+to rotate/revoke), USB-only recovery, sim stays plaintext, plaintext until
+provisioned then mTLS-only, `cryptography` a hard dependency, certs stored
+as files (option B).
+
+**Status: planning / for discussion.** This supersedes the TLS-PSK idea
+from lb8, which is a dead end: ESP-IDF 6.0.2's `esp_https_server` does not
+expose `psk_hint_key` on its public `httpd_ssl_config_t`, so there is no
+way to stand up a PSK-authenticated HTTPS server from application code
+(the PSK field exists only on the lower-level `esp_tls_cfg_server_t`, which
+`esp_https_server` does not let us reach). Certificate-based mutual TLS
+**is** fully supported on 6.0.2 and gives us the same "only clients we
+provisioned can connect" guarantee, so we pivot to that.
+
+### What we're trying to achieve
+
+Right now the lb8 network API is plaintext HTTP: anyone who can reach the
+device on the LAN can drive it. We want: **after the user provisions the
+device once (over the trusted USB cable), the device only accepts HTTPS
+connections from clients that hold a credential we handed out, and the
+client also refuses to talk to any device that isn't ours.** No passwords,
+no public Certificate Authorities, no cloud.
+
+### mTLS in one paragraph (for the security-noob embedded dev)
+
+Ordinary "https://" (one-way TLS) is how your browser talks to a bank: the
+**server** proves its identity with a certificate signed by a public
+Certificate Authority (CA) your OS already trusts, and the client stays
+anonymous. **Mutual** TLS (mTLS) adds the second direction: the **client**
+must *also* present a certificate, and the server checks it. For a private
+gadget we don't want public CAs at all — instead we run our **own** tiny
+one-off CA. Think of the CA as a rubber stamp: we mint one stamp, use it to
+sign exactly two ID cards (one for the device, one for the host client),
+then we could even throw the stamp away. At connection time:
+
+* the **device** trusts "anything my CA stamped" and checks the client's
+  ID card against it → strangers without a stamped card are rejected at the
+  TLS handshake, before any HTTP is parsed;
+* the **client** trusts the same CA and checks the device's ID card → it
+  won't send commands to an impostor device.
+
+Concretely there are three PEM blobs and two private keys:
+
+| Blob                | Lives on | Purpose                                        |
+|---------------------|----------|------------------------------------------------|
+| CA certificate      | both     | the "rubber stamp" both sides verify against   |
+| server cert + key   | device   | the device's ID card (+ its secret half)       |
+| client cert + key   | host     | the host's ID card (+ its secret half)         |
+
+The device never needs the CA's *private* key (only the host, at
+provisioning time, to sign cards). The device stores: its own server
+cert+key, and the CA cert (to verify clients). The host stores: its own
+client cert+key, and the CA cert (to verify the device).
+
+### Why this works on ESP-IDF 6.0.2 (verified)
+
+`httpd_ssl_config_t` (the `esp_https_server` config) exposes exactly the
+fields we need: `servercert`/`servercert_len`, `prvtkey_pem`/`prvtkey_len`,
+and `cacert_pem`/`cacert_len`. When `cacert_pem` is set, esp-tls calls
+`mbedtls_ssl_conf_authmode(MBEDTLS_SSL_VERIFY_REQUIRED)` — i.e. the server
+**requires and verifies** a client certificate signed by that CA. That is
+mTLS, out of the box, no PSK needed. (Confirmed in
+`components/esp-tls/esp_tls_mbedtls.c`.) On the host, Python's stdlib
+`ssl` has done cert-based mTLS since forever — so, unlike the PSK path,
+**no Python 3.13 requirement**.
+
+### Provisioning flow (all over the trusted USB link)
+
+1. Host CLI (`touchy pref provision-mtls`) generates, in memory, using the
+   `cryptography` library: a throwaway CA, a device server cert+key, and a
+   host client cert+key (all signed by the CA).
+2. Over USB it writes the **device's** three items (server cert, server
+   key, CA cert) to the device — see the storage decision below.
+3. Locally it saves the **host's** items (client cert+key + CA cert) under
+   `~/.config/touchy/mtls/<device-id>/` so later `touchy --url https://…`
+   invocations authenticate automatically.
+4. The device, on its next network bring-up (or immediately, since prefs
+   apply live), sees it now has a full cert set and starts **HTTPS with
+   mTLS** on 443 instead of plaintext HTTP on 80.
+
+After step 4 the plaintext port is gone; only mTLS clients get in.
+
+### Key decisions (locked in)
+
+* **mTLS, not server-only TLS.** Server-only TLS would encrypt traffic but
+  let any LAN client issue commands. We want client authentication, which
+  is the whole point.
+* **Our own single-purpose CA, generated host-side per device.** No public
+  CAs, no shared secret to leak. The CA private key never touches the
+  device and can be discarded after provisioning (we don't need to mint
+  more cards unless the user re-provisions).
+* **`check_hostname = False` on the client, but full chain verification.**
+  A gadget's IP/mDNS name changes; pinning a hostname is brittle. We still
+  cryptographically verify the device cert was signed by our CA — that's
+  the identity guarantee that matters here. (We can optionally stuff the
+  serial/hostname into the cert's SAN for defence-in-depth later.)
+* **`tls_psk_key` (lb8) is removed/repurposed.** It never worked; the
+  firmware already stubs HTTPS out. We replace it with the cert material.
+* **Provisioning only over USB/UART (a physically-trusted link).** We do
+  not expose a "set my certs" path over the network itself (that would be
+  a bootstrap hole). This matches lb8's "credentials arrive over an
+  existing local link" stance.
+
+### The one big open question — where do the certs live?
+
+PEM certs are large (~600 B–2 KB each; ~4 KB total). Two options:
+
+* **(A) In `NetworkConfig` as nanopb `FT_POINTER` (heap) `bytes` fields.**
+  Most literally matches the user's "provision by writing preferences"
+  ask. Downsides: the prefs encode/save buffer (currently a 512-byte stack
+  buffer in `prefs.cpp`) must grow to ~8 KB, `PreferencesFile` gains heap
+  fields (pb_release handling), and every unrelated prefs save now
+  serialises ~4 KB to flash. `json-get`/`json-set` would dump big base64
+  blobs.
+* **(B) As three files on LittleFS via the existing FileWrite API**
+  (`F:tls/server.crt`, `F:tls/server.key`, `F:tls/client_ca.crt`), with
+  `NetworkConfig` holding just a small `bool https_mtls` (or we infer
+  "enabled" from the files existing). Reuses the streaming file-upload
+  machinery certs are naturally suited to, keeps prefs tiny, and the
+  firmware reads the PEMs at network bring-up (fs_init runs before
+  network_apply). Keys sit in the same flash as everything else — no worse
+  than option A.
+
+**Recommendation: (B).** Certs are files; treat them as files. The
+"provision by writing preferences" intent is still satisfied — the *enable
+flag* is a preference, and provisioning is still one CLI command over USB;
+only the bulky blobs ride the file API instead of the prefs blob. Flag for
+discussion.
+
+### Other open questions to settle before coding
+
+1. **Client-cert lifetime / revocation.** Simplest: certs are long-lived
+   (e.g. 10 years) and "revocation" = re-provision (new CA, new cards,
+   old ones stop verifying). Good enough? Or do we want per-host client
+   certs so one laptop can be revoked without re-flashing the others? *** ok
+2. **Multiple host clients.** One client cert shared across a user's
+   machines, or a `provision-mtls --add-client` that mints extra cards 
+   signed by the stored CA? (Requires keeping the CA key host-side.) *** no need for mult clients
+3. **Losing the client creds = lockout.** If `~/.config/touchy/mtls/…` is
+   deleted, the only recovery is re-provisioning over USB. Acceptable
+   (USB is the trusted path anyway), but worth stating loudly. *** ok
+4. **Simulator.** Keep the sim plaintext-HTTP-only (no TLS), as in lb8? *** yes
+   (Recommend yes — the sim is a dev convenience, not a security surface.)
+5. **Do we keep a plaintext HTTP option at all**, or is the network API
+   HTTPS-mTLS-or-nothing once WiFi is on? (Recommend: plaintext until
+   provisioned, mTLS-only after — same shape as lb8's psk gate.) *** yes
+6. **`cryptography` as a host dependency.** Adds a compiled dependency to
+   the `touchy` CLI. Acceptable, or gate it behind an extra
+   (`pip install touchy-pad[mtls]`)? *** depend onf crypto always
+
+### Sketch of the work (to firm up after the discussion)
+
+* **Proto:** drop `NetworkConfig.tls_psk_key`; add either the cert `bytes`
+  fields (option A) or a `bool https_mtls` (option B). Bump
+  `PreferencesFile.Version`.
+* **Host — provisioning:** `touchy pref provision-mtls` (generate CA +
+  device + client certs with `cryptography`; push device certs over
+  USB via FileWrite/prefs; save host certs locally). A
+  `--add-client` variant later if we decide on multi-client.
+* **Host — client:** teach `HttpTransport` to build an mTLS
+  `ssl.SSLContext` (`load_cert_chain(client)` + `load_verify_locations(ca)`
+  + `verify_mode=CERT_REQUIRED`, `check_hostname=False`), auto-loading the
+  saved creds by device id; `--url https://…` "just works" after
+  provisioning. Retire the `--tls-psk` flag.
+* **Firmware:** in `net/http_api.cpp`, when the cert set is present, start
+  `esp_https_server` with `servercert`/`prvtkey_pem`/`cacert_pem` set
+  (→ mTLS required) on 443 and skip the plaintext server; read the PEMs
+  from files (option B) or prefs (option A). `net/network.cpp` picks
+  HTTPS-vs-HTTP based on the enable flag.
+* **Sim:** unchanged (plaintext HTTP only).
+* **Docs:** rewrite the TLS section of `docs/network-api.md` around mTLS +
+  the provisioning command; update `AGENTS.md`/`CLAUDE.md`.
+
+### Deferred / out of scope
+
+* Public-CA / Let's-Encrypt style certs, ACME, OCSP/CRL revocation.
+* Certificate rotation without re-provisioning.
+* mTLS for the simulator.
+* Storing the CA private key on the device (we deliberately never do this).
+* Network-side provisioning (certs only ever arrive over USB/UART).

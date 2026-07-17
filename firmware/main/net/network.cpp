@@ -17,6 +17,7 @@
 #include "esp_wifi.h"
 #include "mdns.h"
 #include "nvs_flash.h"
+#include "fs.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -36,9 +37,30 @@ bool s_connected    = false;   // got an IP
 std::string s_ssid;
 std::string s_psk;
 std::string s_hostname;
-std::string s_tls_psk;         // hex; empty ⇒ plaintext HTTP
 
 esp_netif_t *s_netif = nullptr;
+
+// Stage lb9 — mTLS is enabled iff the full cert set is present on flash
+// (uploaded by `touchy pref provision-mtls`). When present we serve
+// HTTPS-with-mTLS on 443; otherwise plaintext HTTP on 80.
+bool mtls_provisioned()
+{
+    static const char *paths[] = {
+        "F:tls/server.crt", "F:tls/server.key", "F:tls/client_ca.crt"};
+    for (const char *p : paths) {
+        std::string rest;
+        Fs *fs = fs_resolve(p, &rest);
+        size_t len = 0;
+        if (!fs) return false;
+        const uint8_t *peeked = fs->peek(rest, &len);
+        if (peeked) continue;   // present (zero-copy)
+        // FlashFs can't peek; fall back to a real read to test existence.
+        uint8_t *raw = fs->readBinary(rest, &len);
+        if (!raw) return false;
+        delete[] raw;
+    }
+    return true;
+}
 
 // Derive the default mDNS/hostname from the board serial:
 // "touchypad_<last-6-of-serial>", lowercased and stripped of non-alnum.
@@ -61,20 +83,20 @@ std::string default_hostname()
 
 void start_servers()
 {
+    bool mtls = mtls_provisioned();
+
     // (Re)start mDNS under the configured hostname.
     if (mdns_init() == ESP_OK) {
         mdns_hostname_set(s_hostname.c_str());
         mdns_instance_name_set("Touchy-Pad");
-        bool https = !s_tls_psk.empty();
-        mdns_service_add(nullptr, "_touchy", "_tcp", https ? 443 : 80, nullptr, 0);
+        mdns_service_add(nullptr, "_touchy", "_tcp", mtls ? 443 : 80, nullptr, 0);
         ESP_LOGI(TAG, "mDNS up as %s.local", s_hostname.c_str());
     } else {
         ESP_LOGW(TAG, "mdns_init failed");
     }
 
-    bool https = !s_tls_psk.empty();
-    if (http_api_start(https, https ? s_tls_psk.c_str() : nullptr) != 0) {
-        ESP_LOGE(TAG, "command API failed to start");
+    if (http_api_start(mtls) != 0) {
+        ESP_LOGE(TAG, "command API failed to start (mtls=%d)", (int)mtls);
     }
 }
 
@@ -150,7 +172,6 @@ void network_apply(const touchy_NetworkConfig &cfg)
     std::string psk      = cfg.has_wifi_psk    ? cfg.wifi_psk    : "";
     std::string hostname = (cfg.has_hostname && cfg.hostname[0]) ? cfg.hostname
                                                                  : default_hostname();
-    std::string tls_psk  = cfg.has_tls_psk_key ? cfg.tls_psk_key : "";
 
     // No credentials → ensure everything is torn down.
     if (ssid.empty()) {
@@ -165,9 +186,10 @@ void network_apply(const touchy_NetworkConfig &cfg)
         return;
     }
 
-    // Nothing changed and we're already up → no-op.
-    if (s_started && ssid == s_ssid && psk == s_psk &&
-        hostname == s_hostname && tls_psk == s_tls_psk) {
+    // Nothing changed and we're already up → no-op. (mTLS cert changes
+    // arrive via FileWrite, not this path, and take effect on the next
+    // bring-up / reboot; WiFi credential changes re-run everything below.)
+    if (s_started && ssid == s_ssid && psk == s_psk && hostname == s_hostname) {
         return;
     }
 
@@ -188,7 +210,6 @@ void network_apply(const touchy_NetworkConfig &cfg)
     s_ssid     = ssid;
     s_psk      = psk;
     s_hostname = hostname;
-    s_tls_psk  = tls_psk;
 
     wifi_config_t wc = {};
     strncpy((char *)wc.sta.ssid, s_ssid.c_str(), sizeof(wc.sta.ssid) - 1);
@@ -200,8 +221,7 @@ void network_apply(const touchy_NetworkConfig &cfg)
     esp_wifi_start();   // fires WIFI_EVENT_STA_START → esp_wifi_connect()
     s_started = true;
 
-    ESP_LOGI(TAG, "joining '%s' (host=%s, %s)", s_ssid.c_str(),
-             s_hostname.c_str(), tls_psk.empty() ? "http" : "https+psk");
+    ESP_LOGI(TAG, "joining '%s' (host=%s)", s_ssid.c_str(), s_hostname.c_str());
 }
 
 #endif // CONFIG_TOUCHY_WIFI

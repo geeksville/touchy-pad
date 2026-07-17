@@ -120,7 +120,7 @@ build-proto-py:
     [ "proto/widgets.proto"     -nt "${_py_out}/widgets_pb2.py"     ] && widgets_stale=1 || true
     [ "proto/preferences.proto" -nt "${_py_out}/preferences_pb2.py" ] && prefs_stale=1   || true
     if [ $touchy_stale -eq 0 ] && [ $widgets_stale -eq 0 ] && [ $prefs_stale -eq 0 ]; then
-        echo "build-proto-py: up to date"
+        #echo "build-proto-py: up to date"
         exit 0
     fi
     mkdir -p "${_py_out}"
@@ -161,7 +161,7 @@ build-proto-c:
     [ "proto/preferences.proto"   -nt "${_c_out}/preferences.pb.c" ] && prefs_stale=1   || true
     [ "proto/preferences.options" -nt "${_c_out}/preferences.pb.c" ] && prefs_stale=1   || true
     if [ $touchy_stale -eq 0 ] && [ $widgets_stale -eq 0 ] && [ $prefs_stale -eq 0 ]; then
-        echo "build-proto-c:  up to date"
+        #echo "build-proto-c:  up to date"
         exit 0
     fi
     # nanopb's generator wants to run from a directory that contains the
@@ -188,7 +188,7 @@ gen-default-screen: build-proto-py
         && [ "${_json}" -nt "proto/gen_default_screen.py" ] \
         && [ "${_json}" -nt "app/src/touchy_pad/api/screens.py" ] \
         && [ "${_json}" -nt "${_py_out}/widgets_pb2.py" ]; then
-        echo "gen-default-screen: up to date"
+        #echo "gen-default-screen: up to date"
         exit 0
     fi
     "${_py}" proto/gen_default_screen.py "${_json}"
@@ -216,7 +216,7 @@ build-default-screen: gen-default-screen
         && [ "${_out}" -nt "proto/embed_screen_json.py" ] \
         && [ "${_out}" -nt "${_py_out}/touchy_pb2.py" ] \
         && [ "${_out}" -nt "${_py_out}/widgets_pb2.py" ]; then
-        echo "build-default-screen: up to date"
+        #echo "build-default-screen: up to date"
         exit 0
     fi
     "${_py}" proto/embed_screen_json.py "${_out}" \
@@ -596,6 +596,10 @@ flash-merged: merge-bin
         --before default-reset --after hard-reset \
         --chip "$chip" write-flash 0x0 {{justfile_directory()}}/firmware/build/touchy_pad_merged.bin
 
+# setup for common devboards
+hw-oneled:
+    just firmware-reconfigure esp32_s3_devkitc_1
+    just app-run pref json-set <firmware/private/oneled.json
 
 # ---------------------------------------------------------------------------
 # Aggregate convenience targets

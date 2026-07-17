@@ -103,15 +103,9 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
     default=None,
     metavar="URL",
     help="Talk to a Touchy-Pad over its network API instead of USB/serial: "
-    "an http://HOST[:PORT] or https://HOST[:PORT] endpoint (Stage lb8). "
-    "https:// requires --tls-psk. Also read from the TOUCHY_URL env var.",
-)
-@click.option(
-    "--tls-psk",
-    "tls_psk",
-    default=None,
-    metavar="HEXKEY",
-    help="TLS-PSK key (hex) for an https:// --url endpoint.",
+    "an http://HOST[:PORT] or https://HOST[:PORT] endpoint. https:// uses "
+    "mutual TLS with the credentials from 'touchy pref provision-mtls'. "
+    "Also read from the TOUCHY_URL env var.",
 )
 @click.pass_context
 def cli(
@@ -126,7 +120,6 @@ def cli(
     port: str | None,
     listen: bool,
     url: str | None,
-    tls_psk: str | None,
 ) -> None:
     """Talk to a connected Touchy-Pad USB device."""
     # Configure logging level
@@ -162,7 +155,6 @@ def cli(
     from .api._transport_http import API_URL_ENV
 
     ctx.obj["url"] = url or os.environ.get(API_URL_ENV) or None
-    ctx.obj["tls_psk"] = tls_psk
 
     if not sim_active:
         if ctx.invoked_subcommand is None:
@@ -332,7 +324,7 @@ def _make_transport() -> Transport | None:
     if url:
         from .api._transport_http import HttpTransport
 
-        return HttpTransport(url, tls_psk=ctx.obj.get("tls_psk"))
+        return HttpTransport(url)
     # Not a sim run: if the user pointed us at a serial port, talk the
     # protocol over it instead of auto-discovering a USB device.
     port = ctx.obj.get("port")
@@ -788,6 +780,67 @@ def pref_wifi_set_psk(psk: str) -> None:
     Stored in plaintext on the device flash, like every other preference.
     """
     _set_network_field("wifi_psk", psk)
+
+
+@pref.command("provision-mtls")
+@click.option(
+    "--host",
+    "host",
+    default=None,
+    metavar="HOST",
+    help="The hostname/IP you will connect to (e.g. the mDNS name). Used as "
+    "the server-cert SAN and to key the saved client credentials. Defaults "
+    "to the device's configured mDNS hostname, else touchypad_<serial>.",
+)
+def pref_provision_mtls(host: str | None) -> None:
+    """Provision mutual-TLS certificates so the network API becomes HTTPS-only.
+
+    Run this over the trusted USB/UART link (not --url). It generates a
+    one-shot CA plus a device (server) and host (client) certificate,
+    uploads the device's cert/key + CA to F:tls/ on the device, and saves
+    the host's client cert/key + CA locally under the user config dir.
+
+    After this the device serves HTTPS-with-mTLS on port 443 (plaintext
+    HTTP is disabled) and ``touchy --url https://<host>`` authenticates
+    automatically. Re-run to rotate (a fresh CA invalidates old certs).
+    Losing the saved host credentials means re-provisioning over USB.
+    """
+    from .api import mtls
+    from .paths import (
+        TLS_CLIENT_CA_PATH,
+        TLS_SERVER_CERT_PATH,
+        TLS_SERVER_KEY_PATH,
+    )
+
+    with _client() as c:
+        info = c.sys_board_info_get()
+        serial = getattr(info, "serial", "") or "device"
+        # Endpoint the user will dial: explicit --host, else the device's
+        # configured mDNS hostname, else touchypad_<serial-suffix>.
+        endpoint = host
+        if not endpoint:
+            try:
+                prefs = c.get_preferences()
+                endpoint = prefs.network.hostname or None
+            except Exception:  # noqa: BLE001
+                endpoint = None
+        if not endpoint:
+            endpoint = f"touchypad_{serial[-6:].lower()}" if serial else "touchy-pad"
+
+        click.echo(f"Generating mTLS certificates for '{endpoint}' …")
+        pki = mtls.generate_pki(device_san=endpoint)
+
+        click.echo("Uploading device certificates over the local link …")
+        c.file_save(TLS_SERVER_CERT_PATH, pki.server_cert)
+        c.file_save(TLS_SERVER_KEY_PATH, pki.server_key)
+        c.file_save(TLS_CLIENT_CA_PATH, pki.ca_cert)
+
+    creds_dir = mtls.save_client_creds(pki, endpoint)
+    click.echo(f"Saved host client credentials to {creds_dir}")
+    click.echo(
+        "Done. The device will serve HTTPS-with-mTLS once WiFi is up. Connect with:\n"
+        f"  touchy --url https://{endpoint} board-info"
+    )
 
 
 @pref.command("json-get")

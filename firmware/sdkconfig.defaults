@@ -173,11 +173,13 @@ CONFIG_LV_USE_ASSERT_STYLE=y
 CONFIG_TOUCHY_LOG_OVER_PROTO=y
 CONFIG_TOUCHY_LOG_TO_UART=y
 
-# Stage lb8 — WiFi + HTTP network command API. CONFIG_TOUCHY_WIFI defaults on
-# for WiFi-capable chips (see Kconfig.projbuild). No extra sdkconfig knobs
-# needed: plaintext HTTP uses esp_http_server which is always available, and
-# the HTTPS/PSK path is not yet enabled (IDF v6 does not expose psk_hint_key
-# in httpd_ssl_config_t).
+# Stage lb8/lb9 — WiFi + HTTP(S) network command API. CONFIG_TOUCHY_WIFI
+# defaults on for WiFi-capable chips (see Kconfig.projbuild). Plaintext HTTP
+# uses esp_http_server (always available); the HTTPS-with-mTLS path (lb9)
+# needs the HTTPS server + TLS server-side support. These are inert on
+# boards where CONFIG_TOUCHY_WIFI is off (the components aren't pulled in).
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
+CONFIG_ESP_TLS_SERVER=y
 
 # The following debug flags collectively cost us 6 FPS (from 26 -> 20 FPS) but worth it for
 # now for better debugging.

@@ -157,7 +157,7 @@ config TOUCHY_HEADLESS_VRES
         TOUCHY_NO_DISPLAY is set.
 
 config TOUCHY_WIFI
-    bool "Enable WiFi + the HTTP(S) network command API (Stage lb8)"
+    bool "Enable WiFi + the HTTP(S) network command API (Stage lb8/lb9)"
     default y if SOC_WIFI_SUPPORTED
     default n
     help
@@ -166,10 +166,12 @@ config TOUCHY_WIFI
         radio stays off until the host programs WiFi credentials into the
         NetworkConfig preference (`touchy pref wifi-set-ssid/-psk`), at
         which point the device joins the network and serves the protocol
-        over POST /touchy/api/v1/command. When a NetworkConfig.tls_psk_key
-        is set the API is HTTPS-only (TLS-PSK) and the plaintext port is
-        disabled. Automatically off on chips with no WiFi radio (e.g. the
-        ESP32-P4), where the whole subsystem is compiled out.
+        over POST /touchy/api/v1/command. If mutual-TLS certs have been
+        provisioned (F:tls/*, via `touchy pref provision-mtls`) the API is
+        HTTPS-with-mTLS-only on 443 and the plaintext port is disabled;
+        otherwise it is plaintext HTTP on 80. Automatically off on chips
+        with no WiFi radio (e.g. the ESP32-P4), where the whole subsystem
+        is compiled out.
 
 endmenu
 

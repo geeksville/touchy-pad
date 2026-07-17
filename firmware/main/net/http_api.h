@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Touchy-Pad HTTP(S) command API (Stage lb8).
+// Touchy-Pad HTTP(S) command API (Stage lb8 + lb9 mTLS).
 //
 // Serves the protobuf Command/Response protocol over a single endpoint:
 //
@@ -25,14 +25,17 @@ extern "C" {
 
 // Start the command API server.
 //
-//   * https == false : plaintext HTTP on port 80.
-//   * https == true  : TLS-PSK HTTPS on port 443; `psk_hex` is the shared
-//                      key as a hex string. The plaintext port is NOT
-//                      started in this mode (no downgrade path).
+//   * mtls == false : plaintext HTTP on port 80.
+//   * mtls == true  : HTTPS with **mutual TLS** on port 443. The server
+//                     cert/key and the client-verification CA are read
+//                     from files on the F: filesystem (see http_api.cpp).
+//                     A client must present a certificate signed by that
+//                     CA or the TLS handshake is rejected. The plaintext
+//                     port is NOT started in this mode (no downgrade path).
 //
-// Idempotent-ish: call http_api_stop() before restarting with a different
-// mode. Returns ESP_OK (0) on success.
-int  http_api_start(bool https, const char *psk_hex);
+// Call http_api_stop() before restarting with a different mode. Returns
+// ESP_OK (0) on success, non-zero on failure (e.g. missing certs).
+int  http_api_start(bool mtls);
 
 // Stop whichever server is running (no-op if none).
 void http_api_stop(void);

@@ -29,7 +29,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 25`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
-`PreferencesFile.Version.CURRENT == 7`.
+`PreferencesFile.Version.CURRENT == 8`.
 Highlights worth remembering:
 
 - **Boards span two chips (Stage 65).** ESP32-S3 boards (`jc4827w543`,
@@ -435,31 +435,52 @@ Highlights worth remembering:
 
 - **Stage lb8 (protobuf API over HTTP/HTTPS + WiFi).** New
   `optional NetworkConfig network = 8` on `PreferencesFile`
-  (`wifi_ssid`/`wifi_psk`/`hostname`/`tls_psk_key`; `Version.CURRENT` 6→7),
-  merged **per sub-field** in `Prefs::apply_partial` (setting only `wifi_ssid`
-  keeps a prior `wifi_psk`) and applied as a **live** side effect via
-  `network_apply()`. Firmware WiFi/mDNS + the HTTP(S) command server live in
-  `firmware/main/net/` (`network.{h,cpp}`, `http_api.{h,cpp}`), gated on
-  `CONFIG_TOUCHY_WIFI` (default `y` on WiFi chips, auto-off on esp32p4); the
-  net sources + their REQUIRES (`esp_wifi esp_netif esp_event nvs_flash
-  esp_http_server esp_https_server mdns esp-tls`) are only pulled into the
-  `main` CMake when the flag is on. The endpoint is
-  `POST /touchy/api/v1/command` (`Content-Type: application/protobuf`)
-  carrying a **bare, unframed** `Command`/`Response` — **no** MAGIC/LEN/CRC8
-  (HTTP delimits it); the handler reuses `host_api_dispatch_serialized()`
-  (the same `dispatch()` core as the byte-stream links). `tls_psk_key` set ⇒
-  **HTTPS-only** (TLS-PSK, port 443, plaintext port disabled); unset ⇒
-  plaintext HTTP on port 80 — never both. Host side: `HttpTransport`
-  (`app/src/touchy_pad/api/_transport_http.py`), `touchy_open(url=,
-  tls_psk=)`, CLI global `--url` / `--tls-psk` (+ `TOUCHY_URL` env) and
-  `pref wifi-set-ssid` / `pref wifi-set-psk`. HTTPS-PSK on the client needs
-  **Python 3.13+** (`ssl.SSLContext.set_psk_client_callback`); older
-  Pythons raise a clear error but plaintext still works. The simulator
-  serves **plaintext HTTP only** on port **8083** (`sim/http_server.py`,
-  `touchy simulator --http-port`), reusing `SimDevice.handle_command`.
-  Events stay `EventConsumeCmd`-polled (a persistent WiFi `TCPLink` with
-  push events is still future work). No `ProtocolVersion` bump — the API is
-  a new transport, not a new command.
+  (`wifi_ssid`/`wifi_psk`/`hostname`; `Version.CURRENT` 6→7 in lb8, then
+  7→8 in lb9), merged **per sub-field** in `Prefs::apply_partial` (setting
+  only `wifi_ssid` keeps a prior `wifi_psk`) and applied as a **live** side
+  effect via `network_apply()`. Firmware WiFi/mDNS + the HTTP(S) command
+  server live in `firmware/main/net/` (`network.{h,cpp}`,
+  `http_api.{h,cpp}`), gated on `CONFIG_TOUCHY_WIFI` (default `y` on WiFi
+  chips, auto-off on esp32p4); the net sources + their REQUIRES (`esp_wifi
+  esp_netif esp_event nvs_flash esp_http_server esp_https_server mdns
+  esp-tls`) are added via `idf_component_optional_requires` only when the
+  flag is on. The endpoint is `POST /touchy/api/v1/command`
+  (`Content-Type: application/protobuf`) carrying a **bare, unframed**
+  `Command`/`Response` — **no** MAGIC/LEN/CRC8 (HTTP delimits it); the
+  handler reuses `host_api_dispatch_serialized()` (the same `dispatch()`
+  core as the byte-stream links). Host side: `HttpTransport`
+  (`app/src/touchy_pad/api/_transport_http.py`), `touchy_open(url=)`, CLI
+  global `--url` (+ `TOUCHY_URL` env) and `pref wifi-set-ssid` /
+  `pref wifi-set-psk`. The simulator serves **plaintext HTTP only** on port
+  **8083** (`sim/http_server.py`, `touchy simulator --http-port`), reusing
+  `SimDevice.handle_command`. Events stay `EventConsumeCmd`-polled. No
+  `ProtocolVersion` bump — the API is a new transport, not a new command.
+
+- **Stage lb9 (secure the network API with mutual TLS).** The lb8 TLS-PSK
+  idea was abandoned (IDF 6.0.2's `esp_https_server` doesn't expose
+  `psk_hint_key`); `NetworkConfig.tls_psk_key` was **removed** (tag 4
+  reserved; `PreferencesFile.Version` 7→8). Security is now cert-based
+  **mTLS**: `touchy pref provision-mtls` (over USB) generates a one-shot EC
+  P-256 CA + device + client certs with `cryptography`
+  (`app/src/touchy_pad/api/mtls.py`), uploads the device trio as **files**
+  (`F:tls/server.crt`/`.key`, `F:tls/client_ca.crt` — path constants in
+  `paths.py`) via the normal FileWrite API, and saves the host client
+  cert/key + CA under the user config dir (`~/.config/touchy-pad/mtls/
+  <host>/`). Firmware `net/http_api.cpp` reads those PEMs (NUL-terminated
+  for esp-tls) and starts `esp_https_server` with
+  `servercert`/`prvtkey_pem`/`cacert_pem` — setting `cacert_pem` makes
+  esp-tls `MBEDTLS_SSL_VERIFY_REQUIRED`, i.e. a client cert signed by our
+  CA is **required** — on 443, skipping plaintext; `net/network.cpp` picks
+  HTTPS-vs-HTTP by cert-file presence (`mtls_provisioned()`). Host
+  `HttpTransport` builds the mTLS `ssl.SSLContext` (`load_cert_chain` +
+  `load_verify_locations`, `verify_mode=CERT_REQUIRED`,
+  `check_hostname=False` — the device's IP/mDNS name drifts but the CA
+  signature is the identity guarantee); `https://` auto-loads the saved
+  creds, and the lb8 `--tls-psk` flag is gone. Works on any Python 3.x
+  (stdlib `ssl`, no 3.13 requirement). Decisions: single client cert,
+  long-lived certs (re-provision to rotate/revoke), USB-only recovery, sim
+  stays plaintext-only, `cryptography` a hard dependency. No
+  `ProtocolVersion` bump.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

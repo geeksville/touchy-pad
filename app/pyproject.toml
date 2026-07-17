@@ -45,6 +45,10 @@ dependencies = [
     # StreamController/StreamDeck compatibility shim. Our 'TouchyDeck' patches this library
     # to add our devices as simulated StreamDecks
     "streamcontroller-streamdeck>=0.1.5,<1",
+    # Stage lb9 — generates the one-shot CA + client/server certs for the
+    # mutual-TLS network API (`touchy pref provision-mtls`) and is used
+    # host-side to build the mTLS client SSL context.
+    "cryptography>=42,<46",
 ]
 
 [project.optional-dependencies]

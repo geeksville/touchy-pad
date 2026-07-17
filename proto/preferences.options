@@ -16,8 +16,7 @@ touchy.Display.panels                   max_count:1
 
 # Stage lb8 — bound the NetworkConfig strings so nanopb stack-allocates
 # them (FT_STATIC). SSID max is 32 chars + NUL; WPA2 passphrase up to 63
-# chars + NUL; mDNS hostname short; TLS-PSK key a hex string.
+# chars + NUL; mDNS hostname short.
 touchy.NetworkConfig.wifi_ssid          max_size:33
 touchy.NetworkConfig.wifi_psk           max_size:64
 touchy.NetworkConfig.hostname           max_size:32
-touchy.NetworkConfig.tls_psk_key        max_size:64

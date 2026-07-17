@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Touchy-Pad HTTP(S) command API (Stage lb8). See http_api.h.
+// Touchy-Pad HTTP(S) command API (Stage lb8 + lb9 mTLS). See http_api.h.
 //
-// Implementation note — HTTPS/TLS-PSK:
-//   ESP-IDF v6 does not expose `psk_hint_key` through the public
-//   `httpd_ssl_config_t` struct, so PSK-authenticated HTTPS cannot be
-//   configured via `esp_https_server` from application code. Until IDF
-//   adds that field (or we build a custom TLS server), `http_api_start`
-//   returns an error when `https == true`. The plaintext HTTP path is
-//   fully implemented and is the normal operating mode.
+// Plaintext HTTP (port 80) is the pre-provisioning mode. Once the host has
+// pushed a mutual-TLS cert set (F:tls/server.crt, F:tls/server.key,
+// F:tls/client_ca.crt) via `touchy pref provision-mtls`, the network
+// subsystem starts us with mtls=true: HTTPS on port 443 where the server
+// requires a client certificate signed by the provisioned CA (esp-tls sets
+// MBEDTLS_SSL_VERIFY_REQUIRED whenever a CA cert is configured), so only
+// provisioned clients can connect.
 
 #include "sdkconfig.h"
 
@@ -17,9 +17,11 @@
 #include "http_api.h"
 #include "host_api.h"
 #include "host_api_link.h"   // HOST_API_RX_MAX / HOST_API_TX_MAX
+#include "fs.h"
 #include "tc_tag.h"
 
 #include "esp_http_server.h"
+#include "esp_https_server.h"
 #include "esp_log.h"
 
 #include <stdlib.h>
@@ -31,7 +33,36 @@ static const char *TAG = TOUCHY_TAG("http_api");
 static constexpr const char *API_URI = "/touchy/api/v1/command";
 static constexpr const char *CT      = "application/protobuf";
 
-static httpd_handle_t s_server = nullptr;
+// mTLS certificate material (uploaded via FileWrite; see paths.py).
+static constexpr const char *TLS_SERVER_CERT = "F:tls/server.crt";
+static constexpr const char *TLS_SERVER_KEY  = "F:tls/server.key";
+static constexpr const char *TLS_CLIENT_CA   = "F:tls/client_ca.crt";
+
+static httpd_handle_t s_server   = nullptr;
+static bool           s_is_https = false;
+
+// Read a whole file (drive-prefixed path) into a freshly-malloc'd,
+// NUL-terminated buffer. esp-tls detects PEM vs DER by checking the last
+// byte is '\0' and expects the length to *include* that terminator, so we
+// always append one. Returns nullptr on error; on success *len_out is the
+// buffer length including the trailing NUL. Caller frees with free().
+static uint8_t *read_pem(const char *path, size_t *len_out)
+{
+    std::string rest;
+    Fs *fs = fs_resolve(path, &rest);
+    if (!fs) return nullptr;
+    size_t n = 0;
+    uint8_t *raw = fs->readBinary(rest, &n);   // caller must delete[]
+    if (!raw) return nullptr;
+    uint8_t *buf = (uint8_t *)malloc(n + 1);
+    if (buf) {
+        memcpy(buf, raw, n);
+        buf[n] = '\0';
+        *len_out = n + 1;
+    }
+    delete[] raw;
+    return buf;
+}
 
 static esp_err_t command_post_handler(httpd_req_t *req)
 {
@@ -87,25 +118,53 @@ static const httpd_uri_t s_uri = {
     .user_ctx = nullptr,
 };
 
-int http_api_start(bool https, const char *psk_hex)
+static int start_https_mtls(void)
 {
-    if (s_server) {
-        ESP_LOGW(TAG, "already running; stopping first");
-        http_api_stop();
-    }
-
-    if (https) {
-        // HTTPS/TLS-PSK is not yet supported: IDF v6's httpd_ssl_config_t
-        // does not expose psk_hint_key, so there is no way to inject a PSK
-        // key via the esp_https_server public API. The host-side client
-        // already implements the PSK path for when firmware support lands.
-        ESP_LOGE(TAG, "HTTPS/TLS-PSK not supported (IDF lacks psk_hint_key "
-                      "in httpd_ssl_config_t); falling back to no server");
+    // Load the three PEMs. esp_https_server copies them into its own
+    // context during startup, so we can free ours right after start.
+    size_t cert_len = 0, key_len = 0, ca_len = 0;
+    uint8_t *cert = read_pem(TLS_SERVER_CERT, &cert_len);
+    uint8_t *key  = read_pem(TLS_SERVER_KEY,  &key_len);
+    uint8_t *ca   = read_pem(TLS_CLIENT_CA,   &ca_len);
+    if (!cert || !key || !ca) {
+        ESP_LOGE(TAG, "mTLS requested but a cert file is missing/unreadable");
+        free(cert);
+        free(key);
+        free(ca);
         return -1;
     }
 
-    (void)psk_hex;   // plaintext path does not use the key
+    httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
+    conf.transport_mode = HTTPD_SSL_TRANSPORT_SECURE;
+    conf.port_secure    = 443;
+    conf.servercert     = cert;
+    conf.servercert_len = cert_len;
+    conf.prvtkey_pem    = key;
+    conf.prvtkey_len    = key_len;
+    // Setting cacert_pem makes esp-tls require + verify a client cert
+    // signed by this CA — i.e. mutual TLS.
+    conf.cacert_pem     = ca;
+    conf.cacert_len     = ca_len;
 
+    esp_err_t err = httpd_ssl_start(&s_server, &conf);
+
+    free(cert);
+    free(key);
+    free(ca);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ssl_start failed: %s", esp_err_to_name(err));
+        s_server = nullptr;
+        return (int)err;
+    }
+    s_is_https = true;
+    httpd_register_uri_handler(s_server, &s_uri);
+    ESP_LOGI(TAG, "HTTPS command API (mTLS) on :443%s", API_URI);
+    return 0;
+}
+
+static int start_http_plain(void)
+{
     httpd_config_t conf = HTTPD_DEFAULT_CONFIG();
     conf.server_port      = 80;
     conf.lru_purge_enable = true;
@@ -116,16 +175,29 @@ int http_api_start(bool https, const char *psk_hex)
         s_server = nullptr;
         return (int)err;
     }
-
+    s_is_https = false;
     httpd_register_uri_handler(s_server, &s_uri);
     ESP_LOGI(TAG, "HTTP command API on :80%s", API_URI);
     return 0;
 }
 
+int http_api_start(bool mtls)
+{
+    if (s_server) {
+        ESP_LOGW(TAG, "already running; stopping first");
+        http_api_stop();
+    }
+    return mtls ? start_https_mtls() : start_http_plain();
+}
+
 void http_api_stop(void)
 {
     if (!s_server) return;
-    httpd_stop(s_server);
+    if (s_is_https) {
+        httpd_ssl_stop(s_server);
+    } else {
+        httpd_stop(s_server);
+    }
     s_server = nullptr;
     ESP_LOGI(TAG, "command API stopped");
 }

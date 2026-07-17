@@ -32,7 +32,8 @@ message PreferencesFile {
         V5 = 5;       // Stage 94: + backlight_level
         V6 = 6;       // Stage lb6: + board_config (LED-panel geometry)
         V7 = 7;       // Stage lb8: + network (WiFi + HTTP(S) API config)
-        CURRENT = 7;  // alias: always equals the latest defined version
+        V8 = 8;       // Stage lb9: network.tls_psk_key removed (mTLS via files)
+        CURRENT = 8;  // alias: always equals the latest defined version
     }
 
     // Written on every save so forward migrations can detect old files.
@@ -88,16 +89,25 @@ message PreferencesFile {
     optional NetworkConfig network = 8;
 }
 
-// Stage lb8 — optional WiFi + network-API configuration. Every field is
-// `optional`: an unset field leaves the device's current value unchanged
-// on a partial update. Clearing wifi_ssid (set to "") disconnects and
-// stops the network servers. The PSK secrets are stored in plaintext on
-// flash like any other pref.
+// Stage lb8/lb9 — optional WiFi + network-API configuration. Every field
+// is `optional`: an unset field leaves the device's current value
+// unchanged on a partial update. Clearing wifi_ssid (set to "")
+// disconnects and stops the network servers. The WiFi PSK is stored in
+// plaintext on flash like any other pref.
+//
+// HTTPS security is *not* configured here: Stage lb9 secures the network
+// API with mutual TLS, and the certificate/key PEMs are uploaded as
+// files (F:tls/server.crt, F:tls/server.key, F:tls/client_ca.crt) via the
+// normal FileWrite API rather than as prefs fields. The device serves
+// HTTPS-with-mTLS when that cert set is present and plaintext HTTP
+// otherwise. Tag 4 (the retired lb8 tls_psk_key) is reserved.
 message NetworkConfig {
+    reserved 4;
+    reserved "tls_psk_key";
+
     optional string wifi_ssid   = 1;   // 2.4 GHz SSID to join
     optional string wifi_psk    = 2;   // WPA2 passphrase (plaintext)
     optional string hostname    = 3;   // mDNS name; unset → touchypad_<serial>
-    optional string tls_psk_key = 4;   // TLS-PSK key (hex); set ⇒ HTTPS-only
 }
 
 // One physical LED matrix driven from a single data GPIO.

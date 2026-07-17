@@ -337,8 +337,8 @@ Stage lb8 adds a WiFi transport that is **not** a byte stream and so
 carries a **bare, unframed** `Command`/`Response` (HTTP `Content-Length`
 delimits each message — no MAGIC/LEN/CRC8). It reuses the same command
 dispatcher as the framed links. See [network-api.md](network-api.md) for
-the endpoint, TLS-PSK setup, mDNS naming, and the `--url` / `--tls-psk`
-host selectors.
+the endpoint, the mutual-TLS provisioning (`touchy pref provision-mtls`),
+mDNS naming, and the `--url` host selector.
 
 ### Board capabilities
 

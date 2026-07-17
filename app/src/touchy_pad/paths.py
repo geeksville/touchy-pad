@@ -46,6 +46,19 @@ IMAGE_CACHE_DIR = "T:host/icache/"
 DEFAULT_SCREEN_FILE = "default.pb"
 DEFAULT_SCREEN_PATH = SCREENS_DIR + DEFAULT_SCREEN_FILE
 
+# Stage lb9 — mutual-TLS certificate material for the HTTPS network API.
+# Provisioned over USB via the normal FileWrite API (``touchy pref
+# provision-mtls``) and read by the firmware at network bring-up. When all
+# three are present the device serves HTTPS-with-mTLS; otherwise plaintext
+# HTTP. Kept on persistent flash (F:).
+TLS_DIR = "F:tls/"
+#: Device's own server certificate (PEM).
+TLS_SERVER_CERT_PATH = TLS_DIR + "server.crt"
+#: Device's server private key (PEM).
+TLS_SERVER_KEY_PATH = TLS_DIR + "server.key"
+#: CA certificate the device verifies client certs against (PEM).
+TLS_CLIENT_CA_PATH = TLS_DIR + "client_ca.crt"
+
 
 def screen_path(name: str) -> str:
     """Drive-prefixed path of a screen file, e.g. ``F:host/s/home.pb``."""

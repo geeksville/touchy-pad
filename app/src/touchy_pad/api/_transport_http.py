@@ -21,11 +21,12 @@ buffers: :meth:`send_command` performs the POST and stashes the response
 body; :meth:`recv_response` returns it. The caller (``TouchyClient``)
 always brackets the two under its RPC lock, so the buffering is safe.
 
-Security: when a TLS-PSK key is supplied the endpoint must be ``https://``
-and the client negotiates a PSK-secured session. Python's
-``ssl.SSLContext.set_psk_client_callback`` is only available on
-**Python 3.13+**; on older interpreters the HTTPS-PSK path raises a clear
-:class:`TransportError`.
+Security (Stage lb9): an ``https://`` endpoint uses **mutual TLS**. The
+client presents the certificate saved by ``touchy pref provision-mtls``
+and verifies the device's certificate against the provisioned CA (see
+:mod:`touchy_pad.api.mtls`). ``check_hostname`` is disabled — the device's
+IP/mDNS name drifts, but the CA signature is the identity guarantee. This
+works on any Python 3.x (unlike the abandoned lb8 TLS-PSK path).
 """
 
 from __future__ import annotations
@@ -68,28 +69,19 @@ def parse_api_url(value: str) -> tuple[str, str, int]:
     return scheme, host, port
 
 
-def _build_psk_context(psk_hex: str) -> ssl.SSLContext:
-    """Build a client SSLContext that authenticates with a TLS-PSK key.
+def _build_mtls_context(endpoint: str | None) -> ssl.SSLContext:
+    """Build a mutual-TLS client context from the stored credentials.
 
-    ``psk_hex`` is the shared key as a hex string. Requires Python 3.13+
-    (``set_psk_client_callback``); raises :class:`TransportError` otherwise.
+    Loads the client cert/key + CA saved by ``touchy pref provision-mtls``
+    for *endpoint* (see :mod:`touchy_pad.api.mtls`). Raises
+    :class:`TransportError` when no credentials have been provisioned.
     """
-    if not hasattr(ssl.SSLContext, "set_psk_client_callback"):
-        raise TransportError(
-            "HTTPS-PSK requires Python 3.13+ (ssl.SSLContext.set_psk_client_callback)"
-        )
-    try:
-        psk = bytes.fromhex(psk_hex)
-    except ValueError as exc:
-        raise TransportError(f"--tls-psk must be a hex string: {exc}") from exc
+    from .mtls import load_client_context
 
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    # PSK provides mutual authentication on its own; there is no server
-    # certificate to verify.
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    ctx.set_psk_client_callback(lambda _hint: (None, psk))
-    return ctx
+    try:
+        return load_client_context(endpoint)
+    except FileNotFoundError as exc:
+        raise TransportError(str(exc)) from exc
 
 
 class HttpTransport(Transport):
@@ -99,22 +91,19 @@ class HttpTransport(Transport):
     ----------
     url:
         Base endpoint, ``http://host[:port]`` or ``https://host[:port]``.
-    tls_psk:
-        TLS-PSK key as a hex string. Required for (and only valid with) an
-        ``https://`` URL; forbidden with ``http://``.
+        An ``https://`` URL uses mutual TLS: the client credentials saved
+        by ``touchy pref provision-mtls`` for this endpoint are loaded and
+        presented, and the device's certificate is verified against the
+        provisioned CA.
     """
 
-    def __init__(self, url: str, *, tls_psk: str | None = None) -> None:
+    def __init__(self, url: str) -> None:
         scheme, host, port = parse_api_url(url)
-        if scheme == "https" and not tls_psk:
-            raise TransportError("https:// endpoint requires a --tls-psk key")
-        if scheme == "http" and tls_psk:
-            raise TransportError("--tls-psk is only valid with an https:// endpoint")
 
         self._scheme = scheme
         self._host = host
         self._port = port
-        self._ssl_ctx = _build_psk_context(tls_psk) if scheme == "https" else None
+        self._ssl_ctx = _build_mtls_context(url) if scheme == "https" else None
         self._pending: bytes | None = None
         self._conn: http.client.HTTPConnection | None = None
         _log.debug("HttpTransport → %s://%s:%d%s", scheme, host, port, API_PATH)

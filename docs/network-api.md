@@ -31,15 +31,16 @@ over USB.
 
 ## Ports
 
-| Endpoint                 | Scheme | Port |
-|--------------------------|--------|------|
-| Device, no `tls_psk_key` | http   | 80   |
-| Device, `tls_psk_key` set| https  | 443  |
-| Simulator                | http   | 8083 |
+| Endpoint                    | Scheme | Port |
+|-----------------------------|--------|------|
+| Device, not provisioned     | http   | 80   |
+| Device, mTLS provisioned    | https  | 443  |
+| Simulator                   | http   | 8083 |
 
 The device serves **either** plaintext HTTP **or** HTTPS — never both.
-Setting a `tls_psk_key` switches it to HTTPS-only (the plaintext port is
-disabled) to avoid a downgrade path. The simulator is plaintext-only.
+Provisioning mutual-TLS certificates (see below) switches it to HTTPS-only
+(the plaintext port is disabled) to avoid a downgrade path. The simulator
+is plaintext-only.
 
 mDNS advertises the service as `_touchy._tcp` under the device hostname.
 
@@ -66,31 +67,58 @@ stops the network servers.
 | `wifi_ssid`   | 2.4 GHz SSID to join. Empty ⇒ WiFi off.                   |
 | `wifi_psk`    | WPA2 passphrase (stored plaintext on flash).              |
 | `hostname`    | mDNS name. Unset ⇒ `touchypad_<serial-suffix>`.           |
-| `tls_psk_key` | TLS-PSK key (hex). Set ⇒ HTTPS-only; unset ⇒ plaintext.   |
 
 You can also push a whole `NetworkConfig` (and any other prefs) as JSON:
 
 ```bash
-echo '{"fileVersion":"V7","network":{"wifiSsid":"my-net","wifiPsk":"pw"}}' \
+echo '{"fileVersion":"V8","network":{"wifiSsid":"my-net","wifiPsk":"pw"}}' \
   | touchy pref json-set
 ```
 
-> **Security note.** `wifi_psk` and `tls_psk_key` are stored in plaintext
-> on the device flash, like every other preference — the flash is already
-> fully readable over the protocol. Treat physical/USB access to the
-> device as trusted.
+> **Security note.** `wifi_psk` is stored in plaintext on the device
+> flash, like every other preference — the flash is already fully readable
+> over the protocol. Treat physical/USB access to the device as trusted.
+
+## Securing the API with mutual TLS
+
+By default the network API is **plaintext HTTP** — anyone on the LAN can
+drive the device. To lock it down, provision **mutual TLS (mTLS)** over the
+trusted USB (or UART) link:
+
+```bash
+touchy pref provision-mtls              # uses the device's mDNS hostname
+touchy pref provision-mtls --host 192.168.1.50   # or a fixed IP/name
+```
+
+This runs entirely over the local cable. It:
+
+1. generates a throwaway CA plus a device (server) and a host (client)
+   certificate (EC P-256), all signed by that CA;
+2. uploads the device's cert + key + the CA to `F:tls/` on the device;
+3. saves the host's client cert + key + CA under your user config dir
+   (e.g. `~/.config/touchy-pad/mtls/<host>/`).
+
+After provisioning, the device serves **HTTPS-with-mTLS on port 443** and
+disables plaintext HTTP: only a client presenting the matching certificate
+can connect, and the client also verifies the device against the CA.
+
+* **Single client credential.** One host credential per provisioning. Run
+  `provision-mtls` again to rotate — a fresh CA invalidates the old certs.
+* **Recovery.** If you lose the saved host credentials, re-provision over
+  USB (the trusted path). There is no network-side recovery by design.
+* **Any Python 3.x** works (cert-based mTLS uses stdlib `ssl`; no 3.13+
+  requirement).
 
 ## Connecting a host
 
-Point any `touchy` CLI subcommand at the endpoint with `--url` (and
-`--tls-psk` for HTTPS):
+Point any `touchy` CLI subcommand at the endpoint with `--url`:
 
 ```bash
-# plaintext
+# plaintext (before provisioning)
 touchy --url http://touchypad_ab12.local board-info
 
-# TLS-PSK
-touchy --url https://touchypad_ab12.local --tls-psk deadbeef... board-info
+# mutual TLS (after provisioning) — credentials are loaded automatically
+touchy --url https://touchypad_ab12.local board-info
 ```
 
 `--url` may also be supplied via the `TOUCHY_URL` environment variable.
@@ -103,13 +131,13 @@ from touchy_pad.api import touchy_open
 with touchy_open(url="http://touchypad_ab12.local") as pad:
     print(pad.board_info)
 
-with touchy_open(url="https://touchypad_ab12.local", tls_psk="deadbeef") as pad:
+# https:// auto-loads the provisioned mTLS client credentials
+with touchy_open(url="https://touchypad_ab12.local") as pad:
     ...
 ```
 
-> **HTTPS-PSK requires Python 3.13+** on the host (it uses
-> `ssl.SSLContext.set_psk_client_callback`). On older Pythons the
-> plaintext path still works; the HTTPS path raises a clear error.
+> Opening an `https://` endpoint with no provisioned credentials raises a
+> clear error telling you to run `touchy pref provision-mtls` first.
 
 ## Simulator
 
@@ -128,5 +156,6 @@ touchy --url http://127.0.0.1:8083 board-info
   server-pushed events (WebSocket / SSE / long-poll).
 - WiFi provisioning UX (SoftAP / BLE onboarding, captive portal).
 - WiFi AP mode, static IP, enterprise/EAP auth, roaming.
-- Certificate-based TLS (server certs / mutual TLS) — only TLS-PSK today.
+- Public-CA / ACME certs, OCSP/CRL revocation, multi-client credentials,
+  and cert rotation without re-provisioning.
 - Secret redaction / at-rest encryption.

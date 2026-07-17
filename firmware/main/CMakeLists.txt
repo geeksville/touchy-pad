@@ -99,6 +99,7 @@ if(CONFIG_TOUCHY_WIFI)
         esp_event
         nvs_flash
         esp_http_server
+        esp_https_server
         mdns
         esp-tls
     )

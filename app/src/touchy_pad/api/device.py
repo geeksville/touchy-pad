@@ -612,7 +612,6 @@ def touchy_open(
     serial: str | None = None,
     *,
     url: str | None = None,
-    tls_psk: str | None = None,
     transport: Transport | None = None,
 ) -> Touchy:
     """Open a connected Touchy-Pad and return a :class:`Touchy`.
@@ -631,10 +630,10 @@ def touchy_open(
 
     ``url`` (Stage lb8) opens the device's network API instead of a local
     cable: an ``http://host[:port]`` / ``https://host[:port]`` endpoint.
-    An ``https://`` URL requires ``tls_psk`` (the device's TLS-PSK key as
-    a hex string); passing ``tls_psk`` with a plain ``http://`` URL is an
-    error. When ``url`` is ``None`` the ``TOUCHY_URL`` environment
-    variable is consulted before any local enumeration.
+    An ``https://`` URL uses mutual TLS (Stage lb9): the client
+    credentials saved by ``touchy pref provision-mtls`` for that endpoint
+    are loaded automatically. When ``url`` is ``None`` the ``TOUCHY_URL``
+    environment variable is consulted before any local enumeration.
 
     ``transport`` is an internal escape hatch used by tests — production
     code should leave it ``None``.
@@ -659,13 +658,11 @@ def touchy_open(
             from ._transport_http import API_URL_ENV
 
             url = os.environ.get(API_URL_ENV) or None
-        if url is None and tls_psk is not None:
-            raise ValueError("tls_psk given without a url= network endpoint")
         if url is not None:
             from ._transport_http import HttpTransport
 
             del serial
-            transport = HttpTransport(url, tls_psk=tls_psk)
+            transport = HttpTransport(url)
         # Stage 83 — explicit "uart:<path>" selector opens that serial port.
         elif serial is not None and serial.startswith("uart:"):
             from ._transport_serial import SerialTransport
