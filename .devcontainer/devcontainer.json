@@ -68,7 +68,7 @@
 	"runArgs": [
 		"--hostname=dc_${localWorkspaceFolderBasename}", // Use a better hostname than random digits
 		"--privileged", // Allow full hw access from host, also allows writing core dump files
-		// "--network=host", // Use host network rather than our bridged container network
+		"--network=host", // Use host network rather than our bridged container network (provides mDNS access)
 		"--ipc=host", // Needed to make python SharedMemory work
 		"--user=1000:1000",
 		// Recommended https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.2.0/how-to/docker.html
