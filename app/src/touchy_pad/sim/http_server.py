@@ -27,6 +27,32 @@ _log = logging.getLogger("touchy_pad.sim.http")
 DEFAULT_SIM_HTTP_PORT: int = 8083
 
 
+class _NoFqdnHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that skips the reverse-DNS lookup in server_bind.
+
+    The standard ``HTTPServer.server_bind`` calls ``socket.getfqdn(host)``
+    to populate ``server_name``. On macOS (and some CI runners) this
+    reverse-DNS lookup for ``127.0.0.1`` blocks for 30+ seconds because
+    the loopback address has no PTR record. We don't need the FQDN; just
+    store the literal bind address.
+    """
+
+    def server_bind(self) -> None:  # type: ignore[override]
+        import socket
+        import socketserver
+
+        # Call TCPServer.server_bind directly, bypassing HTTPServer's
+        # override (which does the blocking socket.getfqdn lookup).
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = socket.gethostname() if not host else host
+        self.server_port = port
+
+
+#: Fixed plaintext-HTTP port the simulator serves the command API on.
+DEFAULT_SIM_HTTP_PORT: int = 8083
+
+
 class SimHttpServer:
     """Serve a :class:`SimDevice` over ``POST /touchy/api/v1/command``.
 
@@ -51,7 +77,7 @@ class SimHttpServer:
         self._device = device
 
         handler = self._make_handler(device)
-        self._httpd = ThreadingHTTPServer((host, port), handler)
+        self._httpd = _NoFqdnHTTPServer((host, port), handler)
         self._bound_host, self._bound_port = self._httpd.server_address[:2]
         self._thread = threading.Thread(
             target=self._httpd.serve_forever,
