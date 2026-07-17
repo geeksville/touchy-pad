@@ -288,7 +288,12 @@ def test_touchydeck_press_flip_roundtrip_via_sim() -> None:
 
     from PIL import Image
 
-    with make_tempdir_transport() as t, touchy_open(transport=t) as pad:
+    with make_tempdir_transport() as t:
+        # Use _touchy_from_transport (no background event thread) so Touchy's
+        # event poll doesn't race with TouchyDeck's read thread for the same
+        # queue. touchy_open() starts a competing background thread that on slow
+        # CI runners drains all injected events before the deck sees them.
+        pad = _touchy_from_transport(t)
         deck = TouchyDeck(pad, cols=2, rows=2)
 
         def make_png(color: tuple[int, int, int]) -> bytes:
@@ -328,6 +333,7 @@ def test_touchydeck_press_flip_roundtrip_via_sim() -> None:
         finally:
             deck.run_read_thread = False
             deck.close()
+            pad.close()
 
         assert observed == [(0, True), (0, False), (3, True), (3, False)]
 
