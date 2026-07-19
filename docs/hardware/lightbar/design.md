@@ -1439,3 +1439,58 @@ discussion.
 * mTLS for the simulator.
 * Storing the CA private key on the device (we deliberately never do this).
 * Network-side provisioning (certs only ever arrive over USB/UART).
+
+## stage lb10: tiled panels
+
+currently the protobufs look like:
+```
+// One physical LED matrix driven from a single data GPIO.
+message Panel {
+    uint32 width  = 1;   // logical pixel columns
+    uint32 height = 2;   // logical pixel rows
+    uint32 gpio   = 3;   // data GPIO number
+}
+
+// One LVGL display surface. For now exactly one Panel (capped in
+// preferences.options); multi-panel tiling is a future lightbar stage.
+message Display {
+    repeated Panel panels = 1;
+}
+```
+
+make them more like this:
+```
+// One physical LED matrix inside a shift register like chain
+message Panel {
+    uint32 width  = 1;   // logical pixel columns
+    uint32 height = 2;   // logical pixel rows
+
+    // also move these c++ defs into protobuf flags here
+    // LED_ROWS_SNAKED (if unset assume false) becomes rows_snaked
+    // LED_COLS_SNAKED (if unset assume true)
+    // LED_ROW_MAJOR (if unset assume false)
+
+    // add new flags for
+    cols_flipped (the pixels in each col of this panel are in the opposite order as usual)
+    rows_flipped
+}
+
+// a chain of panels single data GPIO.
+message PanelChain {
+    repeated PanelChain panels = 1; // assume a small max of 4 in chain
+    uint32 gpio   = 3;   // data GPIO number
+    
+    opional bool tile_by_row // assume false.  if true the constructed display is tiled vertically 
+    // ie: 3 x w=32 h=8 panels would be a display 32px wide and 24px tall
+    // if false the constructed display is tiled horizontally 
+    // ie: 3 x w=32 h=8 panels would be a display 96px wide and 8px tall
+}
+
+// One LVGL display surface. For now exactly one PanelPanelChain (capped in
+// preferences.options); multi PanelChain tiling is a future lightbar stage.
+message Display {
+    repeated PanelChain panels = 1;
+}
+```
+when you change LEDPanel::serpentine_index based on this please try to make the flag checking nicey
+structured so the complier will have a good chance to optimize for redraws

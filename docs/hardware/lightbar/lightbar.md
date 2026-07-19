@@ -83,6 +83,8 @@ Use [this](https://www.amazon.com/Prototype-Solderable-Breadboard-Electronics-Go
 
 ![3d model](image-1.png)
 
+![while printing](image-2.png)
+
 ## BOM
 
 * https://www.aliexpress.us/item/3256802721579904.html 12V, 250W, $66
