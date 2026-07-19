@@ -73,9 +73,27 @@ https://kno.wled.ge/features/effects/
 ## Firmware OTA
 https://github.com/gibz104/SafeGithubOTA
 
+## Proof of concept
+
+Use [this](https://www.amazon.com/Prototype-Solderable-Breadboard-Electronics-Gold-Plated/dp/B082KY5Y5Z) prototyping board
+
+![alt text](image.png)
+
+## 3D model
+
+![3d model](image-1.png)
+
 ## BOM
 
 * https://www.aliexpress.us/item/3256802721579904.html 12V, 250W, $66
+
+Capacitor: Add a large capacitor (e.g., 1000 µF, 16V or higher) across the 12V power and ground lines, as outlined in the Adafruit NeoPixel Überguide. This absorbs initial inrush currents and protects the pixels.
+
+Resistor: Place a 300 to 500 Ω resistor in series on the data line between the level shifter and the NeoPixel's DIN pin to prevent signal reflections.
+
+Power: use a 12V->5V buck converter, then through a 1N5822 diode to the 5V rail of the esp32 board.
+
+For initial PCB: run two chains, one on SPI the other on RMT.  Should allow about 60 fps on each chain - two large panels per chain
 
 ### Box module
 design as an extendable platform.

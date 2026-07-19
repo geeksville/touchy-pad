@@ -601,6 +601,10 @@ hw-oneled:
     just firmware-reconfigure esp32_s3_devkitc_1
     just app-run pref json-set <firmware/private/oneled.json
 
+hw-32x8:
+    just firmware-reconfigure esp32_s3_devkitc_1
+    just app-run pref json-set <firmware/private/32x8.json
+
 # ---------------------------------------------------------------------------
 # Aggregate convenience targets
 # ---------------------------------------------------------------------------

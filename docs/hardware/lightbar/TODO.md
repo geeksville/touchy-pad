@@ -20,8 +20,6 @@ barell jack
 small caps on lv bus
 extension power and fan connectors
 
-Capacitor: Add a large capacitor (e.g., 1000 µF, 16V or higher) across the 12V power and ground lines, as outlined in the Adafruit NeoPixel Überguide. This absorbs initial inrush currents and protects the pixels.
-Resistor: Place a 300 to 500 Ω resistor in series on the data line between the level shifter and the NeoPixel's DIN pin to prevent signal reflections.
 
 * property or name lookup api for changing field contents on the fly - possibly html dom like?
 
