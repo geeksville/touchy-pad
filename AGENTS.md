@@ -27,7 +27,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 25`,
+`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 28`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
 `PreferencesFile.Version.CURRENT == 9`.
 Highlights worth remembering:
@@ -512,6 +512,28 @@ Highlights worth remembering:
   new `led-96x8-chain.json`). The sim's `board_config` stays a stored
   no-op (it renders LVGL screens, not a physical LED matrix), so it only
   needed the proto regen. No `ProtocolVersion` bump (prefs-only change).
+
+- **Stage lb11 (resolution-independent animations via AnimTrack
+  inversion).** `AnimTrack` gained `bool start_inverted` / `bool
+  end_inverted` (`Widget.Version` 27→28). When set, that endpoint resolves
+  *relative to the axis maximum* instead of 0: firmware
+  `widget_animations.cpp::resolve_anim_endpoint` computes `axis_max −
+  value` where `axis_max` is `display_width − widget_width` for
+  `StyleProp.X`, `display_height − widget_height` for `Y`, and the full
+  `display_width` / `display_height` for `WIDTH` / `HEIGHT` (other props
+  ignore the flag); it `lv_obj_update_layout`s first so the widget size is
+  known. This lets an animation be authored without baking in the panel
+  size — e.g. `anim_track(PROP_X, 0, 0, end_inverted=True)` bounces a shape
+  to the right edge on any display. `build_setup_screen_touchless()` was
+  rewritten around it: the three shapes now bounce in 2-D (independent
+  inverted X and Y timelines) across the *whole* panel and the welcome
+  marquee is driven to full width by a one-shot inverted `WIDTH`
+  animation, so the compiled-in touch-less fallback + `touchy init` work on
+  any-sized LED matrix (the builder's `width`/`height` args are ignored).
+  Host DSL: `anim_track(..., start_inverted=, end_inverted=)`; the Qt sim
+  mirrors the resolver (`_resolve_anim_endpoint` off the parent widget
+  size). `just build-proto` + `gen-default-screen`/`build-default-screen`
+  regenerate the embedded screens.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

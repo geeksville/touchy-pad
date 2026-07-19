@@ -628,6 +628,9 @@ def anim_track(
     prop: int,
     start: int,
     end: int,
+    *,
+    start_inverted: bool = False,
+    end_inverted: bool = False,
 ) -> _proto.AnimTrack:
     """One animated style property inside an :func:`animation`.
 
@@ -635,8 +638,24 @@ def anim_track(
     :data:`PROP_OPA`). ``start`` / ``end`` are the initial and final
     integer values — pixels for X/Y/WIDTH/HEIGHT, 0–255 for OPA,
     RGB888 / RGB565 ints for colour props.
+
+    ``start_inverted`` / ``end_inverted`` (Stage LB11) resolve that
+    endpoint *relative to the axis maximum* instead of 0, so the
+    animation is resolution-independent. The device computes
+    ``axis_max - value`` where ``axis_max`` is ``display_width -
+    widget_width`` for :data:`PROP_X`, ``display_height - widget_height``
+    for :data:`PROP_Y`, and the full ``display_width`` / ``display_height``
+    for :data:`PROP_WIDTH` / :data:`PROP_HEIGHT`. Other props ignore the
+    flag. E.g. ``anim_track(PROP_X, 0, 0, end_inverted=True)`` bounces a
+    shape from the left edge to the right edge of any panel.
     """
-    return _proto.AnimTrack(prop=prop, start=start, end=end)
+    return _proto.AnimTrack(
+        prop=prop,
+        start=start,
+        end=end,
+        start_inverted=start_inverted,
+        end_inverted=end_inverted,
+    )
 
 
 def animation(
@@ -1632,49 +1651,66 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     """Build the compiled-in firmware fallback screen for touch-less boards.
 
     Counterpart to :func:`build_setup_screen` for display-less LED-matrix
-    boards (Stage LB1, e.g. ``jc_esp32p4_m3`` — an 8×32 WS2812B panel) that
-    have no touchscreen, so the trackpad-based setup screen makes no sense.
+    boards (Stage LB1, e.g. ``jc_esp32p4_m3``) that have no touchscreen, so
+    the trackpad-based setup screen makes no sense.
 
-    Instead of three static swatches this lays out three shapes on an
-    absolute layer — a **red square**, a **green circle**, and a **blue
-    square** — each driven by an LVGL :func:`animation` that bounces it
-    horizontally across the panel while pulsing its size. The three shapes
-    run at different durations / easing curves / start delays so they drift
-    in and out of phase, which doubles as a lively smoke test for the LED
-    display driver's colour, geometry, and animation mapping.
+    Three shapes — a **red square**, a **green circle**, and a **blue
+    square** — bounce around the *entire* panel while pulsing their size,
+    each on its own X / Y / size timeline so they drift in and out of
+    phase. It doubles as a lively smoke test for the LED display driver's
+    colour, geometry, and animation mapping.
 
-    ``width`` / ``height`` describe the target panel in pixels (defaults
-    match the 32×8 LED matrix). Callers with a differently-sized display
-    (e.g. :func:`~touchy_pad.cli` screen init reading the reported board
-    dimensions) can pass the real geometry so the shapes stay in-bounds.
+    Stage LB11 — the layout is now **resolution-independent**: the bounce
+    endpoints use :func:`anim_track` inversion (``end_inverted=True``) so
+    the device resolves them against its own display size at build time
+    (``display_dim − shape_size``), keeping the shapes in-bounds on any
+    panel without the host knowing the geometry. The ``width`` / ``height``
+    arguments are therefore ignored (kept for backwards compatibility);
+    the same compiled-in screen works on a 32×8 strip or a 64×64 matrix.
     """
+    del width, height  # Stage LB11 — geometry resolved on-device via inversion.
+
     screen = Screen("default", layout=absolute())
 
-    # Keep the shapes comfortably inside the panel: the largest edge is a
-    # touch under the panel height, and the smallest is half that so the
-    # size pulse is visible. The bounce runs across the full width minus
-    # the shape's footprint so the shapes never clip off-screen.
-    size_max = min(height, 8)
-    size_min = max(1, size_max // 2)
-    y = max(0, (height - size_max) // 2)
-    x_min = 0
-    x_max = max(x_min, width - size_max)
+    # A small shape footprint that reads well even on a tiny strip. The
+    # size pulse runs between half and full; the rect is sized to the
+    # *max* footprint so the inverted X/Y bounce (which reads the widget
+    # size once at build time) never lets a shape clip off-screen.
+    size_max = 8
+    size_min = size_max // 2
 
-    def _bouncer(name, color, *, radius, duration_ms, start_delay_ms, path):
+    def _bouncer(name, color, *, radius, dur_x, dur_y, dur_size, path, delay):
+        # X and Y bounce on independent timelines → 2-D drift. Each goes
+        # from the near edge (0) to the far edge (axis_max − size, via
+        # end_inverted) and ping-pongs back.
         return spacer(
             name,
-            rect=rect(x=x_min, y=y, w=size_max, h=size_max),
+            rect=rect(x=0, y=0, w=size_max, h=size_max),
             style=[style(bg_color=color, radius=radius)],
             animations=[
                 animation(
-                    anim_track(StyleProp.X, x_min, x_max),
-                    anim_track(StyleProp.WIDTH, size_min, size_max),
-                    anim_track(StyleProp.HEIGHT, size_min, size_max),
-                    duration_ms=duration_ms,
+                    anim_track(StyleProp.X, 0, 0, end_inverted=True),
+                    duration_ms=dur_x,
                     path=path,
                     repeat_count=0,  # infinite
-                    reverse=True,  # ping-pong back and forth
-                    start_delay_ms=start_delay_ms,
+                    reverse=True,
+                    start_delay_ms=delay,
+                ),
+                animation(
+                    anim_track(StyleProp.Y, 0, 0, end_inverted=True),
+                    duration_ms=dur_y,
+                    path=path,
+                    repeat_count=0,
+                    reverse=True,
+                    start_delay_ms=delay,
+                ),
+                animation(
+                    anim_track(StyleProp.WIDTH, size_min, size_max),
+                    anim_track(StyleProp.HEIGHT, size_min, size_max),
+                    duration_ms=dur_size,
+                    path=AnimPath.EASE_IN_OUT,
+                    repeat_count=0,
+                    reverse=True,
                 ),
             ],
         )
@@ -1684,41 +1720,55 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
         "swatch_red",
         0x200000,
         radius=0,
-        duration_ms=900,
-        start_delay_ms=0,
+        dur_x=900,
+        dur_y=1300,
+        dur_size=700,
         path=AnimPath.EASE_IN_OUT,
+        delay=0,
     )
     screen += _bouncer(
         "swatch_green",
         0x002000,
         radius=32767,
-        duration_ms=1200,
-        start_delay_ms=250,
+        dur_x=1200,
+        dur_y=800,
+        dur_size=1000,
         path=AnimPath.BOUNCE,
+        delay=250,
     )
     screen += _bouncer(
         "swatch_blue",
         0x000020,
         radius=0,
-        duration_ms=750,
-        start_delay_ms=450,
+        dur_x=750,
+        dur_y=1100,
+        dur_size=850,
         path=AnimPath.OVERSHOOT,
+        delay=450,
     )
 
-    # Stage LB3 — a full-screen scrolling welcome marquee drawn *above*
-    # the bouncers (appended last → LVGL draws it on top). Explicit rect
-    # fills the 32×8 panel under the absolute layout *and* gives
-    # SCROLL_CIRCULAR the fixed width it needs to activate. font_size=8
-    # matches the panel height (Montserrat 8 enabled in sdkconfig.defaults).
+    # Stage LB3 / LB11 — a scrolling welcome marquee drawn *above* the
+    # bouncers (appended last → LVGL draws it on top). SCROLL_CIRCULAR
+    # needs a fixed width narrower than the text; rather than bake in a
+    # pixel width we drive it to the *full display width* with a one-shot
+    # inverted WIDTH animation (start=end=0, both inverted → display_width
+    # at both ends, so it snaps to full width and holds). font_size=8 keeps
+    # it to a single 8px row (Montserrat 8 enabled in sdkconfig.defaults).
     welcome = label(
         "welcome",
         text="Welcome to touchypad.",
         font_size=8,
         long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
-        rect=rect(x=0, y=0, w=width, h=height),
+        rect=rect(x=0, y=0, w=0, h=size_max),
         style=style(text_color=0x404040),
+        animations=[
+            animation(
+                anim_track(StyleProp.WIDTH, 0, 0, start_inverted=True, end_inverted=True),
+                duration_ms=1,
+                repeat_count=1,  # one-shot: set full width, then hold
+            ),
+        ],
     )
-    grow(welcome, x=1, y=1)  # documentation / forward-compat under flex/grid
     screen += welcome
 
     return screen

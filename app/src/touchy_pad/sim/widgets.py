@@ -611,18 +611,71 @@ def _proto_easing(path: int) -> QtCore.QEasingCurve:
     return QtCore.QEasingCurve(_EASING_MAP.get(path, QtCore.QEasingCurve.Type.Linear))
 
 
+def _resolve_anim_endpoint(
+    widget: QtWidgets.QWidget, w: _proto.Widget, prop: int, value: int, inverted: bool
+) -> int:
+    """Resolve an AnimTrack endpoint, honouring Stage LB11 inversion.
+
+    When ``inverted`` is set the value is measured from the axis maximum
+    (display size minus the widget's own size for X/Y; the full display
+    size for WIDTH/HEIGHT) instead of 0, mirroring the firmware so the
+    same resolution-independent animation renders identically here.
+
+    Like the firmware, the widget's own size for the X/Y subtraction is
+    taken from its declared ``rect`` (deterministic) when available, and
+    the display dimension comes from the parent container.
+    """
+    if not inverted:
+        return int(value)
+    parent = widget.parentWidget()
+    if parent is None:
+        return int(value)
+
+    has_rect = w.WhichOneof("placement") == "rect"
+
+    def _widget_dim(horiz: bool) -> int:
+        if has_rect:
+            v = w.rect.w if horiz else w.rect.h
+            if v > 0:
+                return int(v)
+        return widget.width() if horiz else widget.height()
+
+    if prop == _proto.StyleProp.X:
+        axis_max = parent.width() - _widget_dim(True)
+    elif prop == _proto.StyleProp.Y:
+        axis_max = parent.height() - _widget_dim(False)
+    elif prop == _proto.StyleProp.WIDTH:
+        axis_max = parent.width()
+    elif prop == _proto.StyleProp.HEIGHT:
+        axis_max = parent.height()
+    else:
+        return int(value)  # inversion unsupported for this prop
+    return max(0, int(axis_max)) - int(value)
+
+
 def _make_track_anim(
     widget: QtWidgets.QWidget,
-    prop: int,
-    start: int,
-    end: int,
+    w: _proto.Widget,
+    track: _proto.AnimTrack,
     duration_ms: int,
     easing: QtCore.QEasingCurve,
+    *,
+    swap: bool = False,
 ) -> QtCore.QVariantAnimation:
-    """Build a single QVariantAnimation tied to one StyleProp axis."""
+    """Build a single QVariantAnimation tied to one StyleProp axis.
+
+    ``swap`` runs the track backwards (end→start) for the reverse leg of a
+    ping-pong. Inversion (Stage LB11) is resolved per endpoint here.
+    """
+    prop = track.prop
+    v_start = _resolve_anim_endpoint(widget, w, prop, track.start, track.start_inverted)
+    v_end = _resolve_anim_endpoint(widget, w, prop, track.end, track.end_inverted)
+    if swap:
+        v_start, v_end = v_end, v_start
+
     anim = QtCore.QVariantAnimation()
-    anim.setStartValue(int(start))
-    anim.setEndValue(int(end))
+    anim.setStartValue(int(v_start))
+    anim.setEndValue(int(v_end))
     anim.setDuration(max(1, int(duration_ms)))
     anim.setEasingCurve(easing)
 
@@ -646,53 +699,68 @@ def _make_track_anim(
 
 
 def _apply_animations(widget: QtWidgets.QWidget, w: _proto.Widget) -> None:
-    """Attach every :class:`_proto.Animation` on ``w`` to ``widget``."""
-    for proto_anim in w.animations:
-        easing = _proto_easing(proto_anim.path)
-        dur = int(proto_anim.duration_ms) or 1
-        # Forward leg: every track in parallel.
-        forward = QtCore.QParallelAnimationGroup(widget)
-        for track in proto_anim.tracks:
-            forward.addAnimation(
-                _make_track_anim(widget, track.prop, track.start, track.end, dur, easing)
-            )
+    """Attach every :class:`_proto.Animation` on ``w`` to ``widget``.
 
-        cycle: QtCore.QAbstractAnimation
-        if proto_anim.reverse:
-            rev_dur = int(proto_anim.reverse_duration_ms) or dur
-            reverse = QtCore.QParallelAnimationGroup(widget)
+    Stage LB11 — inverted endpoints need the widget to already be parented
+    + sized so the axis maximum (parent size) is known. This runs during
+    the build pass (before the widget is added to its container), so when
+    any track uses inversion we defer building + starting to the next
+    event-loop turn, by which point the layout has settled.
+    """
+
+    def _build_all() -> None:
+        for proto_anim in w.animations:
+            easing = _proto_easing(proto_anim.path)
+            dur = int(proto_anim.duration_ms) or 1
+            # Forward leg: every track in parallel.
+            forward = QtCore.QParallelAnimationGroup(widget)
             for track in proto_anim.tracks:
-                reverse.addAnimation(
-                    _make_track_anim(widget, track.prop, track.end, track.start, rev_dur, easing)
-                )
-            seq = QtCore.QSequentialAnimationGroup(widget)
-            seq.addAnimation(forward)
-            if proto_anim.reverse_delay_ms:
-                seq.addPause(int(proto_anim.reverse_delay_ms))
-            seq.addAnimation(reverse)
-            cycle = seq
-        else:
-            cycle = forward
+                forward.addAnimation(_make_track_anim(widget, w, track, dur, easing))
 
-        # Stage 59 — `repeat_count == 0` means infinite in the proto,
-        # which maps to Qt's `-1` loop count. Other values are literal.
-        loops = -1 if proto_anim.repeat_count == 0 else int(proto_anim.repeat_count)
-
-        # `repeat_delay_ms` and `start_delay_ms` need a sequential
-        # wrapper since QAbstractAnimation has no native pause hook.
-        if proto_anim.start_delay_ms or (proto_anim.repeat_delay_ms and loops != 1):
-            wrapper = QtCore.QSequentialAnimationGroup(widget)
-            if proto_anim.start_delay_ms:
-                wrapper.addPause(int(proto_anim.start_delay_ms))
-            if proto_anim.repeat_delay_ms and loops != 1:
-                # Inline the cycle then a pause; rely on the outer loop
-                # count to repeat the whole wrapper sequence.
-                wrapper.addAnimation(cycle)
-                wrapper.addPause(int(proto_anim.repeat_delay_ms))
+            cycle: QtCore.QAbstractAnimation
+            if proto_anim.reverse:
+                rev_dur = int(proto_anim.reverse_duration_ms) or dur
+                reverse = QtCore.QParallelAnimationGroup(widget)
+                for track in proto_anim.tracks:
+                    reverse.addAnimation(
+                        _make_track_anim(widget, w, track, rev_dur, easing, swap=True)
+                    )
+                seq = QtCore.QSequentialAnimationGroup(widget)
+                seq.addAnimation(forward)
+                if proto_anim.reverse_delay_ms:
+                    seq.addPause(int(proto_anim.reverse_delay_ms))
+                seq.addAnimation(reverse)
+                cycle = seq
             else:
-                wrapper.addAnimation(cycle)
-            wrapper.setLoopCount(loops)
-            wrapper.start()
-        else:
-            cycle.setLoopCount(loops)
-            cycle.start()
+                cycle = forward
+
+            # Stage 59 — `repeat_count == 0` means infinite in the proto,
+            # which maps to Qt's `-1` loop count. Other values are literal.
+            loops = -1 if proto_anim.repeat_count == 0 else int(proto_anim.repeat_count)
+
+            # `repeat_delay_ms` and `start_delay_ms` need a sequential
+            # wrapper since QAbstractAnimation has no native pause hook.
+            if proto_anim.start_delay_ms or (proto_anim.repeat_delay_ms and loops != 1):
+                wrapper = QtCore.QSequentialAnimationGroup(widget)
+                if proto_anim.start_delay_ms:
+                    wrapper.addPause(int(proto_anim.start_delay_ms))
+                if proto_anim.repeat_delay_ms and loops != 1:
+                    # Inline the cycle then a pause; rely on the outer loop
+                    # count to repeat the whole wrapper sequence.
+                    wrapper.addAnimation(cycle)
+                    wrapper.addPause(int(proto_anim.repeat_delay_ms))
+                else:
+                    wrapper.addAnimation(cycle)
+                wrapper.setLoopCount(loops)
+                wrapper.start()
+            else:
+                cycle.setLoopCount(loops)
+                cycle.start()
+
+    needs_defer = any(t.start_inverted or t.end_inverted for a in w.animations for t in a.tracks)
+    if needs_defer:
+        # Defer until the widget is parented + laid out so parent size (the
+        # axis maximum) is known.
+        QtCore.QTimer.singleShot(0, _build_all)
+    else:
+        _build_all()

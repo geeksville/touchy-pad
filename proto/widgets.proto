@@ -244,10 +244,18 @@ message Transition {
 // (pixels for X/Y/WIDTH/HEIGHT, 0–255 for OPA, RGB565/RGB888 ints for
 // colour props, etc.). Named `start`/`end` rather than `from`/`to`
 // because `from` is a reserved word in Python.
+//
+// Stage LB11 — `start_inverted` / `end_inverted` make a value resolve
+// relative to the axis maximum instead of 0 (X → display_width −
+// widget_width, Y → display_height − widget_height, WIDTH → display_width,
+// HEIGHT → display_height), so an animation can be authored
+// resolution-independently. Any other `prop` ignores the flag.
 message AnimTrack {
     StyleProp prop  = 1;
     int32     start = 2;
     int32     end   = 3;
+    bool      start_inverted = 4;   // resolve `start` as axis_max − start
+    bool      end_inverted   = 5;   // resolve `end`   as axis_max − end
 }
 
 // Stage 59 — declarative LVGL animation: one or more `AnimTrack`s that
@@ -979,7 +987,7 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 27;  // LB3: font_size moved Label → Style
+        CURRENT         = 28;  // LB11: AnimTrack start/end_inverted
     }
     Version version = 6;
 

@@ -21,8 +21,26 @@
                 "tracks": [
                   {
                     "prop": "X",
-                    "end": 24
-                  },
+                    "endInverted": true
+                  }
+                ],
+                "durationMs": 900,
+                "path": "EASE_IN_OUT",
+                "reverse": true
+              },
+              {
+                "tracks": [
+                  {
+                    "prop": "Y",
+                    "endInverted": true
+                  }
+                ],
+                "durationMs": 1300,
+                "path": "EASE_IN_OUT",
+                "reverse": true
+              },
+              {
+                "tracks": [
                   {
                     "prop": "WIDTH",
                     "start": 4,
@@ -34,7 +52,7 @@
                     "end": 8
                   }
                 ],
-                "durationMs": 900,
+                "durationMs": 700,
                 "path": "EASE_IN_OUT",
                 "reverse": true
               }
@@ -58,8 +76,28 @@
                 "tracks": [
                   {
                     "prop": "X",
-                    "end": 24
-                  },
+                    "endInverted": true
+                  }
+                ],
+                "durationMs": 1200,
+                "path": "BOUNCE",
+                "reverse": true,
+                "startDelayMs": 250
+              },
+              {
+                "tracks": [
+                  {
+                    "prop": "Y",
+                    "endInverted": true
+                  }
+                ],
+                "durationMs": 800,
+                "path": "BOUNCE",
+                "reverse": true,
+                "startDelayMs": 250
+              },
+              {
+                "tracks": [
                   {
                     "prop": "WIDTH",
                     "start": 4,
@@ -71,10 +109,9 @@
                     "end": 8
                   }
                 ],
-                "durationMs": 1200,
-                "path": "BOUNCE",
-                "reverse": true,
-                "startDelayMs": 250
+                "durationMs": 1000,
+                "path": "EASE_IN_OUT",
+                "reverse": true
               }
             ],
             "spacer": {}
@@ -96,8 +133,28 @@
                 "tracks": [
                   {
                     "prop": "X",
-                    "end": 24
-                  },
+                    "endInverted": true
+                  }
+                ],
+                "durationMs": 750,
+                "path": "OVERSHOOT",
+                "reverse": true,
+                "startDelayMs": 450
+              },
+              {
+                "tracks": [
+                  {
+                    "prop": "Y",
+                    "endInverted": true
+                  }
+                ],
+                "durationMs": 1100,
+                "path": "OVERSHOOT",
+                "reverse": true,
+                "startDelayMs": 450
+              },
+              {
+                "tracks": [
                   {
                     "prop": "WIDTH",
                     "start": 4,
@@ -109,10 +166,9 @@
                     "end": 8
                   }
                 ],
-                "durationMs": 750,
-                "path": "OVERSHOOT",
-                "reverse": true,
-                "startDelayMs": 450
+                "durationMs": 850,
+                "path": "EASE_IN_OUT",
+                "reverse": true
               }
             ],
             "spacer": {}
@@ -120,7 +176,6 @@
           {
             "id": "welcome",
             "rect": {
-              "w": 32,
               "h": 8
             },
             "styles": [
@@ -131,8 +186,19 @@
                 "fontSize": 8
               }
             ],
-            "growX": 1,
-            "growY": 1,
+            "animations": [
+              {
+                "tracks": [
+                  {
+                    "prop": "WIDTH",
+                    "startInverted": true,
+                    "endInverted": true
+                  }
+                ],
+                "durationMs": 1,
+                "repeatCount": 1
+              }
+            ],
             "label": {
               "text": "Welcome to touchypad.",
               "longMode": "LONG_MODE_SCROLL_CIRCULAR"

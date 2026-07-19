@@ -1021,7 +1021,7 @@ def test_label_long_mode_round_trips():
 
 def test_build_setup_screen_touchless_has_scrolling_welcome():
     """The touch-less default screen overlays a SCROLL_CIRCULAR welcome."""
-    screen = build_setup_screen_touchless(width=32, height=8)
+    screen = build_setup_screen_touchless()
     decoded = _proto.Screen.FromString(screen.to_bytes())
     children = _children(decoded.active)
     # The welcome label is appended last → drawn above the bouncers.
@@ -1032,9 +1032,28 @@ def test_build_setup_screen_touchless_has_scrolling_welcome():
     assert welcome.label.long_mode == _proto.LongMode.LONG_MODE_SCROLL_CIRCULAR
     # font_size lives on a Style now (folded in by the label() sugar).
     assert any(st.font_size == 8 for st in welcome.styles)
-    # Explicit rect fills the 32×8 panel (also activates SCROLL_CIRCULAR).
-    assert welcome.rect.w == 32
-    assert welcome.rect.h == 8
+    # Stage LB11 — the welcome width is driven to full display width by a
+    # one-shot inverted WIDTH animation (resolution-independent) rather
+    # than a baked-in rect width.
+    width_track = welcome.animations[0].tracks[0]
+    assert width_track.prop == _proto.StyleProp.WIDTH
+    assert width_track.start_inverted and width_track.end_inverted
+
+
+def test_build_setup_screen_touchless_bounces_in_2d():
+    """Each bouncer drifts on independent inverted X and Y timelines."""
+    screen = build_setup_screen_touchless()
+    decoded = _proto.Screen.FromString(screen.to_bytes())
+    red = _children(decoded.active)[0]
+    assert red.id == "swatch_red"
+    props = {a.tracks[0].prop: a for a in red.animations}
+    # X and Y bounces both resolve their far endpoint via inversion.
+    x_anim = props[_proto.StyleProp.X]
+    y_anim = props[_proto.StyleProp.Y]
+    assert x_anim.tracks[0].end_inverted and not x_anim.tracks[0].start_inverted
+    assert y_anim.tracks[0].end_inverted and not y_anim.tracks[0].start_inverted
+    # Independent timelines → different durations.
+    assert x_anim.duration_ms != y_anim.duration_ms
 
 
 def test_touchless_default_screen_json_round_trips():

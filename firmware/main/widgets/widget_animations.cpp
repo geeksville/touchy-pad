@@ -62,6 +62,51 @@ void widget_animations_delete_cb(lv_event_t *e)
     delete wa;
 }
 
+// Stage LB11 — resolve an AnimTrack endpoint. When `inverted` is set the
+// value is measured from the axis maximum instead of 0, so an animation
+// stays in-bounds on any panel size. `axis_max` depends on the animated
+// prop and the live display + widget geometry (read once at build time).
+// Non geometry props ignore inversion.
+//
+// IMPORTANT: apply_animations() runs *before* apply_rect() in the widget
+// build pipeline, so the LVGL object is not yet sized here. For the X/Y
+// "leave room for the widget" subtraction we therefore read the widget's
+// *declared* rect from the proto (what the author intends), only falling
+// back to the (possibly still-default) laid-out size when no rect is set.
+int32_t resolve_anim_endpoint(lv_obj_t *obj, const touchy_Widget &w,
+                              touchy_StyleProp prop, int32_t value, bool inverted)
+{
+    if (!inverted) return value;
+
+    lv_display_t *disp = lv_obj_get_display(obj);
+    const int32_t dw = disp ? lv_display_get_horizontal_resolution(disp) : 0;
+    const int32_t dh = disp ? lv_display_get_vertical_resolution(disp) : 0;
+
+    const bool has_rect = (w.which_placement == touchy_Widget_rect_tag);
+    auto widget_dim = [&](bool horiz) -> int32_t {
+        if (has_rect) {
+            const int32_t v = horiz ? w.placement.rect.w : w.placement.rect.h;
+            if (v > 0) return v;
+        }
+        lv_obj_update_layout(obj);
+        return horiz ? lv_obj_get_width(obj) : lv_obj_get_height(obj);
+    };
+
+    int32_t axis_max;
+    switch (prop) {
+        case touchy_StyleProp_X:      axis_max = dw - widget_dim(true);  break;
+        case touchy_StyleProp_Y:      axis_max = dh - widget_dim(false); break;
+        case touchy_StyleProp_WIDTH:  axis_max = dw; break;
+        case touchy_StyleProp_HEIGHT: axis_max = dh; break;
+        default:
+            ESP_LOGW(TAG, "inverted anim endpoint unsupported for prop %d; "
+                          "using raw value", (int)prop);
+            return value;
+    }
+    if (axis_max < 0) axis_max = 0;
+    return axis_max - value;
+}
+
 }  // namespace
 
 void apply_animations(lv_obj_t *obj, const touchy_Widget &w)
@@ -103,7 +148,14 @@ void apply_animations(lv_obj_t *obj, const touchy_Widget &w)
             lv_anim_init(&a);
             lv_anim_set_var(&a, ctx);
             lv_anim_set_exec_cb(&a, anim_style_exec_cb);
-            lv_anim_set_values(&a, track.start, track.end);
+            // Stage LB11 — resolve inverted endpoints against the live
+            // display size + the widget's declared rect (see
+            // resolve_anim_endpoint; the object isn't sized yet here).
+            const int32_t v0 =
+                resolve_anim_endpoint(obj, w, track.prop, track.start, track.start_inverted);
+            const int32_t v1 =
+                resolve_anim_endpoint(obj, w, track.prop, track.end, track.end_inverted);
+            lv_anim_set_values(&a, v0, v1);
             lv_anim_set_duration(&a, anim.duration_ms);
             lv_anim_set_path_cb(&a, lv_path_from_proto(anim.path));
             lv_anim_set_repeat_count(&a, repeat);
