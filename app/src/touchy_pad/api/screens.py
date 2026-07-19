@@ -1718,7 +1718,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     # radius=0 → square corners; radius=32767 → fully rounded (circle).
     screen += _bouncer(
         "swatch_red",
-        0x200000,
+        0x400000,
         radius=0,
         dur_x=900,
         dur_y=1300,
@@ -1728,7 +1728,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     )
     screen += _bouncer(
         "swatch_green",
-        0x002000,
+        0x004000,
         radius=32767,
         dur_x=1200,
         dur_y=800,
@@ -1738,7 +1738,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     )
     screen += _bouncer(
         "swatch_blue",
-        0x000020,
+        0x000030,
         radius=0,
         dur_x=750,
         dur_y=1100,
@@ -1760,7 +1760,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
         font_size=8,
         long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
         rect=rect(x=0, y=0, w=0, h=size_max),
-        style=style(text_color=0x404040),
+        style=style(text_color=0x303030),
         animations=[
             animation(
                 anim_track(StyleProp.WIDTH, 0, 0, start_inverted=True, end_inverted=True),
