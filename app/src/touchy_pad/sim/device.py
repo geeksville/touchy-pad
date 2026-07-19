@@ -314,6 +314,14 @@ class SimDevice:
     def _cmd_screen_wake(self, _msg: _proto.ScreenWakeCmd) -> _proto.Response:
         return _result()
 
+    def _cmd_set_property(self, msg: _proto.SetPropertyCmd) -> _proto.Response:
+        # Stage lb12 — the simulator renders widgets with Qt, not LVGL's
+        # generic property API, so runtime property overrides are ignored.
+        prop = msg.WhichOneof("property") or "?"
+        ident = getattr(msg, prop, prop) if prop != "?" else "?"
+        _log.warning("sim: set_property ignored (widget=%r property=%r)", msg.widget_id, ident)
+        return _result()
+
     def _cmd_set_preferences(self, msg: _proto.SetPreferencesCmd) -> _proto.Response:
         # Stage 82 — apply a partial preferences update. Only fields with
         # explicit presence are merged; file_version from the host is

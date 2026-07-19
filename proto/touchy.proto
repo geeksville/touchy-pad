@@ -186,6 +186,43 @@ message SysRebootBootloaderCmd {
 message SysBoardInfoGetCmd {
 }
 
+// Stage lb12 — a 2-D integer point value for SetPropertyCmd (e.g. an X/Y
+// position property). Distinct from Rect — this is a property *value*, not
+// a layout placement.
+message Point {
+    int32 x = 1;
+    int32 y = 2;
+}
+
+// Stage lb12 — override a single LVGL property on the widget whose
+// Widget.id == `widget_id`, at runtime. The override is session-scoped
+// (RAM only, never persisted) and *sticky*: it re-applies whenever a
+// widget with that id is (re)built, and applies immediately if the widget
+// is already on screen. Setting a property on a widget that is not
+// currently loaded is fine — the override is remembered and applied when
+// the widget next appears. Leaving the `value` oneof unset REMOVES any
+// existing override for this (widget_id, property).
+message SetPropertyCmd {
+    string widget_id = 1;
+
+    // Property identifier — exactly one. `property_name` is resolved with
+    // lv_obj_property_get_id() (an LVGL short name, e.g. "text", enabled by
+    // LV_USE_OBJ_PROPERTY_NAME); `property_id` is a raw lv_prop_id_t.
+    oneof property {
+        string property_name = 2;
+        uint32 property_id   = 3;
+    }
+
+    // The new value. Leave the whole oneof unset to REMOVE the override.
+    oneof value {
+        bool   bool_value   = 4;
+        int32  int_value    = 5;
+        string string_value = 6;
+        uint32 color_value  = 7;   // 0xRRGGBB
+        Point  point_value  = 8;
+    }
+}
+
 // Top-level command envelope. Exactly one `cmd` is set per message.
 message Command {
     // Stage 82 — retired tags. `screen_load` (3) → SetPreferencesCmd
@@ -204,6 +241,7 @@ message Command {
         RunActionsCmd          run_actions           = 11;
         SetPreferencesCmd      set_preferences       = 12;
         GetPreferencesCmd      get_preferences       = 13;
+        SetPropertyCmd         set_property          = 14;
     }
 }
 
@@ -235,7 +273,7 @@ message SysBoardInfoResponse {
         option allow_alias = true;
         UNSPECIFIED = 0;
 
-        CURRENT = 12;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
+        CURRENT = 13;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
         MIN_FIRMWARE_VERSION = 10;  // minimum version the PC library supports 
 
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
@@ -264,6 +302,8 @@ message SysBoardInfoResponse {
                   //           LED-matrix board) — additive scalar field
         V12 = 12; // stage LB4: GetPreferencesCmd + PreferencesReadResponse
                   //           let the host read back the live prefs
+        V13 = 13; // stage lb12: Command gains SetPropertyCmd (runtime widget
+                  //           property overrides) — additive
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number

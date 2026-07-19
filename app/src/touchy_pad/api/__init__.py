@@ -72,6 +72,7 @@ from .macros import (
     type_text,
     zoom_move,
 )
+from .props import Color, Point
 from .screens import (
     AnimPath,
     ImageSource,
@@ -196,6 +197,9 @@ __all__ = [
     "DEFAULT_SCREEN_PATH",
     # Content-addressed image cache (Stage 100).
     "ImageCache",
+    # Runtime widget property overrides (Stage lb12).
+    "Color",
+    "Point",
     # Macros.
     "key_down",
     "key_up",

@@ -962,6 +962,33 @@ def pref_from_template(name: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Property — runtime widget property overrides (Stage lb12)
+# ---------------------------------------------------------------------------
+
+
+@cli.group("property")
+def property_group() -> None:
+    """Override LVGL widget properties at runtime (session-scoped)."""
+
+
+@property_group.command("set")
+@click.argument("widget_id")
+@click.argument("prop")
+@click.argument("value", nargs=-1, required=True)
+def property_set(widget_id: str, prop: str, value: tuple[str, ...]) -> None:
+    """Set widget WIDGET_ID's property PROP to VALUE (a string).
+
+    PROP is an LVGL property name (e.g. ``text``). VALUE is sent as a
+    string — multi-word values do not need quoting:
+    ``touchy property set welcome text Hello world``.
+    The override is session-scoped and sticky: it survives screen reloads
+    and applies whenever the widget next appears.
+    """
+    with _client() as c:
+        c.set_property(widget_id, prop, " ".join(value))
+
+
+# ---------------------------------------------------------------------------
 # Screen — backlight control, layout management, and screen authoring
 # ---------------------------------------------------------------------------
 

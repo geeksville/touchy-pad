@@ -36,6 +36,7 @@ from . import _events, images_dynamic, protobuf
 from ._transport import Transport
 from ._usb_ids import PID, VID
 from .client import TouchyClient
+from .props import Color, Point
 from .screens import Screen as _DslScreen
 
 logger = logging.getLogger(__name__)
@@ -539,6 +540,22 @@ class Touchy:
         path = user_screen_path(name) if drive == "F" else f"R:host/uscr/{name}.pb"
         logger.debug("show_user_screen: %s", path)
         self._client.run_actions([change_widget_ref_action("page", path)])
+
+    def set_property(
+        self,
+        widget_id: str,
+        prop: str | int,
+        value: bool | int | str | Color | Point | None,
+    ) -> None:
+        """Override one LVGL property on a widget at runtime (Stage lb12).
+
+        Thin wrapper over :meth:`TouchyClient.set_property` — see there for
+        the *prop* (name/id) and *value* (bool / int / str / :class:`Color`
+        / :class:`Point` / ``None`` to remove) mapping. The override is a
+        sticky, RAM-only session override: it re-applies on every rebuild
+        of the target widget and works even if the widget isn't loaded yet.
+        """
+        self._client.set_property(widget_id, prop, value)
 
     def set_image_button_slot(
         self,

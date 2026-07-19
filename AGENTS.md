@@ -28,7 +28,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 28`,
-`SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
+`SysBoardInfoResponse.ProtocolVersion.CURRENT == 13`,
 `PreferencesFile.Version.CURRENT == 9`.
 Highlights worth remembering:
 
@@ -534,6 +534,33 @@ Highlights worth remembering:
   mirrors the resolver (`_resolve_anim_endpoint` off the parent widget
   size). `just build-proto` + `gen-default-screen`/`build-default-screen`
   regenerate the embedded screens.
+
+- **Stage lb12 (runtime widget property overrides via `SetPropertyCmd`).**
+  New `Command.set_property = 14` (`Point` message added;
+  `SysBoardInfoResponse.ProtocolVersion.CURRENT` 12→13). `SetPropertyCmd`
+  = `{widget_id, oneof property{property_name|property_id}, oneof
+  value{bool|int|string|color(0xRRGGBB)|point}}`; an **unset `value`
+  oneof removes** the override. Enabled `CONFIG_LV_USE_OBJ_PROPERTY` +
+  `CONFIG_LV_USE_OBJ_PROPERTY_NAME` in `sdkconfig.defaults` so the device
+  resolves a property by LVGL short name (`lv_obj_property_get_id`) or raw
+  `lv_prop_id_t` and sets it via `lv_obj_set_property`. Overrides are
+  **session-scoped (RAM only) and sticky**: a new
+  `firmware/main/widgets/widget_property.{h,cpp}` keeps a `(widget_id,
+  ident)`→value table plus an id→obj registry rebuilt each screen load
+  (hooked into `widget_builders.cpp`'s `widget_refs_reset_pending` /
+  `widget_refs_commit`, and `widget_property_register(id,obj)` after each
+  widget is built), so an override applies immediately if the widget is
+  live and re-applies whenever it's (re)built — even if set before the
+  widget exists. All state is touched under `lvgl_port_lock`.
+  `widget_property_set()` runs from the host_api dispatch case; malformed
+  (no property) → `INVALID_ARG`, absent widget is **not** an error. Host:
+  `TouchyClient.set_property(widget_id, prop, value)` / `Touchy.set_property`
+  map Python `bool`/`int`/`str` natively and require the wrapper types
+  `Color(int)` / `Point(x,y)` (both exported from `touchy_pad.api`) to
+  disambiguate colour/point from int; `value=None` removes. CLI:
+  `touchy property set WIDGET_ID PROPERTY VALUE` (string value for now).
+  The simulator has no LVGL property API → `_cmd_set_property` logs a WARN
+  and returns OK.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

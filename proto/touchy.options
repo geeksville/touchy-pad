@@ -47,3 +47,10 @@ touchy.LvEvent.user_data               max_size:32
 # (a short module name).
 touchy.LogRecord.message               max_size:200
 touchy.LogRecord.tag                   max_size:16
+
+# Stage lb12 — SetPropertyCmd. Bound the strings so nanopb stack-allocates
+# them (FT_STATIC). widget_id matches LvEvent.user_data; property_name is a
+# short LVGL property name; string_value holds e.g. a label's new text.
+touchy.SetPropertyCmd.widget_id        max_size:32
+touchy.SetPropertyCmd.property_name    max_size:32
+touchy.SetPropertyCmd.string_value     max_size:128

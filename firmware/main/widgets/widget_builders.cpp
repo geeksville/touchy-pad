@@ -22,6 +22,7 @@
 #include "trackpad_widget.h"
 #include "widget_actions.h"
 #include "widget_animations.h"
+#include "widget_property.h"
 #include "widget_styles.h"
 
 #include "esp_log.h"
@@ -1083,6 +1084,9 @@ void widget_build_children(lv_obj_t *parent, const touchy_Widget &container)
             apply_rect(obj, placement_src, absolute_layout, &container);
         }
         if (w->centered) lv_obj_center(obj);
+        // Stage lb12 — record this widget by id so a host SetPropertyCmd
+        // can target it, and (re)apply any sticky override to it now.
+        widget_property_register(w->id, obj);
         // Stage 57 — patch the outermost ref entry so it can be
         // rebuilt in place by `widget_refs_change`. The recursive
         // resolve pushes deeper entries first, so `back()` is the
@@ -1162,6 +1166,7 @@ void widget_build_layer(lv_obj_t *parent, const touchy_Widget &root_in)
     apply_animations(obj, root);
     apply_rect(obj, root, /*absolute_layout=*/true);
     if (root.centered) lv_obj_center(obj);
+    widget_property_register(root.id, obj);  // Stage lb12 — id→obj registry
     if (is_ref && g_pending_refs.size() > pre) {
         ActiveRef &back = g_pending_refs.back();
         back.parent          = parent;
@@ -1182,6 +1187,7 @@ void widget_refs_reset_pending()
 {
     g_pending_refs.clear();
     g_ref_expansion.clear();
+    widget_property_build_reset();  // Stage lb12 — fresh id→obj registry
 }
 
 void widget_refs_commit()
@@ -1189,6 +1195,7 @@ void widget_refs_commit()
     g_active_refs = std::move(g_pending_refs);
     g_pending_refs.clear();
     g_ref_expansion.clear();
+    widget_property_build_commit();  // Stage lb12 — promote id→obj registry
 }
 
 size_t widget_refs_active_count()

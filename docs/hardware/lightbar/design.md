@@ -1675,3 +1675,248 @@ zero/absurd totals exactly as the Stage lb6 single-panel path does.
 * Colour order / gamma / brightness curves — unchanged from today.
 * Live reconfiguration without a reboot (`board_config` is still read once
   at `display_init()`).
+
+## stage lb12: set_property (runtime widget property overrides)
+
+**Status: implemented (host + firmware; firmware builds via `just
+firmware-build`, `just app-test` + `just app-lint` pass).** `Command`
+gained `set_property = 14` + a `Point` message
+(`SysBoardInfoResponse.ProtocolVersion.CURRENT` 12→13); nanopb string
+caps; `CONFIG_LV_USE_OBJ_PROPERTY` + `_NAME` enabled in
+`sdkconfig.defaults`; the override engine +
+id→obj registry (`firmware/main/widgets/widget_property.{h,cpp}` hooked
+into `widget_builders.cpp`); the `host_api.cpp` dispatch case; the host
+`TouchyClient.set_property` / `Touchy.set_property` + `Color`/`Point`
+types + `touchy property set` CLI; and the sim warn-and-ignore handler are
+all in place. Add a host→device `SetPropertyCmd` that overrides a
+single LVGL property on a named widget at runtime — e.g. retarget a
+label's text without re-uploading the screen — via LVGL's generic
+[object property API](https://lvgl.io/docs/open/common-widget-features/obj_property).
+Overrides are session-scoped (RAM only, not persisted) and *sticky*: they
+survive screen (re)loads and apply to a widget whenever it next appears,
+so the host can set a property before the target widget is even built.
+
+> Naming note: the AnimTrack-inversion work already shipped as "Stage
+> lb11"; this is **lb12**.
+
+### Background
+
+* The wire protocol is a single `Command` oneof dispatched by
+  `firmware/main/api/host_api.cpp::dispatch()` (a `switch (cmd->which_cmd)`
+  over `case touchy_Command_*_tag`). The next free `Command` tag is **14**
+  (12 = `set_preferences`, 13 = `get_preferences`; 3, 5 reserved).
+  `SysBoardInfoResponse.ProtocolVersion.CURRENT == 12`
+  ([proto/touchy.proto](../../../proto/touchy.proto)).
+* Every command wrapper method lives host-side in
+  `app/src/touchy_pad/client.py` (builds a `Command`, sends, parses the
+  `Response`); the CLI groups (`pref`, `screen`, …) in
+  `app/src/touchy_pad/cli.py` talk to the device through `_client()`.
+* There is **no** global `id → lv_obj_t*` registry today. Widgets store
+  their `Widget.id` for event routing, and Stage 86 keeps a build-time
+  list of `ButtonSlotBinding{ widget_id, … }` to address image buttons by
+  id (`widget_image_button_set_slot` scans `b.widget_id == target_id`).
+  `lv_obj_set_user_data` is **not** universally the id string (the
+  trackpad, etc. stash their own ctx there), so a property lookup needs
+  its own id→obj registry rather than a tree walk.
+* Screen (re)build happens in
+  `firmware/main/widgets/widget_builders.cpp` (`widget_build_children`),
+  which already commits per-build state (`g_pending_refs` →
+  `g_active_refs`) once the new screen replaces the old — the natural hook
+  for (re)building an id→obj registry and (re)applying overrides.
+* The simulator dispatches commands via
+  `app/src/touchy_pad/sim/device.py` (`handle_command` → `_cmd_*`).
+* LVGL build options are set through `CONFIG_LV_USE_*` in
+  `firmware/sdkconfig.defaults`; `LV_USE_OBJ_PROPERTY` /
+  `LV_USE_OBJ_PROPERTY_NAME` are **off** today.
+
+### Decisions (locked in)
+
+* **Property identifier: `oneof property` (name *or* numeric id).**
+  `SetPropertyCmd` carries a `oneof property` with either a `string
+  property_name` (resolved via `lv_obj_property_get_id(obj, name)` — the
+  LVGL *short* name like `"text"`, not the `LV_PROPERTY_LABEL_TEXT` C
+  constant) or a `uint32 property_id` (a raw `lv_prop_id_t`). The device
+  switches on `which_property`; the Python API accepts a `str` (name) or
+  an `int` (id).
+* **Value is a `oneof`; unset = remove.** Exactly one of `bool_value`,
+  `int_value`, `string_value`, `color_value`, `point_value` is set. An
+  **unset** value oneof means "drop any existing override for this
+  (widget, property)".
+* **Typed Python values drive detection.** `bool` / `int` / `str` map
+  natively; `color` and `point` are ambiguous vs `int`/`tuple`, so the API
+  **requires** explicit wrapper types `Color` and `Point` (a bare `int`
+  is always `int_value`, never a colour). New types live in the public
+  `touchy_pad.api` surface.
+* **Session overrides, keyed by `(widget_id, identifier)`.** Held in a RAM
+  list (never persisted); latest write wins; an empty value removes that
+  key. `identifier` is the resolved name string (or `#<id>` for numeric)
+  so name- and id-addressed writes to the same prop de-dup.
+* **Apply-now + apply-on-build.** On `SetPropertyCmd` arrival: update the
+  override table, then if the widget is currently built apply immediately.
+  On every screen (re)build, re-apply all matching overrides as each
+  widget is created.
+* **Simulator ignores it (warns).** `SimDevice` logs a WARN and returns OK
+  — no LVGL there to mutate.
+* **`ProtocolVersion` bumps 12 → 13** (new command; additive, so
+  `MIN_FIRMWARE_VERSION` stays 10).
+
+### Proto shape (`proto/touchy.proto` + Rust mirror)
+
+```proto
+// A 2-D integer point value for SetPropertyCmd (e.g. an X/Y position
+// property). Distinct from Rect — this is a property *value*, not layout.
+message Point {
+    int32 x = 1;
+    int32 y = 2;
+}
+
+// Override a single LVGL property on the widget whose Widget.id ==
+// `widget_id`. The override is session-scoped (RAM only) and sticky: it
+// re-applies whenever a widget with that id is (re)built, and applies
+// immediately if the widget is already on screen. An unset `value` oneof
+// removes the override for this (widget_id, property).
+message SetPropertyCmd {
+    string widget_id = 1;
+
+    // Property identifier — exactly one. `property_name` is resolved with
+    // lv_obj_property_get_id() (LVGL short name, e.g. "text"); `property_id`
+    // is a raw lv_prop_id_t.
+    oneof property {
+        string property_name = 2;
+        uint32 property_id   = 3;
+    }
+
+    // The new value. Leave the whole oneof unset to REMOVE the override.
+    oneof value {
+        bool   bool_value   = 4;
+        int32  int_value    = 5;
+        string string_value = 6;
+        uint32 color_value  = 7;   // 0xRRGGBB
+        Point  point_value  = 8;
+    }
+}
+```
+
+Add to the `Command` oneof (next free tag **14**):
+```proto
+SetPropertyCmd set_property = 14;
+```
+Bump the `ProtocolVersion` enum: add `V13 = 13;` and move `CURRENT = 13;`.
+
+nanopb options (`proto/touchy.options`) — bound the strings so nanopb can
+stack-allocate them (`FT_STATIC`):
+```
+touchy.SetPropertyCmd.widget_id      max_size:32
+touchy.SetPropertyCmd.property_name  max_size:32
+touchy.SetPropertyCmd.string_value   max_size:128
+```
+
+### Overrides model (firmware)
+
+A small RAM table, e.g. `std::vector<PropOverride>` where
+```cpp
+struct PropOverride {
+    std::string widget_id;
+    std::string ident;          // resolved name, or "#<id>" for numeric
+    touchy_SetPropertyCmd cmd;  // keeps the value variant (or "unset")
+};
+```
+* `set_property_apply(cmd)` (new `firmware/main/widgets/widget_property.{h,cpp}`):
+  upsert/remove the table entry, then look up the live widget in the
+  id→obj registry and, if present, call `apply_override(obj, cmd)`.
+* `apply_override(obj, cmd)`: resolve the `lv_prop_id_t`
+  (`lv_obj_property_get_id(obj, name)` or the raw id), build an
+  `lv_property_t` from the value oneof (`num`/`ptr`/`color`/`point`),
+  `lv_obj_set_property(obj, &prop)`. An unset value = nothing to set
+  (removal only affects future rebuilds; the current visual isn't reverted
+  until the next screen reload — documented).
+* **id→obj registry:** `widget_build_children` records every built widget
+  with a non-empty `id` into a `g_widget_by_id` list (cleared/rebuilt each
+  screen load, committed alongside `g_active_refs`). After building each
+  widget, `widget_property_reapply(id, obj)` applies any matching
+  overrides.
+
+### Definition of done
+
+* `SetPropertyCmd` + `Point` exist; `Command.set_property = 14`;
+  `ProtocolVersion.CURRENT == 13`; `just build-proto` regenerates Python
+  `_proto`, C nanopb, and Rust `prost` cleanly.
+* `LV_USE_OBJ_PROPERTY` + `LV_USE_OBJ_PROPERTY_NAME` are enabled in
+  `firmware/sdkconfig.defaults`; a representative board builds via
+  `just firmware-build`.
+* `touchy_pad.api.set_property(widget_id, prop, value)` sends the command;
+  `bool`/`int`/`str` map natively, `Color(...)` / `Point(...)` map to
+  colour/point, and `value=None` removes the override. The Python
+  developer docs describe the value-type mapping.
+* `touchy property set WIDGET_ID PROPERTY VALUE` (string value for now)
+  works against a device; setting `"welcome"` `"text"` to a new string
+  updates a label live, and the override re-applies after a screen reload.
+* A widget targeted *before* it exists gets the override applied when it is
+  later built.
+* The simulator logs a single WARN and returns OK for `SetPropertyCmd`.
+* `just app-test` + `just app-lint` pass with new proto round-trip +
+  CLI/API tests.
+
+### Work items
+
+1. **Proto** — add `Point` + `SetPropertyCmd`, wire `set_property = 14`
+   into `Command`, bump `ProtocolVersion` (`V13`/`CURRENT=13`) in
+   `proto/touchy.proto` **and** the Rust mirror
+   `rust/touchy-pad/proto/touchy.proto`; add the three nanopb `max_size`
+   options.
+2. **Regenerate** — `just build-proto` (Python `_proto` + C nanopb + Rust
+   prost).
+3. **LVGL config** — add `CONFIG_LV_USE_OBJ_PROPERTY=y` and
+   `CONFIG_LV_USE_OBJ_PROPERTY_NAME=y` to `firmware/sdkconfig.defaults`
+   (and delete the stale per-board `sdkconfig.*` snapshots if they'd
+   override it — the `.old` files are regenerated).
+4. **Firmware — override engine** (new
+   `firmware/main/widgets/widget_property.{h,cpp}`): the `PropOverride`
+   table, `set_property_apply()`, `apply_override(obj, cmd)` (value oneof →
+   `lv_property_t`), and `widget_property_reapply(id, obj)`.
+5. **Firmware — id→obj registry** (`widget_builders.cpp`): collect built
+   widgets with a non-empty id per screen build (mirroring the
+   `g_active_refs` commit), expose a lookup, and call
+   `widget_property_reapply()` after each widget is built. Clear on screen
+   unload/reload.
+6. **Firmware — dispatch** (`api/host_api.cpp`): add
+   `case touchy_Command_set_property_tag:` → `set_property_apply(...)`,
+   returning OK / `INVALID_ARG` (unknown property name, or neither
+   `property` oneof arm set) — never errors on an absent widget (the
+   override is stored for later).
+7. **Host — API** (`app/src/touchy_pad/api/…`, `client.py`): `Color(int)`
+   and `Point(x, y)` value types; `TouchyClient.set_property(widget_id,
+   prop, value)` that maps the Python value → the right oneof (or unset
+   when `value is None`) and accepts `prop` as `str` (name) or `int` (id);
+   export `set_property` / `Color` / `Point` from `touchy_pad.api`.
+8. **Host — CLI** (`cli.py`): a `property` group with
+   `property set WIDGET_ID PROPERTY VALUE` (string value for now) talking
+   through `_client()`.
+9. **Simulator** (`sim/device.py`): a `_cmd_set_property` that logs a WARN
+   ("set_property ignored in simulator") and returns OK.
+10. **Rust mirror** (`rust/touchy-pad`) — regenerated prost covers the
+    messages; add a `Touchy::set_property(...)` helper only if a caller
+    needs it (grep; likely skip this stage).
+11. **Tests** (`app/tests/`) — `SetPropertyCmd` proto round-trip incl. the
+    value oneof + "unset = remove"; API type-mapping unit tests
+    (bool/int/str/`Color`/`Point`/`None`); a CLI `property set` test against
+    the sim asserting the sent command; a sim WARN/OK test.
+12. **Docs** — update the Python developer docs
+    (`docs/python-api.md` / `docs/user-widgets.md`) with the
+    `set_property` value-type table (`bool`→bool, `int`→int, `str`→string,
+    `Color`→colour, `Point`→point, `None`→remove) and the name-vs-id
+    identifier rule; add an `AGENTS.md`/`CLAUDE.md` note
+    (`ProtocolVersion.CURRENT == 13`, the sticky session-override model,
+    the id→obj registry, sim warns+ignores).
+
+### Deferred / out of scope
+
+* **Reverting the live widget on removal.** An unset value drops the
+  override for future (re)builds but does not restore the original value
+  on the currently-displayed widget until the next screen reload.
+* **Persisting overrides** across reboots (RAM-only by design).
+* **Reading a property back** (`get_property`) — write-only for now.
+* **Value types beyond** bool / int / string / color / point (LVGL also
+  has float, precise, etc.).
+* **Simulator support** — warn-and-ignore only.
+* Batch/multi-property commands — one property per `SetPropertyCmd`.

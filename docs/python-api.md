@@ -204,6 +204,46 @@ with touchy_open() as pad:
 
 This works against both real hardware and the simulator (headless too).
 
+## Overriding widget properties at runtime
+
+`pad.set_property(widget_id, prop, value)` overrides a single LVGL
+property on a widget by its `id`, without re-uploading the screen — e.g.
+change a label's text or a box's colour on the fly:
+
+```python
+from touchy_pad.api import Color, Point
+
+with touchy_open() as pad:
+    pad.set_property("welcome", "text", "New message")   # label text
+    pad.set_property("box", "bg_color", Color(0xFF8800))  # colour
+    pad.set_property("box", "x", 12)                      # integer prop
+    pad.set_property("welcome", "text", None)            # remove override
+```
+
+`prop` is an LVGL **property name** (a short name resolved on-device, e.g.
+`"text"`, `"bg_color"`) or an `int` raw `lv_prop_id_t`. The `value` type
+selects the wire payload:
+
+| Python value            | Property kind        |
+|-------------------------|----------------------|
+| `bool`                  | boolean              |
+| `int`                   | integer              |
+| `str`                   | text (e.g. label)    |
+| `Color(0xRRGGBB)`       | colour               |
+| `Point(x, y)`           | point                |
+| `None`                  | **remove** the override |
+
+`Color` and `Point` (both importable from `touchy_pad.api`) are required
+wrappers: a bare `int` always means an integer property, so colours and
+points must be wrapped to be distinguishable.
+
+Overrides are **session-scoped** (RAM only, never persisted) and
+**sticky**: the device re-applies them whenever the target widget is
+(re)built and immediately if it is already on screen — so you can even set
+a property before its widget is loaded. The CLI exposes a string-only
+shortcut: `touchy property set WIDGET_ID PROPERTY VALUE`. The simulator
+logs a warning and ignores `set_property` (it renders with Qt, not LVGL).
+
 ## Lifecycle
 
 ```python

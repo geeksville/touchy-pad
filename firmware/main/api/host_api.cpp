@@ -17,6 +17,7 @@
 #include "touchy.pb.h"
 #include "usb_hid.h"
 #include "widgets/widget_actions.h"
+#include "widgets/widget_property.h"
 #include "lvgl.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
@@ -464,6 +465,16 @@ static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
         break;
     }
 
+    case touchy_Command_set_property_tag: {
+        // Stage lb12 — override a single LVGL property on a named widget.
+        // Stored as a sticky session override and applied now if the widget
+        // is on screen; INVALID_ARG only when the command is malformed
+        // (no property name/id) — an absent widget is not an error.
+        resp->code = widget_property_set(cmd->cmd.set_property)
+                         ? touchy_ResultCode_OK
+                         : touchy_ResultCode_INVALID_ARG;
+        break;
+    }
     case touchy_Command_sys_reboot_bootloader_tag:
         ESP_LOGW(TAG, "command tag %u not yet implemented",
                  (unsigned)cmd->which_cmd);
