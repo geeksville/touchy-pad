@@ -6,7 +6,10 @@
         "chains": [
           {
             "gpio": 4,
+            "tileByRow": false,
             "panels": [
+              { "width": 32, "height": 8 },
+              { "width": 32, "height": 8 },
               { "width": 32, "height": 8 }
             ]
           }

@@ -19,10 +19,37 @@
 // immediately when the display is already running.
 void led_display_set_brightness(uint8_t level_0_100);
 
-// Stage lb6 — LED panel geometry read from the persisted BoardConfig.
-// Implemented in prefs.cpp (which owns the protobuf) so the board-compiled
-// led_display.cpp stays free of proto/nanopb includes. Returns true and
-// fills *width / *height / *gpio when exactly one LED panel is configured;
-// returns false when the device has no board_config (fresh / unconfigured)
-// so the display driver can come up headless.
-bool led_panel_config(int *width, int *height, int *gpio);
+// Stage lb10 — proto-free description of one tiled panel chain, read from
+// the persisted BoardConfig. Implemented in prefs.cpp (which owns the
+// protobuf) so the board-compiled led_display.cpp stays free of
+// proto/nanopb includes.
+//
+// A chain is one data GPIO driving up to LED_CHAIN_MAX_PANELS daisy-chained
+// LED matrices, tiled into one logical surface. Per-panel wiring flags map
+// each matrix's logical (x, y) to its physical LED order (see
+// led_panel.{h,cpp}); their defaults reproduce the pre-lb10 frozen wiring
+// (only column-snaking on), and `cols_snaked` here already resolves the
+// proto's UNSET-means-true presence.
+static constexpr int LED_CHAIN_MAX_PANELS = 4;  // matches nanopb max_count
+
+struct LedPanelDesc {
+    int  width;
+    int  height;
+    bool rows_snaked;
+    bool cols_snaked;
+    bool row_major;
+    bool cols_flipped;
+    bool rows_flipped;
+};
+
+struct LedChainDesc {
+    int          gpio;
+    bool         tile_by_row;   // false ⇒ tile horizontally
+    int          panel_count;   // 1..LED_CHAIN_MAX_PANELS
+    LedPanelDesc panels[LED_CHAIN_MAX_PANELS];
+};
+
+// Fills *out and returns true when exactly one LED panel chain is
+// configured; returns false when the device has no board_config (fresh /
+// unconfigured) so the display driver can come up headless.
+bool led_chain_config(LedChainDesc *out);

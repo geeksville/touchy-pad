@@ -33,7 +33,8 @@ message PreferencesFile {
         V6 = 6;       // Stage lb6: + board_config (LED-panel geometry)
         V7 = 7;       // Stage lb8: + network (WiFi + HTTP(S) API config)
         V8 = 8;       // Stage lb9: network.tls_psk_key removed (mTLS via files)
-        CURRENT = 8;  // alias: always equals the latest defined version
+        V9 = 9;       // Stage lb10: tiled panel chains + per-panel wiring flags
+        CURRENT = 9;  // alias: always equals the latest defined version
     }
 
     // Written on every save so forward migrations can detect old files.
@@ -110,17 +111,39 @@ message NetworkConfig {
     optional string hostname    = 3;   // mDNS name; unset → touchypad_<serial>
 }
 
-// One physical LED matrix driven from a single data GPIO.
+// One physical LED matrix, one link in a daisy-chained data line. Origin
+// (0,0) is the matrix's top-left; the flags describe how that logical grid
+// is wired to the physical LED order within this matrix. The data GPIO is
+// on the enclosing PanelChain (Stage lb10 moved it there). Defaults
+// reproduce the pre-lb10 frozen wiring: only column-snaking on.
 message Panel {
     uint32 width  = 1;   // logical pixel columns
     uint32 height = 2;   // logical pixel rows
-    uint32 gpio   = 3;   // data GPIO number
+
+    // Physical-wiring flags. `cols_snaked` is `optional` because its
+    // default is TRUE (proto3 bools default false), so UNSET means true and
+    // present-but-false means "columns run straight". The rest default false.
+    bool          rows_snaked  = 3;  // odd rows run right→left
+    optional bool cols_snaked  = 4;  // odd cols run bottom→top (UNSET ⇒ true)
+    bool          row_major    = 5;  // index = row*width+col (else col-major)
+    bool          cols_flipped = 6;  // mirror X across the whole matrix
+    bool          rows_flipped = 7;  // mirror Y across the whole matrix
 }
 
-// One LVGL display surface. For now exactly one Panel (capped in
-// preferences.options); multi-panel tiling is a future lightbar stage.
+// A chain of up to 4 panels sharing one data GPIO, tiled into one surface.
+// Panels are laid out in chain order (panel 0 is the first matrix on the
+// data line). `tile_by_row` picks the tiling axis; e.g. 3×{32,8} tiles to a
+// 96×8 surface (horizontal) or a 32×24 surface (vertical).
+message PanelChain {
+    repeated Panel panels      = 1;  // chain order; capped max_count:4
+    uint32         gpio        = 2;  // data GPIO for the whole chain
+    bool           tile_by_row = 3;  // false ⇒ tile horizontally (default)
+}
+
+// One LVGL display surface. For now exactly one PanelChain (capped in
+// preferences.options); multi-chain / multi-display tiling is deferred.
 message Display {
-    repeated Panel panels = 1;
+    repeated PanelChain chains = 1;
 }
 
 // Build/hardware description programmed onto the device. For now just an

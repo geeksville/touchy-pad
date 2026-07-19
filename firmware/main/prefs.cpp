@@ -218,18 +218,38 @@ touchy_PreferencesFile Prefs::to_proto() const
     return pf;
 }
 
-// Stage lb6 — proto-free accessor for the board-compiled LED display driver
-// (declared in led_display.h). Keeps the protobuf types out of the board
-// component. Reports the single configured LED panel, if any.
-bool led_panel_config(int *width, int *height, int *gpio)
+// Stage lb6/lb10 — proto-free accessor for the board-compiled LED display
+// driver (declared in led_display.h). Keeps the protobuf types out of the
+// board component. Reports the single configured LED panel chain, if any,
+// resolving cols_snaked's UNSET-means-true presence here.
+bool led_chain_config(LedChainDesc *out)
 {
     const touchy_BoardConfig &cfg = Prefs::instance().board_config();
-    if (cfg.displays_count == 0 || cfg.displays[0].panels_count == 0) {
+    if (cfg.displays_count == 0 || cfg.displays[0].chains_count == 0) {
         return false;
     }
-    const touchy_Panel &panel = cfg.displays[0].panels[0];
-    if (width)  *width  = (int)panel.width;
-    if (height) *height = (int)panel.height;
-    if (gpio)   *gpio   = (int)panel.gpio;
+    const touchy_PanelChain &chain = cfg.displays[0].chains[0];
+    if (chain.panels_count == 0) {
+        return false;
+    }
+
+    out->gpio        = (int)chain.gpio;
+    out->tile_by_row = chain.tile_by_row;
+
+    int n = chain.panels_count;
+    if (n > LED_CHAIN_MAX_PANELS) n = LED_CHAIN_MAX_PANELS;
+    out->panel_count = n;
+
+    for (int i = 0; i < n; ++i) {
+        const touchy_Panel &p = chain.panels[i];
+        out->panels[i].width        = (int)p.width;
+        out->panels[i].height       = (int)p.height;
+        out->panels[i].rows_snaked  = p.rows_snaked;
+        // proto3 presence: UNSET ⇒ true (see led_display.h / preferences.proto).
+        out->panels[i].cols_snaked  = p.has_cols_snaked ? p.cols_snaked : true;
+        out->panels[i].row_major    = p.row_major;
+        out->panels[i].cols_flipped = p.cols_flipped;
+        out->panels[i].rows_flipped = p.rows_flipped;
+    }
     return true;
 }

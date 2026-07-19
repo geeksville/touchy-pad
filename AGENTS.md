@@ -29,7 +29,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
 `Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 25`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 10`,
-`PreferencesFile.Version.CURRENT == 8`.
+`PreferencesFile.Version.CURRENT == 9`.
 Highlights worth remembering:
 
 - **Boards span two chips (Stage 65).** ESP32-S3 boards (`jc4827w543`,
@@ -402,7 +402,8 @@ Highlights worth remembering:
   5→6. It merges/persists through the Stage 82 partial path
   (`Prefs::apply_partial`) but has **no live side effect** — it's read
   once at boot. `firmware/boards/common/leds/led_display.cpp` (board-compiled)
-  reads it via the proto-free accessor `led_panel_config(w,h,gpio)`
+  reads it via the proto-free accessor `led_chain_config()` (Stage lb10;
+  was `led_panel_config(w,h,gpio)`)
   implemented in `prefs.cpp` (keeps nanopb out of the board component;
   `main` now exports `leds` in `INCLUDE_DIRS`). A fresh/unconfigured
   board has no panel → `display_init()` returns `nullptr` → **headless**
@@ -481,6 +482,36 @@ Highlights worth remembering:
   long-lived certs (re-provision to rotate/revoke), USB-only recovery, sim
   stays plaintext-only, `cryptography` a hard dependency. No
   `ProtocolVersion` bump.
+
+- **Stage lb10 (tiled LED panel chains + per-panel wiring flags).**
+  `BoardConfig` grew from one matrix to a *chain* of up to 4 daisy-chained
+  LED matrices on one data GPIO, tiled into one logical surface
+  (`PreferencesFile.Version` 8→9). Proto reshape (`proto/preferences.proto`
+  + Rust mirror): `Panel` lost `gpio` and gained five wiring flags —
+  `rows_snaked`, `cols_snaked` (**`optional bool`; UNSET ⇒ true** because
+  proto3 bools default false and column-snaking is the legacy default),
+  `row_major`, `cols_flipped`, `rows_flipped`; new `PanelChain {repeated
+  Panel panels; uint32 gpio; bool tile_by_row}`; `Display.panels`
+  (`repeated Panel`) became `Display.chains` (`repeated PanelChain`).
+  nanopb caps: `Display.chains max_count:1`, `PanelChain.panels
+  max_count:4` (both `FT_STATIC`). `tile_by_row=false` (default) tiles
+  horizontally in chain order (3×{32,8} → 96×8), `true` vertically
+  (→ 32×24). Firmware: the proto-free accessor is now
+  `led_chain_config(LedChainDesc*)` (`prefs.cpp`), yielding gpio +
+  tile axis + per-panel `{w,h,flags}` (resolving `cols_snaked` presence).
+  `firmware/boards/common/leds/led_panel.{h,cpp}` split into two classes:
+  `LEDPanel` is now a hardware-free **tile** (size + surface offset +
+  strip base index + wiring; its `serpentine_index` is an `inline` header
+  method so the flag branches hoist into the per-pixel path), and the new
+  `LEDChain : public Panel` owns the single `led_strip`, holds the tiles,
+  and routes `set_pixel` via a tile lookup + per-tile base. `led_display.cpp`
+  builds the `LEDChain` composite from the descriptor, computing total
+  dims + per-tile offsets from `tile_by_row`. The old compile-time
+  `LED_ROWS_SNAKED`/`LED_COLS_SNAKED`/`LED_ROW_MAJOR` macros are gone.
+  Templates migrated to the chain shape (`led-32x8.json`, `neopixel-1.json`,
+  new `led-96x8-chain.json`). The sim's `board_config` stays a stored
+  no-op (it renders LVGL screens, not a physical LED matrix), so it only
+  needed the proto regen. No `ProtocolVersion` bump (prefs-only change).
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /

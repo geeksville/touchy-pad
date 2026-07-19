@@ -6,10 +6,10 @@
 // and then present. It is the hardware-agnostic seam between the LVGL
 // display driver (which produces a framebuffer) and a concrete output
 // device (an addressable LED matrix, and eventually tiled/parallel groups
-// of them). LB1 has exactly one concrete subclass — LEDPanel — driving a
-// single WS2812B matrix, but the base class is kept minimal so future
-// stages can tile several panels into one LVGL display, or map several
-// LVGL displays onto several panels, without touching the display driver.
+// of them). Its concrete subclass is LEDChain (Stage lb10), which tiles up
+// to four daisy-chained WS2812B matrices (each an LEDPanel) into one
+// surface; the base class is kept minimal so future stages can map several
+// LVGL displays onto several chains without touching the display driver.
 //
 // This is a board-independent subsystem: it lives under firmware/boards/common/leds/
 // but is compiled by whichever board component drives LED panels (the

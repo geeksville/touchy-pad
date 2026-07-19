@@ -1442,55 +1442,236 @@ discussion.
 
 ## stage lb10: tiled panels
 
-currently the protobufs look like:
-```
-// One physical LED matrix driven from a single data GPIO.
+**Status: implemented (host + firmware code written; firmware not compiled
+on real ESP-IDF in this environment).** Proto reshape (`Panel` wiring flags
++ `gpio` removed, new `PanelChain`, `Display.panels`→`Display.chains`,
+`Version` 8→9) + Rust mirror, nanopb caps (`Display.chains max_count:1`,
+`PanelChain.panels max_count:4`), the `led_chain_config()` accessor, the
+`LEDPanel` tile / `LEDChain` composite split (with an `inline`
+`serpentine_index`), the tiled `led_display.cpp` build, migrated + new JSON
+templates, and tests are all in place. `just build-proto`, `just app-test`,
+and `just app-lint` pass. Generalise the Stage lb6 `BoardConfig` so a single
+data GPIO can drive a *chain* of small LED matrices tiled into one larger
+logical display, and promote the compile-time serpentine-wiring macros
+(`LED_ROWS_SNAKED` / `LED_COLS_SNAKED` / `LED_ROW_MAJOR`) into per-`Panel`
+protobuf flags (plus two new `cols_flipped` / `rows_flipped` flags). This
+is the first stage that actually renders across more than one physical
+matrix; the LVGL side still sees exactly one `Display`.
+
+### Background
+
+* Today `BoardConfig` is `displays[<=1] → Display.panels[<=1] → Panel{width,
+  height, gpio}` — a single matrix on a single GPIO
+  ([proto/preferences.proto](../../../proto/preferences.proto), capped in
+  [proto/preferences.options](../../../proto/preferences.options#L8-L16)).
+* The firmware reads it through the proto-free accessor
+  `led_panel_config(int*w, int*h, int*gpio)` in
+  [firmware/main/prefs.cpp](../../../firmware/main/prefs.cpp) (keeps nanopb
+  out of the board component), and
+  [firmware/boards/common/leds/led_display.cpp](../../../firmware/boards/common/leds/led_display.cpp)
+  builds one `LEDPanel` from it (headless when unset).
+* `LEDPanel::serpentine_index(x, y)`
+  ([firmware/boards/common/leds/led_panel.cpp](../../../firmware/boards/common/leds/led_panel.cpp#L61-L79))
+  maps a logical `(x, y)` to a physical LED index using three
+  **compile-time** switches — and two of them are currently hard-wired in
+  the `.cpp` (`LED_COLS_SNAKED` is `#define`d to 1 inline; `LED_ROWS_SNAKED`
+  / `LED_ROW_MAJOR` are `#ifdef`-absent). No board actually sets them, so
+  the wiring is effectively frozen. This stage makes them data.
+* The two shipped templates
+  ([led-32x8.json](../../../app/src/touchy_pad/assets/templates/led-32x8.json),
+  [neopixel-1.json](../../../app/src/touchy_pad/assets/templates/neopixel-1.json))
+  encode the old single-panel shape and must migrate.
+
+### Decisions (locked in)
+
+* **Chain, not recursion.** A `PanelChain` owns `repeated Panel panels`
+  (max 4) plus the single `gpio` for the whole chain and a `tile_by_row`
+  flag. The self-recursive `repeated PanelChain panels` in the original
+  sketch was a typo. `gpio` moves off `Panel` onto `PanelChain`.
+* **`Display` still holds exactly one `PanelChain`** (capped
+  `max_count:1`). Multiple chains per display (and multiple displays) stay
+  deferred — the near-term goal is one LVGL surface tiled from one chain.
+* **Wiring flags are per-`Panel`** so a chain may mix differently-wired
+  matrices. Five flags: `rows_snaked`, `cols_snaked`, `row_major`,
+  `cols_flipped`, `rows_flipped`.
+* **`cols_snaked` defaults *true*; the rest default *false*.** proto3
+  bools default false, so `cols_snaked` is an `optional bool` whose
+  **unset** state means `true` (present-but-`false` = explicitly straight
+  columns). This preserves today's behaviour (`LED_COLS_SNAKED == 1`,
+  others off) for a template that sets no flags. The other four are plain
+  `bool` (default false).
+* **`tile_by_row` defaults false → horizontal tiling.** 3×`{w:32,h:8}`
+  tiled horizontally = a 96×8 display; `tile_by_row=true` = a 32×24
+  display. Panels are laid out in **chain order** (panel 0 is the first
+  matrix on the data line).
+* **`PreferencesFile.Version` bumps 8 → 9** (house convention on any
+  prefs-schema change); both templates migrate to the new shape.
+
+### Proto shape (`proto/preferences.proto` + Rust mirror)
+
+```proto
+// One physical LED matrix, one link in a data-line chain. Origin (0,0) is
+// the panel's top-left; the flags describe how that logical grid is wired
+// to the physical LED order within this panel.
 message Panel {
-    uint32 width  = 1;   // logical pixel columns
-    uint32 height = 2;   // logical pixel rows
-    uint32 gpio   = 3;   // data GPIO number
+    uint32 width  = 1;              // logical pixel columns
+    uint32 height = 2;              // logical pixel rows
+    // gpio moved to PanelChain (tag 3 retired — see `reserved` below).
+
+    bool          rows_snaked  = 4; // odd rows run right→left (default false)
+    optional bool cols_snaked  = 5; // odd cols run bottom→top (UNSET ⇒ true)
+    bool          row_major     = 6; // index = row*width+col (default false ⇒ col-major)
+    bool          cols_flipped = 7; // mirror X across the whole panel
+    bool          rows_flipped = 8; // mirror Y across the whole panel
+
+    reserved 3;                      // was: uint32 gpio (moved to PanelChain)
 }
 
-// One LVGL display surface. For now exactly one Panel (capped in
-// preferences.options); multi-panel tiling is a future lightbar stage.
-message Display {
-    repeated Panel panels = 1;
-}
-```
-
-make them more like this:
-```
-// One physical LED matrix inside a shift register like chain
-message Panel {
-    uint32 width  = 1;   // logical pixel columns
-    uint32 height = 2;   // logical pixel rows
-
-    // also move these c++ defs into protobuf flags here
-    // LED_ROWS_SNAKED (if unset assume false) becomes rows_snaked
-    // LED_COLS_SNAKED (if unset assume true)
-    // LED_ROW_MAJOR (if unset assume false)
-
-    // add new flags for
-    cols_flipped (the pixels in each col of this panel are in the opposite order as usual)
-    rows_flipped
-}
-
-// a chain of panels single data GPIO.
+// A chain of up to 4 panels sharing one data GPIO, tiled into one surface.
 message PanelChain {
-    repeated PanelChain panels = 1; // assume a small max of 4 in chain
-    uint32 gpio   = 3;   // data GPIO number
-    
-    opional bool tile_by_row // assume false.  if true the constructed display is tiled vertically 
-    // ie: 3 x w=32 h=8 panels would be a display 32px wide and 24px tall
-    // if false the constructed display is tiled horizontally 
-    // ie: 3 x w=32 h=8 panels would be a display 96px wide and 8px tall
+    repeated Panel panels = 1;       // chain order; max_count:4
+    uint32   gpio         = 2;       // data GPIO for the whole chain
+    bool     tile_by_row  = 3;       // false ⇒ tile horizontally (default)
 }
 
-// One LVGL display surface. For now exactly one PanelPanelChain (capped in
-// preferences.options); multi PanelChain tiling is a future lightbar stage.
+// One LVGL display surface. For now exactly one PanelChain (capped in
+// preferences.options); multi-chain / multi-display tiling stays deferred.
 message Display {
-    repeated PanelChain panels = 1;
+    repeated PanelChain chains = 1;  // max_count:1
+}
+
+message BoardConfig {
+    repeated Display displays = 1;   // max_count:1 (unchanged)
 }
 ```
-when you change LEDPanel::serpentine_index based on this please try to make the flag checking nicey
-structured so the complier will have a good chance to optimize for redraws
+
+nanopb caps (`proto/preferences.options`): retire the old
+`touchy.Display.panels` line; add
+```
+touchy.Display.chains       max_count:1
+touchy.PanelChain.panels    max_count:4
+```
+(`touchy.BoardConfig.displays max_count:1` unchanged). All still
+`FT_STATIC` — no heap.
+
+### `serpentine_index` — data-driven, branch-friendly
+
+Promote the three macros to `const` members set once in the `LEDPanel`
+ctor (from the `Panel` proto), add the two flips, and keep the per-pixel
+math a straight-line sequence of predictable branches on `const` bools so
+the compiler can hoist/inline in the hot flush loop:
+
+```cpp
+// members, all const, initialised from the Panel proto in the ctor:
+//   const bool _rows_snaked, _cols_snaked, _row_major, _cols_flipped, _rows_flipped;
+
+int LEDPanel::serpentine_index(int x, int y) const
+{
+    // 1. whole-panel mirror (cheap, before any snake math).
+    if (_cols_flipped) x = _width  - 1 - x;
+    if (_rows_flipped) y = _height - 1 - y;
+
+    // 2. row snaking: odd rows reversed left↔right.
+    const int col = (_rows_snaked && (y & 1)) ? (_width - 1 - x) : x;
+
+    // 3. column snaking: odd cols reversed top↔bottom.
+    const int row = (_cols_snaked && (col & 1)) ? (_height - 1 - y) : y;
+
+    // 4. major order.
+    return _row_major ? (row * _width + col) : (col * _height + row);
+}
+```
+
+The old inline `#define LED_COLS_SNAKED 1` and the `#ifdef LED_ROWS_SNAKED`
+/ `#ifdef LED_ROW_MAJOR` blocks are deleted; the default
+`Panel{}`-derived flags (`cols_snaked` unset⇒true, others false) reproduce
+today's index exactly.
+
+### Tiling model
+
+A `PanelChain` becomes a composite the LED display owns: a vector of
+`LEDPanel` sub-matrices, each with an `(x_off, y_off)` in the logical
+surface and a `base` offset into the physical strip (running sum of prior
+panels' pixel counts, since the data line visits panel 0 fully, then panel
+1, …). Total logical size:
+
+* `tile_by_row == false` (horizontal): `W = Σ panel.width`,
+  `H = max panel.height`.
+* `tile_by_row == true` (vertical): `W = max panel.width`,
+  `H = Σ panel.height`.
+
+`Panel::set_pixel(x, y, …)` on the composite picks the panel whose tile
+range contains `(x, y)`, subtracts its offset, and writes
+`strip[base + panel.serpentine_index(localx, localy)]`. Guard against
+zero/absurd totals exactly as the Stage lb6 single-panel path does.
+
+### Definition of done
+
+* `Panel` carries the five wiring flags (gpio removed, tag 3 reserved);
+  `PanelChain{panels[<=4], gpio, tile_by_row}` exists; `Display` holds
+  `repeated PanelChain chains` (`max_count:1`); `PreferencesFile.Version
+  == 9`. `just build-proto` regenerates Python `_proto`, C nanopb, and
+  Rust `prost` cleanly.
+* `LEDPanel::serpentine_index` is fully data-driven from `const` members;
+  no `LED_*_SNAKED` / `LED_ROW_MAJOR` macros remain in the tree.
+* The LED display builds a tiled composite from
+  `board_config.displays[0].chains[0]`; a horizontal 3×`{32,8}` chain
+  presents a 96×8 surface and `board-info` reports `96×8`. A single-panel
+  chain behaves exactly as Stage lb6 (headless when unconfigured).
+* Both shipped templates migrate to the `PanelChain` shape and still round
+  trip; a new multi-panel example template ships.
+* `just app-test` + `just app-lint` pass; the two LED boards build via
+  `just firmware-build`.
+
+### Work items
+
+1. **Proto** — rewrite `Panel` (add flags, `reserved 3`), add
+   `PanelChain`, change `Display.panels` → `Display.chains` in
+   `proto/preferences.proto` **and** the Rust mirror
+   `rust/touchy-pad/proto/preferences.proto`; bump the `Version` enum
+   (`V9 = 9; CURRENT = 9;`).
+2. **nanopb options** — swap the `Display.panels` cap for
+   `Display.chains max_count:1` and add `PanelChain.panels max_count:4`.
+3. **Regenerate** — `just build-proto` (Python + C nanopb + Rust prost).
+4. **Accessor** — replace `led_panel_config(w,h,gpio)` in
+   `firmware/main/prefs.cpp` with a richer proto-free descriptor that
+   yields the chain: gpio, `tile_by_row`, and per-panel
+   `{w, h, rows_snaked, cols_snaked, row_major, cols_flipped, rows_flipped}`
+   (a small POD struct declared in `led_display.h`, keeping nanopb out of
+   the board component). Handle `cols_snaked` presence (unset ⇒ true) here.
+5. **`LEDPanel`** — add the five `const bool` flag members + ctor args;
+   rewrite `serpentine_index` per the block above; delete the macros
+   (`led_panel.cpp` / any `board_pins.h`).
+6. **Composite / tiling** — teach
+   `firmware/boards/common/leds/led_display.cpp` (`LEDMatrixDisplay::hw_init`)
+   to build the vector of offset `LEDPanel`s from the chain, compute total
+   dims from `tile_by_row`, size the LVGL draw buffer, and route
+   `set_pixel` through the tile lookup + per-panel base offset. Keep the
+   geometry/`malloc` guards.
+7. **Templates** — migrate
+   `app/src/touchy_pad/assets/templates/led-32x8.json` and
+   `neopixel-1.json` to `{boardConfig:{displays:[{chains:[{gpio, panels:[…]}]}]}}`
+   with `fileVersion: "V9"`; add a worked multi-panel example (e.g.
+   `led-96x8-chain.json` = three 32×8 panels, `tileByRow:false`).
+8. **Rust** — the regenerated prost covers it; add a
+   `Touchy::set_board_config` helper only if a caller needs it (grep;
+   likely skip).
+9. **Simulator** — if the sim renders the LED display, mirror the tiling +
+   flag math; otherwise note it as unaffected.
+10. **Tests** (`app/tests/`) — template round-trip for the new shape;
+    assert a 3-panel horizontal chain parses to the expected panels/gpio
+    and survives serialise→parse; a `from-template` CLI test.
+11. **Docs + memory** — update the `PreferencesFile.Version.CURRENT == 9`
+    line and the `BoardConfig`/`Panel` description in
+    `AGENTS.md`/`CLAUDE.md`; document the chain/tiling model and the
+    per-panel wiring flags here.
+
+### Deferred / out of scope
+
+* Multiple `PanelChain`s per `Display`, and multiple `Display`s — the
+  `max_count:1` caps hold the one-surface assumption.
+* Non-uniform tile grids (2-D mosaics), per-panel rotation, and inter-panel
+  gaps/margins — tiling is a single row or single column of panels.
+* Colour order / gamma / brightness curves — unchanged from today.
+* Live reconfiguration without a reboot (`board_config` is still read once
+  at `display_init()`).

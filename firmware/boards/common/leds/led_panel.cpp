@@ -7,30 +7,59 @@
 
 static const char *TAG = TOUCHY_TAG("led_panel");
 
-LEDPanel::LEDPanel(int gpio, int width, int height, uint8_t brightness)
-    : _gpio(gpio), _width(width), _height(height), _brightness(brightness)
+// ─────────────────────────── LEDPanel (tile) ───────────────────────────
+
+LEDPanel::LEDPanel(int width, int height, int x_off, int y_off, int base,
+                   const LedWiring &wiring)
+    : _width(width), _height(height), _x_off(x_off), _y_off(y_off), _base(base),
+      _rows_snaked(wiring.rows_snaked), _cols_snaked(wiring.cols_snaked),
+      _row_major(wiring.row_major), _cols_flipped(wiring.cols_flipped),
+      _rows_flipped(wiring.rows_flipped)
 {
 }
 
-LEDPanel::~LEDPanel()
+// ─────────────────────────── LEDChain (surface) ────────────────────────
+
+LEDChain::LEDChain(int gpio, int total_w, int total_h, uint8_t brightness)
+    : _gpio(gpio), _total_w(total_w), _total_h(total_h), _brightness(brightness)
+{
+}
+
+LEDChain::~LEDChain()
 {
     if (_strip) {
         led_strip_del(_strip);
         _strip = nullptr;
     }
+    for (int i = 0; i < _panel_count; ++i) {
+        delete _panels[i];
+        _panels[i] = nullptr;
+    }
 }
 
-bool LEDPanel::begin()
+bool LEDChain::add_tile(int width, int height, int x_off, int y_off,
+                        const LedWiring &wiring)
+{
+    if (_panel_count >= LED_CHAIN_CAP) {
+        ESP_LOGE(TAG, "chain full (%d panels); ignoring extra tile",
+                 LED_CHAIN_CAP);
+        return false;
+    }
+    _panels[_panel_count++] = new LEDPanel(width, height, x_off, y_off,
+                                           _led_count, wiring);
+    _led_count += width * height;  // running base for the next tile
+    return true;
+}
+
+bool LEDChain::begin()
 {
     if (_strip) {
         return true;  // already up
     }
 
-    const uint32_t led_count = (uint32_t)_width * (uint32_t)_height;
-
     led_strip_config_t strip_cfg = {};
     strip_cfg.strip_gpio_num = _gpio;
-    strip_cfg.max_leds       = led_count;
+    strip_cfg.max_leds       = (uint32_t)_led_count;
     strip_cfg.led_model      = LED_MODEL_WS2812;
     strip_cfg.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB;
     strip_cfg.flags.invert_out = false;
@@ -43,8 +72,8 @@ bool LEDPanel::begin()
     rmt_cfg.mem_block_symbols = 64;
     rmt_cfg.flags.with_dma = true;
 
-    ESP_LOGI(TAG, "Creating LED strip: gpio=%d %u LEDs, RMT+DMA",
-             _gpio, (unsigned)led_count);
+    ESP_LOGI(TAG, "Creating LED strip: gpio=%d %d LEDs (%d tiles → %dx%d), RMT+DMA",
+             _gpio, _led_count, _panel_count, _total_w, _total_h);
     esp_err_t err = led_strip_new_rmt_device(&strip_cfg, &rmt_cfg, &_strip);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "led_strip_new_rmt_device failed: %s",
@@ -53,37 +82,14 @@ bool LEDPanel::begin()
         return false;
     }
 
-    // led_strip_clear(_strip);
-    ESP_LOGI(TAG, "LEDPanel up: gpio=%d %dx%d (%u LEDs), RMT+DMA",
-             _gpio, _width, _height, (unsigned)led_count);
+    ESP_LOGI(TAG, "LEDChain up: gpio=%d %dx%d (%d LEDs), RMT+DMA",
+             _gpio, _total_w, _total_h, _led_count);
     return true;
 }
 
-int LEDPanel::serpentine_index(int x, int y) const
+void LEDChain::set_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 {
-#ifdef LED_ROWS_SNAKED
-    // Even rows run left→right; odd rows are reversed (see lightbar.md).
-    const int col = (y & 1) ? (_width - 1 - x) : x;
-#else
-    const int col = x;
-#endif
-#define LED_COLS_SNAKED 1
-#if LED_COLS_SNAKED
-    // Even columns run top→bottom; odd columns are reversed.
-    const int row = (col & 1) ? (_height - 1 - y) : y;
-#else
-    const int row = y;
-#endif
-#ifdef LED_ROW_MAJOR
-    return row * _width + col;
-#else
-    return col * _height + row;
-#endif
-}
-
-void LEDPanel::set_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
-{
-    if (!_strip || x < 0 || y < 0 || x >= _width || y >= _height) {
+    if (!_strip || x < 0 || y < 0 || x >= _total_w || y >= _total_h) {
         return;
     }
     // Apply the global brightness scalar (integer 0..255 multiply).
@@ -91,29 +97,27 @@ void LEDPanel::set_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
     g = (uint8_t)((uint16_t)g * _brightness / 255);
     b = (uint8_t)((uint16_t)b * _brightness / 255);
 
-    led_strip_set_pixel(_strip, serpentine_index(x, y), r, g, b);
+    // Small linear scan (≤4 tiles). The tile ranges are disjoint, so the
+    // first match owns the pixel; coordinates in a tiling gap (ragged
+    // panels) fall through and are dropped.
+    for (int i = 0; i < _panel_count; ++i) {
+        if (_panels[i]->contains(x, y)) {
+            led_strip_set_pixel(_strip, _panels[i]->global_index(x, y), r, g, b);
+            return;
+        }
+    }
 }
 
-void LEDPanel::flush()
+void LEDChain::flush()
 {
     if (_strip) {
-        static bool first = false;
-        if (1 || !first) {
-            ESP_LOGI(TAG, "First flush: showing staged pixels for the first time");
-            first = true;
-        }
         led_strip_refresh(_strip);
     }
 }
 
-void LEDPanel::clear()
+void LEDChain::clear()
 {
     if (_strip) {
-        static bool first = false;
-        if (!first) {
-            ESP_LOGI(TAG, "First clear: clearing staged pixels for the first time");
-            first = true;
-        }        
         led_strip_clear(_strip);
     }
 }

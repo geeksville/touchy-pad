@@ -8,11 +8,12 @@
 # any path the device can possibly load is representable here.
 touchy.PreferencesFile.current_screen   max_size:96
 
-# Stage lb6 — cap the LED-panel config arrays so nanopb stack-allocates
-# them (FT_STATIC). The C++ rendering pipeline assumes exactly one display
-# with one panel for now; multi-panel tiling is a future lightbar stage.
+# Stage lb6/lb10 — cap the LED-panel config arrays so nanopb stack-allocates
+# them (FT_STATIC). One display holding one panel chain of up to 4 tiled
+# panels; multi-chain / multi-display tiling is a future lightbar stage.
 touchy.BoardConfig.displays             max_count:1
-touchy.Display.panels                   max_count:1
+touchy.Display.chains                   max_count:1
+touchy.PanelChain.panels                max_count:4
 
 # Stage lb8 — bound the NetworkConfig strings so nanopb stack-allocates
 # them (FT_STATIC). SSID max is 32 chars + NUL; WPA2 passphrase up to 63
