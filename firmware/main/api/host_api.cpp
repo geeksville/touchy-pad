@@ -287,7 +287,10 @@ static void fill_board_info(touchy_Response *resp)
     v->is_touchable = platform_is_touchable();
 }
 
-static void dispatch(const touchy_Command *cmd, touchy_Response *resp)
+// Run one already-decoded Command and fill `resp`. Public seam (declared
+// in host_api.h) shared by the byte-stream dispatcher task, the bare
+// serialized entry point, and the JSON path in net/http_api.cpp.
+void host_api_dispatch_message(const touchy_Command *cmd, touchy_Response *resp)
 {
     // Default: every unimplemented command returns NOT_SUPPORTED. Stages
     // 14+ will fill these in.
@@ -509,7 +512,7 @@ bool host_api_dispatch_serialized(const uint8_t *in, size_t in_len,
         ESP_LOGE(TAG, "http: pb_decode failed");
         resp->code = touchy_ResultCode_INVALID_ARG;
     } else {
-        dispatch(cmd.get(), resp.get());
+        host_api_dispatch_message(cmd.get(), resp.get());
     }
 
     std::size_t n = 0;
@@ -574,7 +577,7 @@ static void host_api_task(void *arg)
         }
 
         // Dispatch.
-        dispatch(cmd.get(), resp.get());
+        host_api_dispatch_message(cmd.get(), resp.get());
 
         // Stage LB5 — this link just carried a Command, so it is now the
         // active client. Records the anchor for any future unsolicited push

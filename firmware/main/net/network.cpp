@@ -37,6 +37,7 @@ bool s_connected    = false;   // got an IP
 std::string s_ssid;
 std::string s_psk;
 std::string s_hostname;
+bool        s_no_tls = false;  // Stage lb14: override — serve HTTP even if certs present
 
 esp_netif_t *s_netif = nullptr;
 
@@ -83,7 +84,7 @@ std::string default_hostname()
 
 void start_servers()
 {
-    bool mtls = mtls_provisioned();
+    bool mtls = !s_no_tls && mtls_provisioned();
 
     // (Re)start mDNS under the configured hostname.
     if (mdns_init() == ESP_OK) {
@@ -172,6 +173,7 @@ void network_apply(const touchy_NetworkConfig &cfg)
     std::string psk      = cfg.has_wifi_psk    ? cfg.wifi_psk    : "";
     std::string hostname = (cfg.has_hostname && cfg.hostname[0]) ? cfg.hostname
                                                                  : default_hostname();
+    bool        no_tls   = cfg.no_tls;
 
     // No credentials → ensure everything is torn down.
     if (ssid.empty()) {
@@ -189,7 +191,8 @@ void network_apply(const touchy_NetworkConfig &cfg)
     // Nothing changed and we're already up → no-op. (mTLS cert changes
     // arrive via FileWrite, not this path, and take effect on the next
     // bring-up / reboot; WiFi credential changes re-run everything below.)
-    if (s_started && ssid == s_ssid && psk == s_psk && hostname == s_hostname) {
+    if (s_started && ssid == s_ssid && psk == s_psk && hostname == s_hostname
+                  && no_tls == s_no_tls) {
         return;
     }
 
@@ -210,6 +213,7 @@ void network_apply(const touchy_NetworkConfig &cfg)
     s_ssid     = ssid;
     s_psk      = psk;
     s_hostname = hostname;
+    s_no_tls   = no_tls;
 
     wifi_config_t wc = {};
     strncpy((char *)wc.sta.ssid, s_ssid.c_str(), sizeof(wc.sta.ssid) - 1);

@@ -17,6 +17,8 @@
 #include "http_api.h"
 #include "host_api.h"
 #include "host_api_link.h"   // HOST_API_RX_MAX / HOST_API_TX_MAX
+#include "json.h"            // Stage lb13 — JSON <-> Command/Response
+#include "touchy.pb.h"
 #include "fs.h"
 #include "tc_tag.h"
 
@@ -32,6 +34,18 @@ static const char *TAG = TOUCHY_TAG("http_api");
 // The one URI we serve.
 static constexpr const char *API_URI = "/touchy/api/v1/command";
 static constexpr const char *CT      = "application/protobuf";
+static constexpr const char *CT_JSON = "application/json";
+
+// Stage lb13 — does the request carry a JSON body? (Content-Type contains
+// "json", so "application/json" and "application/json; charset=…" match.)
+static bool request_is_json(httpd_req_t *req)
+{
+    char ct[64] = {0};
+    if (httpd_req_get_hdr_value_str(req, "Content-Type", ct, sizeof(ct)) != ESP_OK) {
+        return false;
+    }
+    return strstr(ct, "json") != nullptr;
+}
 
 // mTLS certificate material (uploaded via FileWrite; see paths.py).
 static constexpr const char *TLS_SERVER_CERT = "F:tls/server.crt";
@@ -40,6 +54,11 @@ static constexpr const char *TLS_CLIENT_CA   = "F:tls/client_ca.crt";
 
 static httpd_handle_t s_server   = nullptr;
 static bool           s_is_https = false;
+
+// The command handler puts a decoded touchy_Command + touchy_Response on
+// its stack (and the JSON path adds cJSON churn), so bump the httpd worker
+// task stack well above the 4 KB default to avoid an overflow crash.
+static constexpr size_t HTTPD_STACK = 12 * 1024;
 
 // Read a whole file (drive-prefixed path) into a freshly-malloc'd,
 // NUL-terminated buffer. esp-tls detects PEM vs DER by checking the last
@@ -72,12 +91,11 @@ static esp_err_t command_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    // Heap buffers (kept off the small httpd task stack).
-    uint8_t *in  = (uint8_t *)malloc(total);
-    uint8_t *out = (uint8_t *)malloc(HOST_API_TX_MAX);
-    if (!in || !out) {
-        free(in);
-        free(out);
+    const bool is_json = request_is_json(req);
+
+    // Request body buffer (kept off the small httpd task stack).
+    uint8_t *in = (uint8_t *)malloc(total);
+    if (!in) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
         return ESP_FAIL;
     }
@@ -87,13 +105,48 @@ static esp_err_t command_post_handler(httpd_req_t *req)
         int r = httpd_req_recv(req, (char *)in + off, total - off);
         if (r <= 0) {
             free(in);
-            free(out);
             if (r == HTTPD_SOCK_ERR_TIMEOUT) {
                 httpd_resp_send_err(req, HTTPD_408_REQ_TIMEOUT, "recv timeout");
             }
             return ESP_FAIL;
         }
         off += (size_t)r;
+    }
+
+    // Stage lb13 — JSON path: parse → dispatch → render, all on the shared
+    // command core (host_api_dispatch_message). The response mirrors the
+    // request encoding.
+    if (is_json) {
+        touchy_Command cmd;
+        const char *err = nullptr;
+        if (!json_to_command((const char *)in, total, &cmd, &err)) {
+            free(in);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                err ? err : "bad JSON command");
+            return ESP_FAIL;
+        }
+        free(in);
+
+        touchy_Response resp = touchy_Response_init_zero;
+        host_api_dispatch_message(&cmd, &resp);
+
+        char *js = response_to_json(&resp);
+        if (!js) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
+            return ESP_FAIL;
+        }
+        httpd_resp_set_type(req, CT_JSON);
+        esp_err_t send = httpd_resp_send(req, js, HTTPD_RESP_USE_STRLEN);
+        free(js);
+        return send;
+    }
+
+    // Binary protobuf path (default / application/protobuf).
+    uint8_t *out = (uint8_t *)malloc(HOST_API_TX_MAX);
+    if (!out) {
+        free(in);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
+        return ESP_FAIL;
     }
 
     size_t out_len = 0;
@@ -137,6 +190,7 @@ static int start_https_mtls(void)
     httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
     conf.transport_mode = HTTPD_SSL_TRANSPORT_SECURE;
     conf.port_secure    = 443;
+    conf.httpd.stack_size = HTTPD_STACK;
     conf.servercert     = cert;
     conf.servercert_len = cert_len;
     conf.prvtkey_pem    = key;
@@ -168,6 +222,7 @@ static int start_http_plain(void)
     httpd_config_t conf = HTTPD_DEFAULT_CONFIG();
     conf.server_port      = 80;
     conf.lru_purge_enable = true;
+    conf.stack_size       = HTTPD_STACK;
 
     esp_err_t err = httpd_start(&s_server, &conf);
     if (err != ESP_OK) {

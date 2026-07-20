@@ -562,6 +562,28 @@ Highlights worth remembering:
   The simulator has no LVGL property API → `_cmd_set_property` logs a WARN
   and returns OK.
 
+- **Stage lb13 (JSON on the network POST endpoint).** The
+  `POST /touchy/api/v1/command` endpoint now speaks **canonical
+  protobuf-JSON** in addition to binary protobuf, chosen per-request by
+  `Content-Type` (`…json` → JSON, else binary) with the response mirroring
+  the request encoding. Same URI, same commands, **no `ProtocolVersion`
+  bump**. The static `dispatch()` in `api/host_api.cpp` was promoted to a
+  public `host_api_dispatch_message(const touchy_Command*,
+  touchy_Response*)` seam (declared in `host_api.h` via nanopb struct-tag
+  forward decls) shared by the byte-stream task, the bare serialized entry
+  point, and the JSON path. New `firmware/main/net/json.{h,cpp}` (managed
+  **`espressif/cjson`** — IDF 6 moved cJSON out of core; REQUIRES name
+  `espressif__cjson`, added under the WiFi `idf_component_optional_requires`)
+  provides `json_to_command` (full `setProperty` + the simple scalar
+  commands `sysBoardInfoGet`/`screenWake`/`getPreferences`/
+  `sysRebootBootloader`/`eventConsume`; unknown key → HTTP 400) and
+  `response_to_json` (top-level `code` omitted when OK, + the `sysBoardInfo`
+  payload; uint64s as strings; other payloads not yet rendered). The
+  Python sim HTTP server (`sim/http_server.py`) mirrors it via
+  `json_format`. `bin/set-property.sh IPADDR WIDGET VALUE...` is the curl
+  example. The **host** `HttpTransport` stays binary — JSON is for external
+  clients. Docs: `docs/network-api.md`.
+
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /
 `protoc` unless a recipe is clearly missing:

@@ -154,3 +154,73 @@ def test_mtls_cert_upload_over_transport(monkeypatch, tmp_path) -> None:
 
     d = mtls.save_client_creds(pki, "touchypad-lab")
     assert (d / mtls.CA_CERT_FILE).read_bytes() == pki.ca_cert
+
+
+# ---------------------------------------------------------------------------
+# Stage lb13 — JSON body on the same endpoint.
+# ---------------------------------------------------------------------------
+
+
+def _post(url: str, body: bytes, content_type: str) -> tuple[int, str, bytes]:
+    """POST raw bytes; return (status, response content-type, body)."""
+    import urllib.request
+
+    req = urllib.request.Request(
+        url, data=body, method="POST", headers={"Content-Type": content_type}
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310 - loopback test
+        return resp.status, resp.headers.get("Content-Type", ""), resp.read()
+
+
+def test_json_set_property_round_trips_over_http() -> None:
+    import json
+
+    with make_tempdir_transport() as t:
+        with SimHttpServer(t.device, port=0) as http:
+            body = json.dumps(
+                {
+                    "setProperty": {
+                        "widgetId": "welcome",
+                        "propertyName": "text",
+                        "stringValue": "hello from json",
+                    }
+                }
+            ).encode()
+            status, ctype, reply = _post(
+                http.url + "/touchy/api/v1/command", body, "application/json"
+            )
+    assert status == 200
+    assert "json" in ctype
+    # OK response with no payload → canonical JSON is empty object.
+    assert json.loads(reply) == {}
+
+
+def test_json_board_info_returns_nested_object() -> None:
+    import json
+
+    with make_tempdir_transport() as t:
+        with SimHttpServer(t.device, port=0) as http:
+            status, ctype, reply = _post(
+                http.url + "/touchy/api/v1/command",
+                b'{"sysBoardInfoGet": {}}',
+                "application/json; charset=utf-8",
+            )
+    assert status == 200
+    assert "json" in ctype
+    doc = json.loads(reply)
+    assert doc["sysBoardInfo"]["boardName"] == "sim"
+
+
+def test_protobuf_still_works_alongside_json() -> None:
+    with make_tempdir_transport() as t:
+        with SimHttpServer(t.device, port=0) as http:
+            cmd = _proto.Command(sys_board_info_get=_proto.SysBoardInfoGetCmd())
+            status, ctype, reply = _post(
+                http.url + "/touchy/api/v1/command",
+                cmd.SerializeToString(),
+                "application/protobuf",
+            )
+    assert status == 200
+    assert "protobuf" in ctype
+    resp = _proto.Response.FromString(reply)
+    assert resp.sys_board_info.board_name == "sim"

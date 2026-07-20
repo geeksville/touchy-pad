@@ -61,6 +61,17 @@ void host_api_post_event(const struct _touchy_LvEvent *evt);
 bool host_api_dispatch_serialized(const uint8_t *in, size_t in_len,
                                   uint8_t *out, size_t out_cap, size_t *out_len);
 
+// Stage lb13 — dispatch a single *already-decoded* Command into `resp`.
+// The shared command-handler core used by every transport. Exposed so the
+// JSON path (net/http_api.cpp via net/json.cpp) can decode a Command from
+// JSON, run it, and render the Response back to JSON without going through
+// protobuf-binary. Forward-declared via the nanopb struct tags so callers
+// that only need the byte-stream API don't pull in touchy.pb.h.
+struct _touchy_Command;
+struct _touchy_Response;
+void host_api_dispatch_message(const struct _touchy_Command *cmd,
+                               struct _touchy_Response *resp);
+
 #ifdef __cplusplus
 }
 #endif

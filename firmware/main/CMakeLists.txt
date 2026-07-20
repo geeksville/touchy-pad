@@ -25,7 +25,7 @@ endif()
 # installed never fail the CMake configure step.
 set(touchy_net_srcs "")
 if(CONFIG_TOUCHY_WIFI)
-    set(touchy_net_srcs "net/network.cpp" "net/http_api.cpp")
+    set(touchy_net_srcs "net/network.cpp" "net/http_api.cpp" "net/json.cpp")
 endif()
 
 idf_component_register(
@@ -103,5 +103,6 @@ if(CONFIG_TOUCHY_WIFI)
         esp_https_server
         mdns
         esp-tls
+        espressif__cjson
     )
 endif()

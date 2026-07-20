@@ -124,6 +124,37 @@ class SimHttpServer:
                     return
                 length = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(length) if length else b""
+
+                # Stage lb13 — JSON body (Content-Type contains "json"):
+                # parse canonical protobuf-JSON → Command, dispatch on the
+                # shared core, render the Response back to JSON.
+                is_json = "json" in (self.headers.get("Content-Type", "").lower())
+                if is_json:
+                    from google.protobuf.json_format import (
+                        MessageToJson,
+                        Parse,
+                        ParseError,
+                    )
+
+                    try:
+                        cmd = Parse(body.decode("utf-8"), _proto.Command())
+                    except (ParseError, UnicodeDecodeError, ValueError) as exc:
+                        self.send_error(400, f"bad JSON command: {exc}")
+                        return
+                    try:
+                        raw = device.handle_command(cmd.SerializeToString())
+                        resp = _proto.Response.FromString(raw)
+                        reply = MessageToJson(resp, indent=None).encode("utf-8")
+                    except Exception as exc:  # noqa: BLE001 — keep server up
+                        _log.exception("sim-http: JSON handler crashed: %s", exc)
+                        reply = b"{}"
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(reply)))
+                    self.end_headers()
+                    self.wfile.write(reply)
+                    return
+
                 try:
                     reply = device.handle_command(body)
                 except Exception as exc:  # noqa: BLE001 — keep server up

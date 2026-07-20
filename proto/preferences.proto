@@ -103,12 +103,12 @@ message PreferencesFile {
 // HTTPS-with-mTLS when that cert set is present and plaintext HTTP
 // otherwise. Tag 4 (the retired lb8 tls_psk_key) is reserved.
 message NetworkConfig {
-    reserved 4;
-    reserved "tls_psk_key";
-
     optional string wifi_ssid   = 1;   // 2.4 GHz SSID to join
     optional string wifi_psk    = 2;   // WPA2 passphrase (plaintext)
     optional string hostname    = 3;   // mDNS name; unset → touchypad_<serial>
+    // Stage lb14 — skip HTTPS even when mTLS certs are present; serves plain
+    // HTTP on port 80 instead. Useful for debugging without a client cert.
+    optional bool   no_tls      = 5;
 }
 
 // One physical LED matrix, one link in a daisy-chained data line. Origin

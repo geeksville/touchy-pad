@@ -45,3 +45,8 @@ dependencies:
   # esp_https_server / esp-tls are built-in IDF components (declared in
   # CMakeLists REQUIRES), so only mDNS needs the component manager.
   espressif/mdns: "^1.2"
+
+  # Stage lb13 — cJSON for the JSON variant of the network command API
+  # (net/json.cpp). IDF 6 moved cJSON out of core into the managed
+  # registry; the REQUIRES name is the namespaced `espressif__cjson`.
+  espressif/cjson: "^1.7.19"

@@ -29,6 +29,37 @@ transport, so all commands behave identically.
 Events are still polled: POST an `EventConsumeCmd` in a loop, exactly as
 over USB.
 
+### JSON bodies
+
+The same endpoint also accepts **canonical protobuf-JSON** (the shape
+`touchy --debug` prints for each RPC). Send `Content-Type:
+application/json` with a JSON `Command` body and the response comes back
+as JSON with `Content-Type: application/json`; any other content type
+(including none) uses the binary protobuf path above. This lets a plain
+`curl` drive the device without protobuf tooling.
+
+```
+POST /touchy/api/v1/command HTTP/1.1
+Content-Type: application/json
+
+{"setProperty":{"widgetId":"welcome","propertyName":"text","stringValue":"hi"}}
+```
+
+An OK reply with no payload is `{}` (proto3 JSON omits default fields);
+`sysBoardInfoGet` returns a `{"sysBoardInfo":{…}}` object. The
+initially-supported JSON commands are `setProperty`, `sysBoardInfoGet`,
+`screenWake`, `getPreferences`, `sysRebootBootloader`, and
+`eventConsume`; an unknown command key returns HTTP 400. (The nested
+`setPreferences` / `runActions` commands are protobuf-only for now.) The
+host Python client always uses binary protobuf; JSON is for external
+clients.
+
+There is a ready-made curl helper:
+
+```
+bin/set-property.sh 192.168.1.42 welcome You got an email
+```
+
 ## Ports
 
 | Endpoint                    | Scheme | Port |

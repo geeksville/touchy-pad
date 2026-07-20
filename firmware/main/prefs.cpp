@@ -141,6 +141,11 @@ bool Prefs::apply_partial(const touchy_PreferencesFile &p)
             strncpy(m_network.hostname, n.hostname, sizeof(m_network.hostname) - 1);
             m_network.hostname[sizeof(m_network.hostname) - 1] = '\0';
         }
+        // Stage lb14 
+        if (n.has_no_tls) {
+            m_network.has_no_tls = true;
+            m_network.no_tls = n.no_tls;
+        }
 #if CONFIG_TOUCHY_WIFI
         network_apply(m_network);
 #endif
@@ -205,7 +210,7 @@ touchy_PreferencesFile Prefs::to_proto() const
     // programmed (any field present); an all-absent config stays out so a
     // never-configured device round-trips as "no network".
     if (m_network.has_wifi_ssid || m_network.has_wifi_psk ||
-        m_network.has_hostname) {
+        m_network.has_hostname || m_network.no_tls) {
         pf.has_network = true;
         pf.network = m_network;
     }

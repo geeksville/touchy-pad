@@ -1920,3 +1920,177 @@ struct PropOverride {
   has float, precise, etc.).
 * **Simulator support** — warn-and-ignore only.
 * Batch/multi-property commands — one property per `SetPropertyCmd`.
+
+## stage lb13: JSON on the network POST endpoint
+
+**Status: implemented (host + firmware; firmware builds via `just
+firmware-build`, `just app-test` + `just app-lint` pass).** The dispatch
+core was promoted to `host_api_dispatch_message()`; `net/json.{h,cpp}`
+(managed `espressif/cjson`) provides `json_to_command` (setProperty + the
+simple scalar commands) + `response_to_json` (code + `sysBoardInfo`);
+`http_api.cpp` negotiates on `Content-Type` (`…json` → JSON path, else
+binary); the sim HTTP server mirrors it via `json_format`;
+`bin/set-property.sh` + `docs/network-api.md` + tests are in place. Teach
+the network command endpoint
+(`POST /touchy/api/v1/command`) to speak **canonical protobuf-JSON** in
+addition to the existing binary protobuf, so a plain `curl` (or any
+HTTP client without protobuf tooling) can drive the device. The encoding
+is chosen per-request by `Content-Type`; the response echoes that
+encoding. No new commands, no wire-version bump — this is an alternate
+*serialization* of the same `Command`/`Response` on the same URI.
+
+### Background
+
+* The endpoint + handler already exist (Stage lb8/lb9):
+  `command_post_handler` in
+  [firmware/main/net/http_api.cpp](../../../firmware/main/net/http_api.cpp)
+  reads the POST body into a heap buffer and calls the shared
+  `host_api_dispatch_serialized(in, len, out, cap, &out_len)`
+  ([host_api.cpp](../../../firmware/main/api/host_api.cpp#L500)), which
+  **decodes** a bare `Command`, runs the per-command `dispatch()` switch,
+  and **encodes** the `Response` — all in protobuf binary. The handler
+  then replies `Content-Type: application/protobuf`.
+* nanopb has **no** built-in JSON, and unlike Python's `json_format`
+  there's no reflection — a C JSON↔message mapper must be hand-written
+  per message. So JSON support means: parse the request JSON into a
+  `touchy_Command` with cJSON, run the *existing* dispatch core, then
+  render the `touchy_Response` back to JSON with cJSON.
+* ESP-IDF **bundles cJSON** as its built-in `json` component
+  (`#include "cJSON.h"`, `REQUIRES json`) — no managed-component download.
+* The simulator mirrors the endpoint in
+  [sim/http_server.py](../../../app/src/touchy_pad/sim/http_server.py)
+  (`SimDevice.handle_command(bytes) -> bytes`); Python gets JSON for free
+  via `google.protobuf.json_format`.
+* The host `--debug` RPC log already prints canonical protobuf-JSON
+  (camelCase, `MessageToJson`), which is exactly the shape this endpoint
+  accepts/returns — so those log lines double as copy-pasteable request
+  bodies.
+
+### Decisions (locked in)
+
+* **Content-Type negotiation on the *same* URI.** `application/json`
+  (request) → parse JSON, dispatch, reply `application/json`. Anything
+  else (`application/protobuf`, `application/octet-stream`, or unset) →
+  the existing binary path, unchanged (back-compat). The response
+  mirrors the request encoding.
+* **Canonical proto3 JSON** — lowerCamelCase field names, enum values as
+  their names, proto3 default/zero fields omitted (so an OK reply with no
+  payload is `{}`, matching the `rpc <- {}` example). This is exactly what
+  Python's `MessageToJson` emits, so host debug logs ↔ curl bodies match.
+* **cJSON = the IDF built-in `json` component.** New code lives in
+  `firmware/main/net/json.{h,cpp}`.
+* **Command coverage (initial): a pragmatic subset.** Full mapping for
+  `setProperty` (the motivating case) plus the *simple scalar* commands
+  (`sysBoardInfoGet`, `screenWake`, `getPreferences`,
+  `sysRebootBootloader`, `eventConsume`). The big nested trees
+  (`setPreferences`, `runActions`) are **deferred** — an unmapped command
+  key returns HTTP 400 with a clear message. Adding more later is
+  per-message mapper work, not a structural change.
+* **Response coverage: full.** Emit the top-level `code` (as its enum
+  name, omitted when `OK`) plus any populated payload — including the
+  `sysBoardInfo` object — so `board-info` over curl returns readable JSON.
+* **Simulator accepts/returns JSON too**, via `json_format`, so the same
+  curl works against the sim and the behaviour is unit-testable off-target.
+* **No `ProtocolVersion` bump.** Same commands, same URI; only an
+  additional body encoding.
+
+### Firmware seam
+
+`host_api_dispatch_serialized()` currently does decode → dispatch →
+encode in one call. Split the dispatch core out so both encodings share
+it. In `host_api.{h,cpp}` expose:
+
+```cpp
+// Run one already-decoded Command and fill `resp`. (The current static
+// `dispatch()` body, promoted to a public seam.)
+void host_api_dispatch_message(const touchy_Command *cmd, touchy_Response *resp);
+```
+`host_api_dispatch_serialized()` keeps its signature but is reimplemented
+as `pb_decode → host_api_dispatch_message → pb_encode`. The JSON path in
+`http_api.cpp` calls `json_to_command → host_api_dispatch_message →
+response_to_json`.
+
+### `net/json.{h,cpp}` API
+
+```cpp
+// Parse a canonical protobuf-JSON object into a touchy_Command.
+// Returns false (→ HTTP 400) on malformed JSON or an unsupported/unknown
+// command key. `err` (optional) gets a short human message.
+bool json_to_command(const char *json, size_t len, touchy_Command *out,
+                      const char **err);
+
+// Render a touchy_Response as a canonical protobuf-JSON string into a
+// freshly malloc'd NUL-terminated buffer (caller frees). Returns nullptr
+// on OOM.
+char *response_to_json(const touchy_Response *resp);
+```
+
+Implementation notes: `json_to_command` switches on the single top-level
+key (`"setProperty"`, `"sysBoardInfoGet"`, …), then for `setProperty`
+fills `widget_id`, the `property` oneof (`propertyName` | `propertyId`)
+and the `value` oneof (`boolValue`/`intValue`/`stringValue`/`colorValue`/
+`pointValue`, or none = remove), setting the matching `which_*` tags.
+`response_to_json` builds a `cJSON` object, adds `code` (skip when
+`OK`), and for each populated `which_payload` adds the nested object.
+
+### Definition of done
+
+* `POST /touchy/api/v1/command` with `Content-Type: application/json` and
+  a body like
+  `{"setProperty":{"widgetId":"welcome","propertyName":"text","stringValue":"hi"}}`
+  applies the override and returns `{}` with `Content-Type:
+  application/json`; the same request with `application/protobuf` (or no
+  content-type) still works byte-for-byte as today.
+* `curl` against `board-info` JSON returns the `sysBoardInfo` object.
+* `bin/set-property.sh IPADDR WIDGET VALUE` sends the setProperty JSON via
+  curl and works against a real device.
+* The simulator's HTTP endpoint accepts + returns JSON; `just app-test`
+  covers a JSON round-trip (setProperty + board-info) and content-type
+  negotiation. A representative board builds via `just firmware-build`.
+
+### Work items
+
+1. **Dispatch seam** (`firmware/main/api/host_api.{h,cpp}`): promote the
+   static `dispatch()` to a public `host_api_dispatch_message(const
+   touchy_Command*, touchy_Response*)`; reimplement
+   `host_api_dispatch_serialized()` on top of it (no behaviour change for
+   the binary path).
+2. **`net/json.{h,cpp}`** (new): `json_to_command` + `response_to_json`
+   using the IDF `json` (cJSON) component. Full `setProperty` mapping +
+   the simple scalar commands; full `Response` rendering incl.
+   `sysBoardInfo`. Canonical camelCase / enum-name / omit-defaults.
+3. **HTTP handler** (`firmware/main/net/http_api.cpp`): read the
+   `Content-Type` header (`httpd_req_get_hdr_value_str`); on
+   `application/json` run the JSON path (`json_to_command` →
+   `host_api_dispatch_message` → `response_to_json`, reply
+   `application/json`); otherwise the existing binary path. Reuse the
+   `HOST_API_RX_MAX` bound; free buffers on every exit.
+4. **CMake** (`firmware/main/CMakeLists.txt`): add `net/json.cpp` to
+   `SRCS` and `json` to the `net` `REQUIRES`.
+5. **Simulator** (`app/src/touchy_pad/sim/http_server.py`): branch on the
+   request `Content-Type`; for JSON, `json_format.Parse` the body into a
+   `Command`, dispatch via the existing `SimDevice.handle_command` core
+   (feed it serialized bytes, or add a message-level entry point), and
+   `MessageToJson` the `Response`; reply `application/json`.
+6. **`bin/set-property.sh`** (new): `curl -s -X POST
+   -H 'Content-Type: application/json' --data
+   '{"setProperty":{"widgetId":"'"$2"'","propertyName":"text","stringValue":"'"$3"'"}}'
+   http://$1/touchy/api/v1/command` (usage line + arg check).
+7. **Docs** (`docs/network-api.md`): document the two encodings, the
+   `Content-Type` negotiation, a curl example, and the initially-supported
+   command subset; add an `AGENTS.md`/`CLAUDE.md` note.
+8. **Tests** (`app/tests/`): against the sim HTTP server — a JSON
+   `setProperty` round-trip (reply `{}`), a JSON `board-info` returning the
+   nested object, and a check that `application/protobuf` still round-trips
+   binary.
+
+### Deferred / out of scope
+
+* JSON mapping for the **nested** commands (`setPreferences`,
+  `runActions`) and their payloads — added per-message later.
+* Changing the **host** Python `HttpTransport` to use JSON — it keeps
+  using binary protobuf; JSON is for external/curl clients.
+* Streaming / chunked bodies, compression, and any auth beyond the
+  existing mTLS gate.
+* A JSON variant of the non-HTTP transports (USB/UART framing stays
+  binary-only).
