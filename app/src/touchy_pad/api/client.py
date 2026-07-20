@@ -26,6 +26,34 @@ logger = logging.getLogger(__name__)
 # while still seeing DEBUG from the rest of the package.
 rpc_logger = logger.getChild("rpc")
 
+_RPC_FIELD_MAX = 80  # chars; longer field values are truncated with "..."
+
+
+def _proto_debug(msg: object) -> str:
+    """Render a protobuf message as a compact JSON string for RPC debug logs.
+
+    Individual field values longer than ``_RPC_FIELD_MAX`` characters are
+    replaced with ``"<N chars>"`` so binary blobs and long strings don't
+    swamp the log line.
+    """
+    import re
+
+    from google.protobuf.json_format import MessageToJson
+
+    raw = MessageToJson(msg, indent=None)  # type: ignore[arg-type]
+
+    # Replace any JSON string value that exceeds the limit with a summary.
+    # Pattern: a double-quoted string value (after a ':').  We operate on
+    # the flat one-liner produced by indent=None.
+    def _shorten(m: re.Match) -> str:
+        inner = m.group(1)
+        if len(inner) > _RPC_FIELD_MAX:
+            return f'"<{len(inner)} chars>"'
+        return m.group(0)
+
+    return re.sub(r'"((?:[^"\\]|\\.){' + str(_RPC_FIELD_MAX) + r',})"', _shorten, raw)
+
+
 # Stage 64.1: tunneled device log lines are routed onto this logger
 # (with the originating ESP_LOG tag attached via ``extra``). Callers
 # can configure formatting/filtering on it just like any stdlib
@@ -139,11 +167,17 @@ class TouchyClient:
     def _rpc(self, command: _proto.Command) -> _proto.Response:
         which = command.WhichOneof("cmd")
         with self._rpc_lock:
-            rpc_logger.debug("rpc -> %s", which)
+            if rpc_logger.isEnabledFor(logging.DEBUG) and which != "event_consume":
+                rpc_logger.debug("rpc -> %s", _proto_debug(command))
             self._t.send_command(command.SerializeToString())
             reply = _proto.Response()
             reply.ParseFromString(self._t.recv_response())
-            rpc_logger.debug("rpc <- %s code=%d", which, reply.code)
+            if (
+                rpc_logger.isEnabledFor(logging.DEBUG)
+                and which != "event_consume"
+                and reply.code != _proto.RESULT_NOT_FOUND
+            ):
+                rpc_logger.debug("rpc <- %s", _proto_debug(reply))
         return reply
 
     # -- typed wrappers ----------------------------------------------------

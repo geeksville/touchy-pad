@@ -129,8 +129,9 @@ def cli(
         format="%(levelname)s:%(name)s:%(message)s",
         force=True,  # Override any existing configuration
     )
-    # Suppress noisy RPC trace logs even in debug mode
-    logging.getLogger("touchy_pad.api.client.rpc").setLevel(logging.INFO)
+    # Suppress noisy RPC trace logs in normal mode; allow them in --debug.
+    if not debug:
+        logging.getLogger("touchy_pad.api.client.rpc").setLevel(logging.INFO)
 
     ctx.ensure_object(dict)
     sim_modes = [bool(sim_remote is not None), sim_headless, sim_gui]
