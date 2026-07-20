@@ -2,6 +2,7 @@
 * fix background? bright white flash at startup
 * !update readme
 * add hw build instructions
+* change to use GPIO 1 instead of 4 (better compat with seeed studio board)
 * post to reddit
 * property or name lookup api for changing field contents on the fly - possibly html dom like?
 * sometimes seems a bit laggy - check timings to ensure we can achive 60fps on two panels per chain, two chains

@@ -597,13 +597,17 @@ flash-merged: merge-bin
         --chip "$chip" write-flash 0x0 {{justfile_directory()}}/firmware/build/touchy_pad_merged.bin
 
 # setup for common devboards
-hw-oneled:
+hw-led:
     just firmware-reconfigure esp32_s3_devkitc_1
+
+hw-oneled: hw-led
     just app-run pref json-set <firmware/private/oneled.json
 
-hw-32x8:
-    just firmware-reconfigure esp32_s3_devkitc_1
+hw-32x8: hw-led
     just app-run pref json-set <firmware/private/32x8.json
+
+hw-32x32: hw-led
+    just app-run pref json-set <firmware/private/32x32.json
 
 # ---------------------------------------------------------------------------
 # Aggregate convenience targets
