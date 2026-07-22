@@ -1676,7 +1676,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     # size pulse runs between half and full; the rect is sized to the
     # *max* footprint so the inverted X/Y bounce (which reads the widget
     # size once at build time) never lets a shape clip off-screen.
-    size_max = 8
+    size_max = 4
     size_min = size_max // 2
 
     def _bouncer(name, color, *, radius, dur_x, dur_y, dur_size, path, delay):
@@ -1728,7 +1728,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     )
     screen += _bouncer(
         "swatch_green",
-        0x004000,
+        0x003000,
         radius=32767,
         dur_x=1200,
         dur_y=800,
@@ -1759,7 +1759,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
         text="Welcome to touchypad.",
         font_size=8,
         long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
-        rect=rect(x=0, y=0, w=0, h=size_max),
+        rect=rect(x=0, y=0, w=0, h=8),
         style=style(text_color=0x303030),
         animations=[
             animation(
