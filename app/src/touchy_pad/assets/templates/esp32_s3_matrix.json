@@ -1,0 +1,22 @@
+{
+  "fileVersion": "V9",
+  "boardConfig": {
+    "displays": [
+      {
+        "chains": [
+          {
+            "gpio": 14,
+            "panels": [
+              { 
+                "width": 8, 
+                "height": 8,
+                "cols_snaked": false,
+                "rows_flipped": true
+             }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Board-specific Kconfig defaults for the Waveshare ESP32-S3-Matrix
+# (ESP32-S3FH4R2: 4 MB QIO flash, 2 MB quad PSRAM).
+#
+# Display-less / touch-less LED-matrix board: an 8×8 WS2812B matrix on
+# GPIO 14, driven by the shared boards/common/leds/ driver. Panel geometry
+# and wiring arrive at runtime from the persisted BoardConfig preference
+# (Stage lb6/lb10), so no compile-time LED_PANEL_* macros here.
+
+# ----- Flash (4 MB, QIO @ 80 MHz) -----
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/4M.csv"
+
+# ----- PSRAM (2 MB, quad SPI @ 80 MHz) -----
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_QUAD=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+
+# ----- Host transport: native USB vendor bulk only (Stage LB5) -----
+# The board has no dedicated UART wired to the host, so the protocol runs
+# over the native USB-OTG vendor-bulk interface. UART and CDC-ACM protocol
+# links are left disabled; the common defaults route the IDF console to
+# UART0. Device logs are tunneled to the host via the protobuf LogRecord
+# channel (CONFIG_TOUCHY_LOG_OVER_PROTO=y in the common sdkconfig.defaults).
+CONFIG_TOUCHY_NO_TOUCH=y

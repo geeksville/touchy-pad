@@ -16,10 +16,11 @@
 //     is exposed for testing.
 //
 // Board-independent: shared by every LED-matrix board (jc_esp32p4_m3,
-// esp32-s3-devkitc-1, …). It lives under firmware/boards/common/leds/ and
-// is compiled into the selected board component, which owns the
-// espressif/led_strip dependency. Panel geometry + wiring arrive at runtime
-// from the persisted BoardConfig (see led_display.h `LedChainDesc`).
+// esp32-s3-devkitc-1, esp32_s3_matrix, …). It lives under
+// firmware/boards/common/leds/ and is compiled into the selected board
+// component, which owns the espressif/led_strip dependency. Panel geometry +
+// wiring arrive at runtime from the persisted BoardConfig (see
+// led_display.h `LedChainDesc`).
 
 #pragma once
 
