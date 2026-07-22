@@ -29,6 +29,10 @@ enum {
     REPORT_ID_CONSUMER = 3,
 };
 
+#ifndef CONFIG_TOUCHY_NO_TOUCH
+#define CONFIG_TOUCHY_NO_TOUCH 0
+#endif
+
 // ----- HID report descriptor -----
 // Composite mouse + keyboard + consumer-control on a single HID interface,
 // distinguished by report ID:
@@ -36,10 +40,16 @@ enum {
 //   * 2 = boot-protocol keyboard (8-byte payload)
 //   * 3 = consumer control (16-bit usage; media/volume keys, Stage 93)
 // Single-interface saves an endpoint and is the common TinyUSB pattern.
+//
+// Stage matrix1: the entire HID interface is omitted on touch-less boards
+// (CONFIG_TOUCHY_NO_TOUCH=y) because there is no pointer/keyboard input
+// surface; only the vendor (host_api) endpoint remains.
 static const uint8_t s_hid_report_descriptor[] = {
+#if !CONFIG_TOUCHY_NO_TOUCH
     TUD_HID_REPORT_DESC_MOUSE   (HID_REPORT_ID(REPORT_ID_MOUSE)),
     TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(REPORT_ID_KEYBOARD)),
     TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(REPORT_ID_CONSUMER)),
+#endif  // !CONFIG_TOUCHY_NO_TOUCH    
 };
 
 // Required by tinyusb for HID descriptor queries.
@@ -95,7 +105,7 @@ static const tusb_desc_device_t s_device_desc = {
 // Composite HID mouse + custom vendor (host_api), optionally with
 // CDC-ACM prepended when `CONFIG_TINYUSB_CDC_ENABLED=y` (see Stage 64.2).
 // CDC uses two interfaces (control + data) and three endpoints.
-// HID uses one interface and one endpoint.
+// HID uses one interface and one endpoint (omitted on touch-less boards).
 // Vendor uses one interface with two bulk endpoints (command OUT,
 // response IN). The interrupt-IN event endpoint described in
 // docs/host-api.md is reserved for a future stage; the host transport
@@ -105,7 +115,9 @@ enum {
     ITF_NUM_CDC = 0,
     ITF_NUM_CDC_DATA,
 #endif
+#if !CONFIG_TOUCHY_NO_TOUCH
     ITF_NUM_HID,
+#endif
     ITF_NUM_VENDOR,
     ITF_NUM_TOTAL
 };
@@ -122,21 +134,33 @@ enum {
     EPNUM_CDC_NOTIF  = 0x81,
     EPNUM_CDC_OUT    = 0x02,
     EPNUM_CDC_IN     = 0x82,
+#if !CONFIG_TOUCHY_NO_TOUCH
     EPNUM_HID        = 0x83,
     EPNUM_VENDOR_OUT = 0x04,
     EPNUM_VENDOR_IN  = 0x84,
 #else
+    // Touch-less: no HID endpoint; vendor occupies the next pair.
+    EPNUM_VENDOR_OUT = 0x03,
+    EPNUM_VENDOR_IN  = 0x83,
+#endif
+#else
     // CDC disabled: shift HID + Vendor down so they occupy EPs 1..2
     // (leaving 3..4 free for future use).
+#if !CONFIG_TOUCHY_NO_TOUCH
     EPNUM_HID        = 0x81,
     EPNUM_VENDOR_OUT = 0x02,
     EPNUM_VENDOR_IN  = 0x82,
+#else
+    // Touch-less: vendor is the only interface.
+    EPNUM_VENDOR_OUT = 0x01,
+    EPNUM_VENDOR_IN  = 0x81,
+#endif
 #endif
 };
 
 #define CFG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN \
                        + (CFG_TUD_CDC ? TUD_CDC_DESC_LEN : 0) \
-                       + TUD_HID_DESC_LEN \
+                       + (CONFIG_TOUCHY_NO_TOUCH ? 0 : TUD_HID_DESC_LEN) \
                        + TUD_VENDOR_DESC_LEN)
 
 // Full-speed configuration (used by FS-only controllers and as the FS
@@ -148,10 +172,12 @@ static const uint8_t s_config_desc[] = {
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8,
                        EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 #endif
+#if !CONFIG_TOUCHY_NO_TOUCH
     // HID composite (mouse + keyboard): IN EP, 16-byte max packet, 10 ms poll.
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, 5, HID_ITF_PROTOCOL_NONE,
                        sizeof(s_hid_report_descriptor),
                        EPNUM_HID, 16, 10),
+#endif
     // Vendor (host_api): bulk OUT (command) + bulk IN (response).
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 6, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, 64),
 };
@@ -167,9 +193,11 @@ static const uint8_t s_hs_config_desc[] = {
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8,
                        EPNUM_CDC_OUT, EPNUM_CDC_IN, 512),
 #endif
+#if !CONFIG_TOUCHY_NO_TOUCH
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, 5, HID_ITF_PROTOCOL_NONE,
                        sizeof(s_hid_report_descriptor),
                        EPNUM_HID, 16, 10),
+#endif
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 6, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, 512),
 };
 
@@ -195,8 +223,9 @@ extern "C" void usb_hid_init(void)
     // pointer to cached static storage, valid for the program lifetime.
     s_string_desc[3] = platform_serial();
 
-    ESP_LOGI(TAG, "Starting TinyUSB (%sHID + vendor, VID:PID = 0x%04x:0x%04x, serial %s)",
+    ESP_LOGI(TAG, "Starting TinyUSB (%s%s + vendor, VID:PID = 0x%04x:0x%04x, serial %s)",
              CFG_TUD_CDC ? "CDC-ACM + " : "",
+             CONFIG_TOUCHY_NO_TOUCH ? "no-HID" : "HID",
              s_device_desc.idVendor, s_device_desc.idProduct, s_string_desc[3]);
 
     // esp_tinyusb 2.x: start from the target-default config (full-speed on
@@ -257,6 +286,40 @@ extern "C" void tud_cdc_rx_cb(uint8_t /*itf*/)
 }
 #endif
 
+// Stage matrix1: on touch-less boards the HID interface is not present.
+// Provide empty helpers that log a warning so macro calls degrade gracefully
+// instead of crashing or silently doing nothing without a trace.
+#if CONFIG_TOUCHY_NO_TOUCH
+extern "C" void usb_hid_mouse_move(int8_t /*dx*/, int8_t /*dy*/)
+{
+    ESP_LOGW(TAG, "HID mouse_move ignored: device has no touch/HID interface");
+}
+
+extern "C" void usb_hid_mouse_scroll(int8_t /*vertical*/, int8_t /*horizontal*/)
+{
+    ESP_LOGW(TAG, "HID mouse_scroll ignored: device has no touch/HID interface");
+}
+
+extern "C" void usb_hid_mouse_click(uint8_t /*button*/)
+{
+    ESP_LOGW(TAG, "HID mouse_click ignored: device has no touch/HID interface");
+}
+
+extern "C" void usb_hid_mouse_buttons(uint8_t /*buttons*/, int8_t /*dx*/, int8_t /*dy*/, int8_t /*wheel*/)
+{
+    ESP_LOGW(TAG, "HID mouse_buttons ignored: device has no touch/HID interface");
+}
+
+extern "C" void usb_hid_keyboard_report(uint8_t /*modifiers*/, const uint8_t /*keycodes*/[6])
+{
+    ESP_LOGW(TAG, "HID keyboard_report ignored: device has no touch/HID interface");
+}
+
+extern "C" void usb_hid_consumer_control(uint16_t /*usage*/)
+{
+    ESP_LOGW(TAG, "HID consumer_control ignored: device has no touch/HID interface");
+}
+#else
 // Helper to wait briefly for the host to enumerate / accept the next report.
 static bool wait_ready(void)
 {
@@ -292,7 +355,7 @@ extern "C" void usb_hid_mouse_click(uint8_t button)
 }
 
 // ---------------------------------------------------------------------------
-// Stage 16 — raw mouse + keyboard helpers used by macros.cpp.
+// Stage 16 - raw mouse + keyboard helpers used by macros.cpp.
 //
 // These differ from the click/move helpers above in that the caller owns
 // the button-state / key-state bookkeeping: a macro typically does
@@ -315,7 +378,7 @@ extern "C" void usb_hid_keyboard_report(uint8_t modifiers, const uint8_t keycode
     tud_hid_keyboard_report(REPORT_ID_KEYBOARD, modifiers, kc);
 }
 
-// Stage 93 — send a Consumer-Control usage (Usage Page 0x0C) as a
+// Stage 93 - send a USB HID Consumer-Control usage (Usage Page 0x0C) as a
 // press-then-release pair: one report carrying the 16-bit usage, then a
 // zero report. Used for media / volume keys, which are not on the
 // keyboard page.
@@ -329,3 +392,4 @@ extern "C" void usb_hid_consumer_control(uint16_t usage)
     key = 0;
     tud_hid_report(REPORT_ID_CONSUMER, &key, sizeof(key));
 }
+#endif  // CONFIG_TOUCHY_NO_TOUCH
