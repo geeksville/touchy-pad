@@ -4,7 +4,14 @@
 * add hw build instructions
 * change to use GPIO 1 instead of 4 (better compat with seeed studio board)
 * post to reddit
-* property or name lookup api for changing field contents on the fly - possibly html dom like?
+* !property or name lookup api for changing field contents on the fly - possibly html dom like?
+* allow writing gifs/pngs via the post api.  add standard uscr layouts to the app - for instance nyan view for leds or digital photo frame on LCD
+* start on creep3r
+
+
+
+
+
 * sometimes seems a bit laggy - check timings to ensure we can achive 60fps on two panels per chain, two chains
 
 The background color is a simple color to fill the display. It can be adjusted with lv_disp_set_bg_color(disp, color).

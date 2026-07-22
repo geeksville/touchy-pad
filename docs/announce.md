@@ -29,5 +29,6 @@ Hopefully it might be useful for some? (I last posted in this sub like 10 yrs ag
 
 TODO
 Announce in
+https://www.reddit.com/r/led/?screen_view_count=1
 https://www.reddit.com/r/esp32projects/submit/?type=TEXT
 https://www.reddit.com/r/ArduinoProjects/submit/?type=TEXT
