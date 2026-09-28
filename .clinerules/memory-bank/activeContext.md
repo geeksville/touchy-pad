@@ -17,6 +17,15 @@
   * a **real bug fix**: `app/src/touchy_pad/cli.py` imported a misspelled
     module (`api._transponrt_serial`), breaking `touchy --port <dev>`
     entirely; plus the new regression suite `app/tests/test_cli.py`.
+  * `.clinerules/` — four rule files copied in from the *starbash* project and
+    adapted to this repo's layout: `collaboration.md` (the no-commit boundary
+    now names the `tools/StreamController` submodule + `tools/streamdeck-probe`
+    / `rust/`), `plans.md` (**plans live in `docs/plans/`**, created by the
+    first plan), `searching.md` (semble MCP `repo` paths are relative to `app/`,
+    so the firmware is `../firmware/main`), and `terminal.md` (which
+    `just`/`touchy` commands block and why). `memory-bank.md` and
+    `memory-bank/` were already repo-specific and are unchanged. Every `repo`
+    example in `searching.md` was re-verified against the live MCP server.
   * Nothing has been committed (never auto-commit) — the user decides.
 * Firmware was **not** rebuilt this session (no board attached); the only
   firmware change was a comment block, so the build is unaffected.
