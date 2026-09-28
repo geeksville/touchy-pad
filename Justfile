@@ -617,7 +617,7 @@ hw-32x32: hw-led
 build-all: firmware-build app-build rust-build
 
 test-interactive:
-    env -u VIRTUAL_ENV poetry run --directory app touchy screens demo --listen
+    env -u VIRTUAL_ENV poetry run --directory app touchy --listen screen demo 
 
 # Lint + test everything (currently just the host app).
 test: app-lint app-test
