@@ -221,8 +221,23 @@ version on load and deletes incompatible files rather than mis-rendering.
 | `touchydeck/` | StreamDeck shim: `deck.py`, `layout.py`, `discovery.py` — `install()` must be called **explicitly**; no import side effects |
 | `paths.py`, `update.py`, `assets/templates/*.json` | Path constants, `touchy update` flashing, prefs templates (`led-32x8.json`, `neopixel-1.json`, `led-96x8-chain.json`) |
 
-CLI global options: `--debug`, `--url` / `TOUCHY_URL`, `--sim`, `--sim-headless`,
-`--sim-gui`, `--sim-remote [HOST:PORT]`.
+CLI global options: `--debug`, `--url` / `TOUCHY_URL`, `--port <dev>` (force the
+serial transport instead of USB auto-discovery), `--sim`, `--sim-headless`,
+`--sim-gui`, `--sim-remote [HOST:PORT]`, `--listen`.
+
+Gotchas that have bitten us (fixed or worked around):
+
+* `Touchy` has **no** `run_actions` — that lives on `TouchyClient`
+  (`pad.client.run_actions([...])`). The high-level equivalents are
+  `Touchy.show_user_screen(name)` / `Touchy.set_image_button_slot(...)`.
+* `Touchy.screen_load()` takes a **drive-prefixed path** (`F:host/s/home.pb`),
+  not a bare screen name, and returns `None`; `""` loads the device default.
+  `Touchy.screen_save()` *is* name-based (it writes `F:host/s/<name>.pb`) and
+  needs an explicit `name=` when given a raw `protobuf.Screen` (which has no
+  name field).
+* `TouchyClient`/`Touchy` pair: `Touchy` owns the background event poller and
+  the inline-callback registry; always use it as a context manager.
+
 
 ## Rust workspace (`rust/`)
 

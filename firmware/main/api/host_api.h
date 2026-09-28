@@ -26,9 +26,11 @@ extern "C" {
 // the transports are configured (USB brought up via usb_hid_init() on chips
 // with native USB-OTG, and/or the serial UART). Selects its byte-stream
 // link(s) by build config: the vendor bulk pair on native-USB chips
-// (CONFIG_SOC_USB_OTG_SUPPORTED), and/or a serial port when
-// CONFIG_TOUCHY_PROTO_OVER_SERIAL is set. Each link's task blocks on its
-// stream and services commands sequentially.
+// (CONFIG_TOUCHY_PROTO_OVER_VENDORUSB / CONFIG_SOC_USB_OTG_SUPPORTED), a
+// USB-CDC ACM port (CONFIG_TOUCHY_PROTO_OVER_CDCACM), and/or a hardware UART
+// (CONFIG_TOUCHY_PROTO_OVER_UART + CONFIG_TOUCHY_HAS_PROTO_UART). Each link's
+// task blocks on its stream and services commands sequentially, so several
+// transports can be served at once (Stage LB5).
 void host_api_start(void);
 
 // Hook for TinyUSB's tud_vendor_rx_cb — woken when bytes arrive on the
@@ -38,7 +40,7 @@ void host_api_on_rx(void);
 
 // Hook for TinyUSB's tud_cdc_rx_cb — woken when bytes arrive on the
 // USB-CDC ACM port that carries the protocol when
-// CONFIG_TOUCHY_PROTO_OVER_SERIAL is set. No-op stub otherwise.
+// CONFIG_TOUCHY_PROTO_OVER_CDCACM is set. No-op stub otherwise.
 void host_api_on_cdc_rx(void);
 
 // Enqueue an LvEvent for the host to fetch via EventConsumeCmd. Triggers

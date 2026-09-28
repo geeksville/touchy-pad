@@ -26,7 +26,10 @@ from touchy_pad.api import touchy_open, touchy_get_pad_ids
 print("attached:", touchy_get_pad_ids())
 
 with touchy_open() as pad:
-    print("loaded:", pad.screen_load("home"))
+    # Screens are addressed by drive-prefixed path, not by bare name
+    # (``pad.screen_save`` writes ``F:host/s/<name>.pb``). "" loads the
+    # device's default screen; ``Touchy.screen_load`` returns ``None``.
+    pad.screen_load("F:host/s/home.pb")
 ```
 
 `touchy_open()` opens the first connected device by default; pass a
@@ -62,14 +65,21 @@ When you'd rather hand-build the message:
 ```python
 from touchy_pad.api import protobuf, touchy_open
 
-msg = protobuf.Screen(name="raw", version=protobuf.Screen.Version.CURRENT)
+msg = protobuf.Screen()
+# The wire-format version lives on `Widget` (there is no `Screen.Version`
+# since Stage 56) and only the *root* widget of the file carries it — for a
+# screen file that is `active`. The firmware validates it on load.
+msg.active.version = protobuf.Widget.Version.CURRENT
 msg.active.layout_flex.flow = protobuf.LayoutFlex.ROW
 msg.active.layout_flex.layout.children.add(
     label=protobuf.Label(text="raw"),
 )
 
 with touchy_open() as pad:
-    pad.screen_save(msg)
+    # A raw `protobuf.Screen` has no name field (only the host DSL's
+    # `Screen("name")` does), so pass `name=` to pick the upload path
+    # (`F:host/s/<name>.pb`).
+    pad.screen_save(msg, name="raw")
 ```
 
 `pad.screen_save()` accepts any of:
@@ -143,8 +153,8 @@ s += button(
 )
 
 with touchy_open() as pad:
-    pad.screen_save(s)   # callbacks are wired up automatically here
-    pad.screen_load("home")
+    pad.screen_save(s)                    # uploads to F:host/s/home.pb; callbacks wired up here
+    pad.screen_load("F:host/s/home.pb")   # screens load by path, not by bare name
     # ...other work...
 ```
 
@@ -181,11 +191,12 @@ Callbacks run on the poller thread, so:
 
 ## Running actions device-side
 
-`pad.run_actions(actions)` (on the low-level `TouchyClient`) asks the
-device to execute a list of protobuf `Action`s exactly as if a local
-widget had triggered them. The most common use is retargeting the
-`widget_ref(id="page")` of the default chrome to a uploaded user-screen
-body so it jumps to the front:
+`TouchyClient.run_actions(actions)` — reachable as
+`pad.client.run_actions(...)` — asks the device to execute a list of
+protobuf `Action`s exactly as if a local widget had triggered them. The
+most common use is retargeting the `widget_ref(id="page")` of the default
+chrome to an uploaded user-screen body so it jumps to the front, which the
+high-level API wraps as `pad.show_user_screen(name)`:
 
 ```python
 from touchy_pad.api import protobuf
@@ -199,7 +210,8 @@ act.device.change_widget_ref.target_id = "page"
 
 with touchy_open() as pad:
     pad.user_screen_save("opendeck", widget)  # body → F:host/uscr/opendeck.pb
-    pad.run_actions([act])                     # bring it to the front
+    pad.show_user_screen("opendeck")          # bring it to the front…
+    pad.client.run_actions([act])             # …or hand the raw action over
 ```
 
 This works against both real hardware and the simulator (headless too).

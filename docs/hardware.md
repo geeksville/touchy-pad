@@ -27,18 +27,27 @@ which caps a full-frame RGB565 redraw (480×272×2 ≈ 261 KB) at roughly
 
 ## ESP32-2432S028Rv3: 2.8" resistive cheap-yellow-display variant (Also called "ESP32-2432S028R v3" or CYD2USB)
 
-### WARNING: Not yet supported
+### Status: firmware implemented; touch pin still unconfirmed on hardware
 
-FIXME once home with access to a multimeter to find where MISO is attached to
-XPT2046.  Supposedly it is 39, but tried 12 and not there either.  Need to ohm it out. Until then both of the CYD boards are unsupported.  For the time being I'm leaving the test/debug code in touch.cpp.
+The firmware builds and runs (`esp32_2432s028rv3`, Stage 65): an ST7789 SPI
+panel over SPI2 plus an XPT2046 resistive single-touch controller over
+SPI3. The **display half works, but the touch panel has not been verified
+on real hardware**: the XPT2046's MISO line is still unknown — 39 was tried
+and a second report tried 12, neither worked. Someone with a multimeter
+needs to buzz out where MISO actually goes and set it in
+[`board_pins.h`](../firmware/boards/esp32_2432s028rv3/board/board_pins.h);
+the debug/test code in `touch.cpp` is still there for that bring-up. The
+2.4" sibling (`esp32_2432s024`) shares the same touch driver and the same
+open question.
 
 > **touchy-pad support: implemented (Stage 65).** Board id
 > `esp32_2432s028rv3` (`firmware/boards/esp32_2432s028rv3/`, IDF target
 > `esp32`). Flash and talk to it over the CH340 UART on `/dev/ttyUSB*`
 > (not `/dev/ttyACM*`) — the proprietary protobuf protocol runs over
-> UART0 at 115200, device logs ride the Stage 64.1 `LogRecord` tunnel.
-> No native USB ⇒ no HID mouse/keyboard. No PSRAM, but the `R:` ramdisk
-> and image assets still work (RamFs falls back to internal SRAM,
+> UART0 at 115200 (`CONFIG_TOUCHY_HAS_PROTO_UART`), device logs ride the
+> Stage 64.1 `LogRecord` tunnel.
+> No native USB ⇒ no HID mouse/keyboard. No PSRAM, but the `R:`/`T:`
+> ramdisks and image assets still work (RamFs falls back to internal SRAM,
 > bounded by ~520 KB). The resistive XPT2046 is single-touch, so the
 > device reports `is_multitouch=false` / `has_usb=false` in board-info.
 >
@@ -124,9 +133,16 @@ USB ports: this board contains both a USB-C and a USB-Micro port but they are el
 
 ## ESP32-2432S024: The 2.4" version of CYD2USB (also called ESP32-2432S024)
 
-WARNING: Not yet supported
+Firmware implemented (Stage 65.1): an ILI9341 SPI panel instead of the 2.8"
+board's ST7789, with the same XPT2046 resistive single-touch controller and
+therefore the same unconfirmed-MISO caveat described above. The two boards
+compile the *same* sources in
+[`firmware/boards/cyd_common/`](../firmware/boards/cyd_common/); each board
+directory contributes only its `board_pins.h`, which selects the panel
+driver (`BOARD_LCD_CONTROLLER_ILI9341` here, `BOARD_LCD_CONTROLLER_ST7789`
+on the 2.8"). Protocol rides UART0 at 115200.
 
-Full documentation [here](hardware/esp32-024/README.md)
+Full documentation [here](hardware/esp32-024/README.md).
 
 ## Waveshare 7 inch
 
@@ -140,7 +156,7 @@ The [Elecrow CrowPanel Advanced 7" ESP32-P4](https://www.elecrow.com/crowpanel-a
 
 **USB HID works fully** — the P4 has a USB 2.0 High-Speed OTG controller (480 Mbps), and the firmware negotiates HS descriptors (512-byte bulk endpoints) automatically. This means you get the full mouse + keyboard HID experience, exactly like the jc4827w543.
 
-The board also contains an ESP32-C6 WiFi companion chip, held in reset for now (WiFi is not yet implemented).
+The board also contains an ESP32-C6 WiFi companion chip, held in reset for now. The firmware *does* have WiFi + the mTLS-secured HTTP(S) command API (Stages lb8/lb9), but that support is gated on `CONFIG_TOUCHY_WIFI`, which defaults off on the ESP32-P4 (there is no usable on-chip WiFi) — so this board currently builds USB-only. Driving the C6 companion is future work.
 
 Notable quirks discovered during bring-up:
 - The LDO channel 3 must be raised to 2.5 V before DSI bus init, or the PHY PLL never locks.
@@ -229,7 +245,7 @@ Board id: `matouch_43`, IDF target `esp32s3`. Uses the 16 MB partition table (`p
 
 Two variants of the Elecrow 7" ESP32-S3 board are supported: the [regular CrowPanel 7"](https://www.elecrow.com/esp32-display-7-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html) and the [CrowPanel Advance 7"](https://www.elecrow.com/crowpanel-advance-7-hmi-esp32-ai-display-800x480-ai-ips-touch-screen.html). Both use an ESP32-S3 with an 800×480 RGB panel and GT911 capacitive multitouch, and cost around $20–25 USD.
 
-**Important limitation:** neither variant exposes the ESP32-S3's USB-OTG pins — the USB-C port is wired to the UART0 bridge only. As a result **USB HID is not available**; the protocol runs over serial (115200 baud, `CONFIG_TOUCHY_PROTO_OVER_SERIAL`) and `has_usb` is reported `false` to the host. If you need HID (mouse/keyboard emulation), choose a different board.
+**Important limitation:** neither variant exposes the ESP32-S3's USB-OTG pins — the USB-C port is wired to the UART0 bridge only. As a result **USB HID is not available**; the protobuf protocol runs over the hardware-UART link at 115200 baud and `has_usb` is reported `false` to the host. If you need HID (mouse/keyboard emulation), choose a different board.
 
 The firmware supports all hardware revisions under one build. At boot it probes I²C address `0x51` for the Advance-only RTC chip and selects the correct pin assignments and backlight controller automatically:
 

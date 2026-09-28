@@ -1,8 +1,46 @@
 # Progress — what works, what's left, decision history
 
-**Snapshot (2026-09-28):** `main` @ `40a133e`, `VERSION` `0.3.4`/build `21`,
-working tree clean (only `.clinerules/` untracked). Host test suite:
-**241 passed, 2 skipped** (`just app-test`). Firmware not rebuilt this session.
+**Snapshot (2026-09-28, later session):** `main` @ `22d3f97` ("try cline" — the
+user committed the memory bank), `VERSION` `0.3.4`/build `21`. Host suite:
+**244 passed, 2 skipped** (`just app-test`, ~20 s) — the 3 extra tests are the
+new `app/tests/test_cli.py` transport-selection regression tests. Firmware was
+not rebuilt this session (no board attached); firmware changes were comments
+only.
+
+### Documentation/consistency fixes in this session (2026-09-28)
+
+* `docs/design.md` Stage 100 — status flipped from "planned/in-progress" to
+  **DONE** with a "What was implemented" section (it shipped in `e37848f`).
+* `AGENTS.md` — dropped the stale `Screen.Version.CURRENT == 5` claim (no such
+  enum since Stage 56; the version is on the root `Widget`) and replaced the
+  7-board intro list with all 13 board dirs.
+* `docs/python-api.md` — fixed three broken examples: `Screen.Version.CURRENT`
+  / `Screen(name=…)` in the raw-protobuf example (`screen_save` also needs
+  `name=` for a raw `Screen`), `screen_load("home")` → path-based loads, and
+  `pad.run_actions(...)` → `pad.client.run_actions(...)` /
+  `pad.show_user_screen(...)` (there is no `Touchy.run_actions`).
+* `docs/hardware.md` — CYD 2.8"/2.4" sections no longer say "Not yet
+  supported"; the Elecrow S3 section uses the current UART-link flags instead
+  of the retired `CONFIG_TOUCHY_PROTO_OVER_SERIAL`; the P4 section no longer
+  claims WiFi is unimplemented (it is; this board just has no usable radio).
+* `docs/hardware/lightbar/design.md` — removed obsolete "firmware not compiled
+  on real ESP-IDF" caveats (LB1/LB2/lb6/lb8/lb10), corrected lb2's stale
+  `firmware/main/leds/` + `esp32-s3-devkitc-1` paths, dropped lb8's removed
+  `tls_psk` flags, and turned lb9's leftover second "Status: planning" block
+  into rationale prose.
+* `firmware/README.md` — rewritten end to end: accurate 13-board table (with
+  the CYD touch caveat and the parked P4 LED board), current architecture
+  (`Display` ABC, `api/`+`widgets/`+`fs/`+`net/`, `boards/common/`), `just`
+  recipes first, console/logging truth (log tunnel, CDC off by default), and
+  current known issues.
+* `firmware/main/api/host_api.h` — comments updated to the three real
+  transport flags (`VENDORUSB`/`CDCACM`/`UART`) instead of the retired
+  `CONFIG_TOUCHY_PROTO_OVER_SERIAL`.
+* **Real bug fixed:** `app/src/touchy_pad/cli.py` imported
+  `api._transponrt_serial` (typo), so `touchy --port <dev>` raised
+  `ModuleNotFoundError` every time. Now `_transport_serial`, covered by the new
+  `app/tests/test_cli.py` (the test fails with the typo and passes with the
+  fix).
 
 ## Wire-format versions in force
 
@@ -112,16 +150,19 @@ Deferred by design (from stage docs):
    `sysBoardInfoGet`, `screenWake`, `getPreferences`, `sysRebootBootloader`,
    `eventConsume` only; `setPreferences`/`runActions` are protobuf-only; an
    unknown command key returns HTTP 400.
-5. **Docs drift found 2026-09-28:** (a) `docs/design.md` Stage 100 says
-   "planned/in-progress" although it is implemented; (b) `AGENTS.md` claims
-   `Screen.Version.CURRENT == 5`, but no such enum exists in `proto/` any more —
-   the version lives on the root `Widget`. Neither is a code bug, but both
-   mislead contributors/agents. Fixing them is cheap and recommended.
-6. **`firmware/README.md` is partly stale** (LVGL-v8 pin, HID-only/no-CDC
-   description, 4-board table) versus the 13 board dirs that exist today;
-   `docs/hardware.md` is also behind for the CYD boards.
-7. **Windows CI has no libusb** — discovery paths must degrade to a clear error
+5. **`jc_esp32p4_m3` (Guition P4 LED-matrix board) doesn't boot** — PSRAM init
+   fails before `app_main` (loops on MSPI DQS phase); parked. Use
+   `esp32_s3_devkitc_1` (same LED stack, mainstream silicon) instead.
+6. **Windows CI has no libusb** — discovery paths must degrade to a clear error
    (`NoBackendError`), not a traceback.
+
+*(Resolved 2026-09-28: the Stage-100 status drift, the `Screen.Version` claim,
+the stale `firmware/README.md`/`docs/hardware.md` sections and the
+`touchy --port` import typo were all fixed — see the "Documentation/consistency
+fixes" section above. Firmware/board docs still to refresh: the CYD sections of
+`firmware/README.md`'s table are accurate, but `docs/hardware.md` keeps a lot
+of historical CYD pin-hunting detail that is only useful for the pending
+multimeter work.)*
 
 ## Evolution of key decisions (reversals worth remembering)
 

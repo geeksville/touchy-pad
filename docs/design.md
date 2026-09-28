@@ -5562,9 +5562,10 @@ wire change).
 *(None outstanding — `tap_distance` defaults to `TAP_MAX_MOVE`, `tap_time`
 is the renamed `tap_max_ms`, and `on_move` is never suppressed.)*
 
-## Stage 100: Python image cache + TouchyDeck user-screen port
+## Stage 100: Python image cache + TouchyDeck user-screen port — DONE
 
-**Status: planned/in-progress.**
+**Status: DONE** (landed as commit `e37848f`, "update StreamController
+plugin to work again (stage 100)").
 
 Port the Python `touchy_pad.touchydeck` StreamController shim from its
 "standalone screen + per-key file rewrite + whole-grid reload" model
@@ -5626,6 +5627,48 @@ plugin already uses:
 - `app/src/touchy_pad/touchydeck/discovery.py` (build `Touchy`)
 - `app/tests/test_image_cache.py` (new)
 - `app/tests/test_touchydeck.py` (extend)
+
+### What was implemented
+
+All of the above shipped as specified. Details worth knowing:
+
+* **`touchy_pad.api.image_cache.ImageCache(pad, *, max_dim=None)`** —
+  `set_cached_image(data) -> str` accepts `bytes` / `bytearray` /
+  `memoryview` / `PIL.Image` and returns the on-device path. Filenames are
+  a 128-bit `hashlib.blake2b` digest rendered as urlsafe base64 with the
+  padding stripped, under `paths.IMAGE_CACHE_DIR` (`T:host/icache/`).
+* **Eviction + wipe.** LRU, capped at `MAX_CACHED_IMAGES = 128`; an
+  eviction also `file_delete`s the device asset. The first
+  `set_cached_image()` of a session wipes the cache root (so a crashed
+  session leaves nothing stale) — `clear()` drops the in-RAM index and
+  re-arms that wipe rather than deleting files immediately.
+* **Byte-identical to `file_save`.** `_normalize()` mirrors
+  `TouchyClient.file_save`'s conversion (PIL → PNG bytes, GIF passed
+  through verbatim as `.gif`, an existing LVGL `.bin` passed through,
+  everything else → `to_lvgl_bin`), so a cached asset is
+  interchangeable with a directly-uploaded one; `max_dim` is applied as
+  the conversion's `max_width`/`max_height` (the plugin uses 72 px, the
+  StreamDeck key size).
+* **`touchydeck/layout.build_page(cols, rows, *, blank_path)`** returns a
+  `LayoutGrid` of per-key `ImageButton`s (ids from
+  `layout.key_widget_id(key)`, numbered left-to-right/top-to-bottom) whose
+  cells are `grow_x=1, grow_y=1` and whose released slot starts at the
+  cached blank image; every button carries its key's host code on **both**
+  press and release.
+* **`touchydeck/deck.py`** now holds a `Touchy` plus
+  `ImageCache(pad, max_dim=STREAMDECK_KEY_PIXELS)`, pushes the grid via
+  `user_screen_save(PAGE_NAME, body)` + `show_user_screen(PAGE_NAME)`, and
+  repaints through `pad.set_image_button_slot(...)`; `discovery.py` builds
+  the `Touchy`. `api/__init__.py` exports `ImageCache` and
+  `screens.set_image_button_slot_action` is the DSL helper.
+* **Tests:** `app/tests/test_image_cache.py` (new) plus extensions to
+  `app/tests/test_touchydeck.py`. Note `test_touchydeck.py` has two
+  `pytest.mark.skip` cases gated on `register_controllers_factory`, which
+  the pinned `streamcontroller-streamdeck` doesn't expose — unrelated to
+  this stage.
+* **Deferred, as planned:** `set_brightness` remains best-effort
+  wake/sleep; it is *not* wired to the Stage-94 `backlight_level`
+  preference yet.
 
 # Old/Existing projects
 

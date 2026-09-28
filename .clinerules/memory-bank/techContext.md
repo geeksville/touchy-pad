@@ -60,13 +60,19 @@ only reliable way. Same for `poetry`/`protoc` — use the `just` recipes.
 
 ## Verified environment state (2026-09-28, this workspace)
 
-* `just app-test` → **241 passed, 2 skipped** (skips are
+* `just app-test`: **244 passed, 2 skipped** in ~20 s (the skips are
   `test_touchydeck.py` cases gated on `register_controllers_factory` not being
-  available) in ~20 s. The suite runs fine in the devcontainer without hardware.
-* `git status` at the time of writing: clean tree, only `.clinerules/` untracked.
+  available). The suite runs fine in the devcontainer without hardware.
+* `just app-lint`: ruff format clean ("61 files left unchanged") and
+  "All checks passed!" (it also runs `poetry lock`, which was a no-op here).
+* `git status` at the time of writing: HEAD `22d3f97`, with uncommitted
+  documentation fixes plus the one-line `cli.py` import fix and the new
+  `app/tests/test_cli.py`.
 * Firmware was **not** rebuilt during this session (no board attached); board
-  builds are expected to work via `just firmware-build` but were not re-verified
-  here.
+  builds are expected to work via `just firmware-build` but were not
+  re-verified here.
+* `firmware/dependencies.lock` is **gitignored** (CI resolves deps fresh each
+  run), so a fresh resolve must still satisfy the `esp_lvgl_port <2.9.0` pin.
 
 ## Technical constraints & hard-won gotchas
 

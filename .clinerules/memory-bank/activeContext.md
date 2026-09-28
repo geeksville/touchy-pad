@@ -1,24 +1,33 @@
 # Active Context — current focus
 
-**Last updated:** 2026-09-28 (memory bank initialized from a clean checkout).
+**Last updated:** 2026-09-28 (second pass: stale-doc sweep + CLI bug fix).
 
 ## Where the project is right now
 
-* `main` @ `40a133e` ("feat(justfile): add hw-543 recipe for jc4827w543 devboard
-  setup"), `VERSION` `0.3.4` / build `21`, tree clean except the new
-  `.clinerules/` directory created by this memory-bank init.
-* Host suite green: **241 passed, 2 skipped** via `just app-test` (~20 s, no
-  hardware needed). The 2 skips are `test_touchydeck.py` cases gated on
-  `register_controllers_factory` being unavailable.
-* Firmware was **not** rebuilt in this session (no board attached). Treat
-  `just firmware-build` as unverified-here; CI is host-only too.
-* No in-flight feature work is pending in the working tree — this is a
-  documentation/metadata state, not a code state.
+* `main` @ `22d3f97` ("try cline" — the user committed the memory bank after it
+  was initialized), `VERSION` `0.3.4` / build `21`.
+* Host suite green: **244 passed, 2 skipped** via `just app-test` (~20 s, no
+  hardware needed); `just app-lint` reports "All checks passed". The 2 skips are
+  `test_touchydeck.py` cases gated on `register_controllers_factory`.
+* **Uncommitted work in the tree** (this session, all verification done):
+  * docs consistency sweep — `AGENTS.md`, `docs/design.md` (Stage 100 → DONE),
+    `docs/hardware.md`, `docs/python-api.md`,
+    `docs/hardware/lightbar/design.md`, `firmware/README.md` (full rewrite),
+    `firmware/main/api/host_api.h` comments.
+  * a **real bug fix**: `app/src/touchy_pad/cli.py` imported a misspelled
+    module (`api._transponrt_serial`), breaking `touchy --port <dev>`
+    entirely; plus the new regression suite `app/tests/test_cli.py`.
+  * Nothing has been committed (never auto-commit) — the user decides.
+* Firmware was **not** rebuilt this session (no board attached); the only
+  firmware change was a comment block, so the build is unaffected.
+* No feature work is in flight — the codebase is at the Stage-100 / lb13 state
+  described in `progress.md`.
 
-## Recent changes (last ~20 commits, newest first)
+## Recent changes (newest first)
 
 | Commit | Summary |
 |---|---|
+| `22d3f97` | "try cline" — commits the initialized `.clinerules/memory-bank/` |
 | `40a133e` | `justfile`: add `hw-543` recipe for jc4827w543 devboard setup |
 | `214ce47` | fix(firmware): pin `esp_lvgl_port` below 2.9.0 and track `dependencies.lock` |
 | `eba0cad` | merge PR #19 (jc4827w543 GT911 init fix) |
@@ -43,24 +52,25 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
 
 ## Next steps (ordered by cost/benefit)
 
-1. **Fix the two documentation drifts** (cheap; prevents future confusion):
-   * `docs/design.md` Stage 100 → mark DONE (it is implemented in `e37848f`:
-     `api/image_cache.py`, `Touchy.set_image_button_slot`,
-     `screens.set_image_button_slot_action`, rewritten `touchydeck/`, and
-     `app/tests/test_image_cache.py` all exist and pass).
-   * `AGENTS.md` → drop/replace the `Screen.Version.CURRENT == 5` claim; the
-     version lives on the root `Widget` (currently 28).
+1. **Review/commit the uncommitted doc + CLI fixes** from this session (see
+   "Where the project is right now"). The code fix is one line
+   (`cli.py`) plus `app/tests/test_cli.py`; the rest is documentation.
 2. **CYD touch bring-up** (blocking real use of the two classic-ESP32 boards):
-   determine the XPT2046 MISO / touch wiring with a multimeter, finish
-   calibration, then update `docs/hardware.md`.
-3. **Un-rot `firmware/README.md`** (still claims an LVGL v8 pin, HID-only USB
-   with no CDC, and lists only 4 boards) and refresh the CYD sections of
+   buzz out the XPT2046 MISO GPIO with a multimeter, set it in
+   `firmware/boards/esp32_2432s028rv3/board/board_pins.h` (and the 2.4"
+   sibling), calibrate, then trim the historical pin-hunting prose out of
    `docs/hardware.md`.
+3. **`jc_esp32p4_m3` PSRAM bring-up** — the Guition P4 LED board loops in MSPI
+   DQS phase selection before `app_main`; needs scope/silicon-level debugging
+   (its board README documents the log).
 4. Pick up `docs/TODO.md`: system-info/Steam pages for autopage, the user-widget
    roadmap (`docs/user-widgets.md`), StreamController support, hardware guide.
 5. **Memory-bank habit:** after each landed stage, update `progress.md`
    (status + version tables) and `activeContext.md` (focus + next steps), and
    record new version bumps / reversals in `systemPatterns.md` + `progress.md`.
+   Also re-check that `AGENTS.md`/`CLAUDE.md`, `firmware/README.md` and the
+   board tables in `docs/hardware.md` still match reality — they were the
+   sources of the drift fixed this session.
 
 ## Active decisions & considerations
 

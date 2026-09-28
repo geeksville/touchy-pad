@@ -5,8 +5,16 @@ this file is design plans for lightbar firmware
 **Status: implemented.** Host-side proto/CLI/sim + firmware board, LED
 `Panel`/`LEDPanel`, LVGL LED display driver, weak `platform_is_touchable()`
 default with the board's strong override, and the touch-less swatch default
-screen are all in place. Firmware compilation on real ESP-IDF hardware is
-not yet verified in this environment.
+screen are all in place.
+
+> **Build/hardware status (updated):** the "not yet compiled on real ESP-IDF"
+> caveat that used to sit here is obsolete — stage lb7 reports firmware builds
+> for every LED + LCD board across all three target chips, and lb12/lb13 build
+> via `just firmware-build`. *Hardware* is a different story: this board
+> (`jc_esp32p4_m3`) still fails PSRAM init before `app_main` and is parked — use
+> `esp32_s3_devkitc_1` (stage LB2) to exercise the same stack. Panel geometry is
+> no longer compile-time either: it comes from the persisted `BoardConfig`
+> (stages lb6/lb10), so the `BOARD_LED_PANEL_*` macros no longer exist.
 
 Bring up the first display-less, touch-less board: a Guition
 `JC-ESP32P4-M3` module driving a single 8x32 WS2812B LED matrix as an
@@ -103,14 +111,17 @@ work in this stage.
 
 ## stage LB2 — 2nd LED-matrix board (`esp32-s3-devkitc-1`)
 
-**Status: implemented (firmware not yet compiled on real ESP-IDF in this
-environment).** Shared `Panel`/`LEDPanel` code was relocated from
-`firmware/boards/common/` to `firmware/main/leds/` (compiled by the board
-component, not `main`, so the `espressif/led_strip` dependency stays
-board-scoped); `jc_esp32p4_m3` was repointed at the new location. The new
-`firmware/boards/esp32-s3-devkitc-1/` board (target `esp32s3`, LED on
-GPIO 4) reuses the LB1 display driver, touch-less no-op touch, brightness
-path, and touch-less default screen unchanged.
+**Status: implemented.** The new `firmware/boards/esp32_s3_devkitc_1/` board
+(target `esp32s3`, LED matrix) reuses the LB1 display driver, touch-less no-op
+touch, brightness path, and touch-less default screen unchanged.
+
+> **Superseded details:** this stage briefly relocated the shared
+> `Panel`/`LEDPanel` code to `firmware/main/leds/`; stage lb7 (and stage lb10's
+> tile/chain split) put it back under `firmware/boards/common/leds/`
+> (`led_panel.{h,cpp}`, `led_display.{h,cpp}`), where it lives today — still
+> compiled by the board component so the `espressif/led_strip` dependency stays
+> board-scoped. The "not yet compiled on real ESP-IDF" caveat is obsolete too;
+> see the build note under stage LB1.
 
 The ESP32-P4 `jc_esp32p4_m3` board from stage LB1 does not yet boot on
 real hardware, so it is parked (unworking). The goal of this stage is to
@@ -577,13 +588,12 @@ consumer of this array, but is **out of scope** here.
 
 ## stage lb6: runtime LED-panel config via `BoardConfig`
 
-**Status: implemented (host side; firmware not compiled on real ESP-IDF in
-this environment).** Proto (`Panel`/`Display`/`BoardConfig` +
+**Status: implemented.** Proto (`Panel`/`Display`/`BoardConfig` +
 `PreferencesFile.board_config`, `Version` 5→6), nanopb caps
 (`max_count:1`), firmware merge/persist + proto-free `led_panel_config()`
-accessor, `led_display.cpp` reading it (headless when unset), removal of
-the `BOARD_LED_PANEL_*` macros, the `pref from-template` CLI (+ shared
-`_apply_prefs_json` helper), the bundled
+accessor (generalised to `led_chain_config()` in stage lb10), `led_display.cpp`
+reading it (headless when unset), removal of the `BOARD_LED_PANEL_*` macros,
+the `pref from-template` CLI (+ shared `_apply_prefs_json` helper), the bundled
 `assets/templates/led-32x8.json`, tests, and docs are all in place.
 `just app-test` + `just app-lint` pass.
 
@@ -975,16 +985,19 @@ void Display::post_init() {
 
 ## lb8: expose protobuf API over HTTP/HTTPS sockets
 
-**Status: implemented (host + firmware code written; firmware not compiled
-on real ESP-IDF in this environment).** Proto (`NetworkConfig` +
+**Status: implemented.** Proto (`NetworkConfig` +
 `PreferencesFile.network`, `Version` 6→7), nanopb string caps, firmware
 `net/network.{h,cpp}` + `net/http_api.{h,cpp}` (gated on `CONFIG_TOUCHY_WIFI`,
 default `y` on WiFi chips), the reusable `host_api_dispatch_serialized()`
 seam, prefs per-sub-field merge + live `network_apply()`, the boot call,
-CMake/Kconfig/sdkconfig wiring, the host `HttpTransport` +
-`touchy_open(url=, tls_psk=)` + CLI `--url`/`--tls-psk` +
-`pref wifi-set-ssid`/`wifi-set-psk`, the simulator's plaintext-HTTP server
-on 8083, and tests are all in place. `just app-test` + `just app-lint` pass.
+CMake/Kconfig/sdkconfig wiring, the host `HttpTransport` + `touchy_open(url=)`
++ CLI `--url` + `pref wifi-set-ssid`/`wifi-set-psk`, the simulator's
+plaintext-HTTP server on 8083, and tests are all in place. `just app-test` +
+`just app-lint` pass.
+
+> **Superseded details:** this stage shipped a `tls_psk` parameter and a
+> matching `--tls-psk` CLI flag; stage lb9 removed both (`NetworkConfig.tls_psk_key`
+> is gone, tag 4 reserved) and replaced PSK with certificate-based mutual TLS.
 
 Give the device an optional WiFi network presence and a request/response
 HTTP(S) API so a host can drive the same protobuf `Command`/`Response`
@@ -1264,9 +1277,11 @@ to rotate/revoke), USB-only recovery, sim stays plaintext, plaintext until
 provisioned then mTLS-only, `cryptography` a hard dependency, certs stored
 as files (option B).
 
-**Status: planning / for discussion.** This supersedes the TLS-PSK idea
-from lb8, which is a dead end: ESP-IDF 6.0.2's `esp_https_server` does not
-expose `psk_hint_key` on its public `httpd_ssl_config_t`, so there is no
+### Background — why not TLS-PSK
+
+This supersedes the TLS-PSK idea from lb8, which turned out to be a dead end:
+ESP-IDF 6.0.2's `esp_https_server` does not expose `psk_hint_key` on its public
+`httpd_ssl_config_t`, so there is no
 way to stand up a PSK-authenticated HTTPS server from application code
 (the PSK field exists only on the lower-level `esp_tls_cfg_server_t`, which
 `esp_https_server` does not let us reach). Certificate-based mutual TLS
@@ -1442,15 +1457,15 @@ discussion.
 
 ## stage lb10: tiled panels
 
-**Status: implemented (host + firmware code written; firmware not compiled
-on real ESP-IDF in this environment).** Proto reshape (`Panel` wiring flags
+**Status: implemented.** Proto reshape (`Panel` wiring flags
 + `gpio` removed, new `PanelChain`, `Display.panels`→`Display.chains`,
 `Version` 8→9) + Rust mirror, nanopb caps (`Display.chains max_count:1`,
 `PanelChain.panels max_count:4`), the `led_chain_config()` accessor, the
 `LEDPanel` tile / `LEDChain` composite split (with an `inline`
 `serpentine_index`), the tiled `led_display.cpp` build, migrated + new JSON
 templates, and tests are all in place. `just build-proto`, `just app-test`,
-and `just app-lint` pass. Generalise the Stage lb6 `BoardConfig` so a single
+and `just app-lint` pass, and later stages (lb12/lb13) build the firmware via
+`just firmware-build`. Generalise the Stage lb6 `BoardConfig` so a single
 data GPIO can drive a *chain* of small LED matrices tiled into one larger
 logical display, and promote the compile-time serpentine-wiring macros
 (`LED_ROWS_SNAKED` / `LED_COLS_SNAKED` / `LED_ROW_MAJOR`) into per-`Panel`

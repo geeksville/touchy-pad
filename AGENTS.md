@@ -1,8 +1,11 @@
 # touchy-pad — AI Agent Guide
 
 Open-source multitouch USB touchpad / button matrix with a built-in
-customisable LCD (ESP32-S3 and ESP32-P4; boards: jc4827w543, waveshare_s3_lcd_7b,
-elecrow_s3_lcd_7, elecrow_s3_lcd_7_adv, elecrow_p4_lcd_7, squixl, matouch_43).
+customisable display — an LCD, an LED matrix, or nothing at all (chips:
+ESP32-S3 / ESP32-P4 / classic ESP32; boards: jc4827w543, jc4827w543r,
+waveshare_s3_lcd_7b, matouch_43, squixl, elecrow_s3_lcd_7, elecrow_s3_lcd_7_adv,
+elecrow_p4_lcd_7, esp32_2432s028rv3, esp32_2432s024, esp32_s3_matrix,
+esp32_s3_devkitc_1, jc_esp32p4_m3).
 The host-side companion is a Python package (`touchy-pad`) that ships a
 CLI (`touchy`), a high-level API, a Tkinter/PySide6 device simulator, and
 a StreamDeck-compatibility shim (`TouchyDeck`).
@@ -26,10 +29,18 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `VERSION` | Single-source version (read by Python + CMake) |
 
 ## Implementation status
-All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, and 95 are **done**. Latest active wire-format:
-`Screen.Version.CURRENT == 5`, `Widget.Version.CURRENT == 28`,
+All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
+`lb` line (lb5–lb13) are **done**. Latest active wire-format:
+`Widget.Version.CURRENT == 28`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 13`,
 `PreferencesFile.Version.CURRENT == 9`.
+
+> There is **no `Screen.Version`** (the pre-Stage-56 enum was removed). Since
+> Stage 56 the wire-format version lives on `Widget`, and only the **root
+> widget** of each file carries it — for a screen file that is
+> `active.version`. The firmware validates it on load (and deletes the file on
+> a mismatch). In raw-protobuf host code, stamp it explicitly:
+> `screen.active.version = protobuf.Widget.Version.CURRENT`.
 Highlights worth remembering:
 
 - **Boards span two chips (Stage 65).** ESP32-S3 boards (`jc4827w543`,
