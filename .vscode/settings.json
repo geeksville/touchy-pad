@@ -3,5 +3,6 @@
         "cargo build": true
     },
     "cmake.sourceDirectory": "/var/home/kevinh/development/keyboard/touchy-pad/firmware",
-    "python.analysis.typeCheckingMode": "off"
+    "python.analysis.typeCheckingMode": "off",
+    "python.languageServer": "None"
 }

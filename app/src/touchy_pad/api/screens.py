@@ -1677,7 +1677,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     # *max* footprint so the inverted X/Y bounce (which reads the widget
     # size once at build time) never lets a shape clip off-screen.
     size_max = 4
-    size_min = size_max // 2
+    size_min = 1  # size_max // 2
 
     def _bouncer(name, color, *, radius, dur_x, dur_y, dur_size, path, delay):
         # X and Y bounce on independent timelines → 2-D drift. Each goes

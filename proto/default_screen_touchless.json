@@ -7,8 +7,8 @@
           {
             "id": "swatch_red",
             "rect": {
-              "w": 8,
-              "h": 8
+              "w": 4,
+              "h": 4
             },
             "styles": [
               {
@@ -43,13 +43,13 @@
                 "tracks": [
                   {
                     "prop": "WIDTH",
-                    "start": 4,
-                    "end": 8
+                    "start": 1,
+                    "end": 4
                   },
                   {
                     "prop": "HEIGHT",
-                    "start": 4,
-                    "end": 8
+                    "start": 1,
+                    "end": 4
                   }
                 ],
                 "durationMs": 700,
@@ -62,12 +62,12 @@
           {
             "id": "swatch_green",
             "rect": {
-              "w": 8,
-              "h": 8
+              "w": 4,
+              "h": 4
             },
             "styles": [
               {
-                "bgColor": 16384,
+                "bgColor": 12288,
                 "radius": 32767
               }
             ],
@@ -100,13 +100,13 @@
                 "tracks": [
                   {
                     "prop": "WIDTH",
-                    "start": 4,
-                    "end": 8
+                    "start": 1,
+                    "end": 4
                   },
                   {
                     "prop": "HEIGHT",
-                    "start": 4,
-                    "end": 8
+                    "start": 1,
+                    "end": 4
                   }
                 ],
                 "durationMs": 1000,
@@ -119,8 +119,8 @@
           {
             "id": "swatch_blue",
             "rect": {
-              "w": 8,
-              "h": 8
+              "w": 4,
+              "h": 4
             },
             "styles": [
               {
@@ -157,13 +157,13 @@
                 "tracks": [
                   {
                     "prop": "WIDTH",
-                    "start": 4,
-                    "end": 8
+                    "start": 1,
+                    "end": 4
                   },
                   {
                     "prop": "HEIGHT",
-                    "start": 4,
-                    "end": 8
+                    "start": 1,
+                    "end": 4
                   }
                 ],
                 "durationMs": 850,
