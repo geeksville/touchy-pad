@@ -597,6 +597,10 @@ flash-merged: merge-bin
         --chip "$chip" write-flash 0x0 {{justfile_directory()}}/firmware/build/touchy_pad_merged.bin
 
 # setup for common devboards
+hw-543:
+    just firmware-reconfigure jc4827w543
+
+# setup for common devboards
 hw-led:
     just firmware-reconfigure esp32_s3_devkitc_1
 
