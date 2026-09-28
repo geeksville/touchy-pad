@@ -28,6 +28,107 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `Justfile` | All build/test/run tasks — prefer `just <recipe>` over raw commands |
 | `VERSION` | Single-source version (read by Python + CMake) |
 
+
+## Build & test
+Everything goes through Just; never run raw `idf.py` / `poetry` /
+`protoc` unless a recipe is clearly missing:
+
+```bash
+just init              # one-time devcontainer setup
+just build-proto       # regenerate Python + C nanopb bindings
+just app-test          # pytest (proto bindings auto-rebuilt)
+just app-lint          # ruff format + lint
+just app-run -- ...    # invoke the `touchy` CLI inside Poetry
+just firmware-build    # ESP-IDF build for the current board
+just flash             # build + flash
+just streamcontroller-run [--sim | --sim-headless]
+```
+
+## Build / test / run
+
+- **This project uses Poetry, NOT uv/uvx.** If a skill, doc, or habit suggests
+  `uvx <tool>` or `uv run <cmd>`, use the Poetry equivalent instead:
+  - `uvx <tool>` → `poetry run <tool>` (run a tool in the project venv)
+  - `uv run <cmd>` → `poetry run <cmd>`
+  - `uv add <pkg>` / `uv pip install <pkg>` → `poetry add <pkg>`
+  - `uv sync` → `poetry install --with dev`
+- Install: `poetry install --with dev`
+- Test: `poetry run pytest` (tests in `tests/`, isolated via `paths.set_test_directories`)
+- Run: `sb <command>` (via poetry venv)
+- Handy workflows live in `justfile` (e.g. `just process`, `just reinit`, `just select-*`).
+
+**Never run `idf.py` directly** — a bare `idf.py` in the agent terminal
+fails because the ESP-IDF environment isn't sourced. `just firmware-build`
+(and `just firmware-reconfigure [board]` to switch board/chip) source the
+IDF `export.sh`/activate script for you, so always drive firmware builds
+through those recipes.
+
+`espressif/esp_lvgl_port` is deliberately pinned to `">=2.8.0,<2.9.0"` in
+`firmware/main/idf_component.yml`. 2.9.0 switched the MIPI-DSI (DPI)
+avoid-tearing callback to `on_frame_buf_complete` behind an `IDF >= 5.5`
+check, but IDF 6.0.x only declares `on_refresh_done` on
+`esp_lcd_dpi_panel_event_callbacks_t` — so a fresh dependency resolve
+(CI keeps no `firmware/dependencies.lock`; it's gitignored) pulls 2.9.0 and
+the esp32p4 (`elecrow_p4_lcd_7`) build dies in
+`esp_lvgl_port_disp.c:lvgl_port_add_disp_dsi`. Only lift the pin after the
+project's IDF declares the renamed field.
+
+CI: `.github/workflows/app-ci.yml` runs `build-app` on
+ubuntu/windows/macos. **Windows has no libusb** — any code path that
+touches `usb.core.find()` must guard against `NoBackendError`
+(not just `ImportError`). See `app/src/touchy_pad/api/device.py` and
+`app/src/touchy_pad/touchydeck/discovery.py` for the pattern.
+
+## Justfile gotchas (learned the hard way)
+- All recipe bodies use `#!/usr/bin/env bash` shebangs and must use
+  **relative paths** — `justfile_directory()` produces `D:\a\...` on
+  Windows, which bash interprets `\a` as `a`.
+- Use `${SYS_PYTHON:-/usr/bin/python3}` inside recipes (read at runtime),
+  not `{{sys_python}}` (expanded by Just at parse time).
+- macOS BSD `paste` needs the explicit `-` stdin marker:
+  `... | paste -sd: -`.
+
+## Coding conventions
+- **Device:** C++ via ESP-IDF (no Arduino), LVGL primitives only (no
+  direct framebuffer writes). New subsystems → own `.cpp/.h` pair in
+  `firmware/main/`. Long-running work → its own FreeRTOS task.
+- **Host:** Python 3.11+, Poetry, ruff (format + lint), pytest. Public
+  API lives under `touchy_pad.api`; the high-level entry is
+  `touchy_pad.api.touchy_open()`.
+- **Logging:** use `logging.getLogger(__name__)`. High-frequency RPC
+  trace lines go on a child logger (e.g. `touchy_pad.client.rpc`) so
+  callers can silence them independently. Python stdlib has no TRACE
+  level — prefer child loggers over custom levels.
+- **NotImplementedError in subclass-required methods:** prefer logging
+  ERROR + returning a sensible default over raising, so optional
+  StreamDeck features don't crash StreamController introspection.
+
+## Hardware
+- Display + touch panel ride a shared I²C-ish interface (board-specific);
+  see `firmware/boards/<board>/`. GT911 multitouch on jc4827w543 /
+  waveshare / elecrow / squixl / matouch_43. The squixl board uses an LCA9555 16-bit IO expander
+  (I2C 0x20) for LCD reset, backlight enable, GT911 touch reset, and a
+  bit-banged 9-bit SPI init bus for the ST7701S panel controller; the
+  expander driver lives in `firmware/boards/squixl/board/lca9555.{h,cpp}`. The CYD boards (`esp32_2432s028rv3` 2.8" ST7789,
+  `esp32_2432s024` 2.4" ILI9341) are an SPI panel over SPI2 +
+  XPT2046 resistive single-touch over SPI3 (managed component
+  `atanisoft/esp_lcd_touch_xpt2046`); BGR/INVERT/SWAP/MIRROR + backlight
+  GPIO live in each `board/board_pins.h`, and the panel controller is
+  selected there (`BOARD_LCD_CONTROLLER_ST7789` / `_ILI9341`). Note
+  `reset_gpio_num` is `gpio_num_t` in IDF v6 — assign the enum directly.
+- Optional haptics: DRV2605L on a separate I²C bus (not yet wired).
+- USB-OTG controller exposes one IN/OUT bulk pair + one interrupt-IN
+  endpoint for the vendor interface (no second IN for events — hence the
+  mailbox-poll design).
+
+## Workflow rules
+- **Never auto-commit or push.** Make changes; let the user commit.
+- `docs/design.md` is the source of truth for "what stage are we on" —
+  update it when you finish a stage.
+- The git submodule at `tools/StreamController` tracks branch
+  `pr-touchypad`; `just streamcontroller-run` does
+  `git submodule update --init --remote` first.
+
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
 `lb` line (lb5–lb13) are **done**. Latest active wire-format:
@@ -594,90 +695,3 @@ Highlights worth remembering:
   `json_format`. `bin/set-property.sh IPADDR WIDGET VALUE...` is the curl
   example. The **host** `HttpTransport` stays binary — JSON is for external
   clients. Docs: `docs/network-api.md`.
-
-## Build & test
-Everything goes through Just; never run raw `idf.py` / `poetry` /
-`protoc` unless a recipe is clearly missing:
-
-```bash
-just init              # one-time devcontainer setup
-just build-proto       # regenerate Python + C nanopb bindings
-just app-test          # pytest (proto bindings auto-rebuilt)
-just app-lint          # ruff format + lint
-just app-run -- ...    # invoke the `touchy` CLI inside Poetry
-just firmware-build    # ESP-IDF build for the current board
-just flash             # build + flash
-just streamcontroller-run [--sim | --sim-headless]
-```
-
-**Never run `idf.py` directly** — a bare `idf.py` in the agent terminal
-fails because the ESP-IDF environment isn't sourced. `just firmware-build`
-(and `just firmware-reconfigure [board]` to switch board/chip) source the
-IDF `export.sh`/activate script for you, so always drive firmware builds
-through those recipes.
-
-`espressif/esp_lvgl_port` is deliberately pinned to `">=2.8.0,<2.9.0"` in
-`firmware/main/idf_component.yml`. 2.9.0 switched the MIPI-DSI (DPI)
-avoid-tearing callback to `on_frame_buf_complete` behind an `IDF >= 5.5`
-check, but IDF 6.0.x only declares `on_refresh_done` on
-`esp_lcd_dpi_panel_event_callbacks_t` — so a fresh dependency resolve
-(CI keeps no `firmware/dependencies.lock`; it's gitignored) pulls 2.9.0 and
-the esp32p4 (`elecrow_p4_lcd_7`) build dies in
-`esp_lvgl_port_disp.c:lvgl_port_add_disp_dsi`. Only lift the pin after the
-project's IDF declares the renamed field.
-
-CI: `.github/workflows/app-ci.yml` runs `build-app` on
-ubuntu/windows/macos. **Windows has no libusb** — any code path that
-touches `usb.core.find()` must guard against `NoBackendError`
-(not just `ImportError`). See `app/src/touchy_pad/api/device.py` and
-`app/src/touchy_pad/touchydeck/discovery.py` for the pattern.
-
-## Justfile gotchas (learned the hard way)
-- All recipe bodies use `#!/usr/bin/env bash` shebangs and must use
-  **relative paths** — `justfile_directory()` produces `D:\a\...` on
-  Windows, which bash interprets `\a` as `a`.
-- Use `${SYS_PYTHON:-/usr/bin/python3}` inside recipes (read at runtime),
-  not `{{sys_python}}` (expanded by Just at parse time).
-- macOS BSD `paste` needs the explicit `-` stdin marker:
-  `... | paste -sd: -`.
-
-## Coding conventions
-- **Device:** C++ via ESP-IDF (no Arduino), LVGL primitives only (no
-  direct framebuffer writes). New subsystems → own `.cpp/.h` pair in
-  `firmware/main/`. Long-running work → its own FreeRTOS task.
-- **Host:** Python 3.11+, Poetry, ruff (format + lint), pytest. Public
-  API lives under `touchy_pad.api`; the high-level entry is
-  `touchy_pad.api.touchy_open()`.
-- **Logging:** use `logging.getLogger(__name__)`. High-frequency RPC
-  trace lines go on a child logger (e.g. `touchy_pad.client.rpc`) so
-  callers can silence them independently. Python stdlib has no TRACE
-  level — prefer child loggers over custom levels.
-- **NotImplementedError in subclass-required methods:** prefer logging
-  ERROR + returning a sensible default over raising, so optional
-  StreamDeck features don't crash StreamController introspection.
-
-## Hardware
-- Display + touch panel ride a shared I²C-ish interface (board-specific);
-  see `firmware/boards/<board>/`. GT911 multitouch on jc4827w543 /
-  waveshare / elecrow / squixl / matouch_43. The squixl board uses an LCA9555 16-bit IO expander
-  (I2C 0x20) for LCD reset, backlight enable, GT911 touch reset, and a
-  bit-banged 9-bit SPI init bus for the ST7701S panel controller; the
-  expander driver lives in `firmware/boards/squixl/board/lca9555.{h,cpp}`. The CYD boards (`esp32_2432s028rv3` 2.8" ST7789,
-  `esp32_2432s024` 2.4" ILI9341) are an SPI panel over SPI2 +
-  XPT2046 resistive single-touch over SPI3 (managed component
-  `atanisoft/esp_lcd_touch_xpt2046`); BGR/INVERT/SWAP/MIRROR + backlight
-  GPIO live in each `board/board_pins.h`, and the panel controller is
-  selected there (`BOARD_LCD_CONTROLLER_ST7789` / `_ILI9341`). Note
-  `reset_gpio_num` is `gpio_num_t` in IDF v6 — assign the enum directly.
-- Optional haptics: DRV2605L on a separate I²C bus (not yet wired).
-- USB-OTG controller exposes one IN/OUT bulk pair + one interrupt-IN
-  endpoint for the vendor interface (no second IN for events — hence the
-  mailbox-poll design).
-
-## Workflow rules
-- **Never auto-commit or push.** Make changes; let the user commit.
-- `docs/design.md` is the source of truth for "what stage are we on" —
-  update it when you finish a stage.
-- The git submodule at `tools/StreamController` tracks branch
-  `pr-touchypad`; `just streamcontroller-run` does
-  `git submodule update --init --remote` first.

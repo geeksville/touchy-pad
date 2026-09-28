@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "debugmcp": {
+      "type": "streamableHttp",
+      "url": "http://localhost:3001/mcp",
+      "description": "DebugMCP - AI-powered debugging assistant"
+    },
+    "semble": {
+      "command": "poetry",
+      "args": [
+        "-C",
+        "/workspaces/touchy-pad/app",
+        "run",
+        "semble"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "search",
+        "find_related"
+      ],
+      "description": "Semble - local semantic code search (search, find_related)"
+    }
+  }
+}

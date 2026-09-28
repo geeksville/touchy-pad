@@ -6,7 +6,7 @@
 default:
     @just --list
 
-idf_version := "v6.0.2"
+idf_version := "v6.1"
 
 # ---------------------------------------------------------------------------
 # Developer setup

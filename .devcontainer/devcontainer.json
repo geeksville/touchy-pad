@@ -19,8 +19,10 @@
 				"ms-vscode.cpptools",
 				"ms-python.python",
 				"ms-vscode.cmake-tools",
+				"skellock.just",
 				"rust-lang.rust-analyzer",
-				"saoudrizwan.claude-dev"
+				"saoudrizwan.claude-dev",
+				"ozzafar.debugmcpextension"
 			]
 		}
 	},
@@ -108,6 +110,23 @@
 	// DISPLAY :0 is the host display; VSCode may override with its own tunnel but Qt needs the real one.
 	"remoteEnv": {
 		"DISPLAY": ":0",
-		"XAUTHORITY": "/tmp/.docker.xauth"
+		"XAUTHORITY": "/tmp/.docker.xauth",
+
+		// Project-scoped Cline MCP servers: keep the list in the repo (.cline/cline_mcp_settings.json)
+		// instead of the global ~/.cline/data/settings/cline_mcp_settings.json.
+		// The Cline extension resolves its MCP settings path from CLINE_MCP_SETTINGS_PATH in its
+		// extension-host env; remoteEnv is applied to the dev container's VS Code server (which hosts
+		// the extension), unlike terminal.integrated.env.* which only affects terminals.
+		// NOTE: this *replaces* the global file - Cline loads exactly one settings file, so every
+		// server wanted in this workspace must be listed there (there is no global+project merge).
+		// Requires a container rebuild / reopen to take effect.
+		// CLINE_MCP_SETTINGS_PATH is only honored by the 'next' (SDK) bundle - the 'legacy'
+		// bundle has no reference to it at all, and would silently fall back to the global
+		// file. Cline A/B-rolls between the two (CLINE_BUNDLE_OVERRIDE env var, then the
+		// 'bundleOverride' setting, then the ext-sdk-bundle-rollout feature flag, defaulting
+		// to 'legacy'), so pin the bundle to keep the project MCP config working. Accepted
+		// values are exactly "next" / "legacy"; anything else is ignored.
+		"CLINE_MCP_SETTINGS_PATH": "${containerWorkspaceFolder}/.cline/cline_mcp_settings.json",
+		"CLINE_BUNDLE_OVERRIDE": "next"
 	}
 }
