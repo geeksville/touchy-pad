@@ -85,7 +85,7 @@ RUN apt-get update \
       dbus-x11 \
       `# catchsegv (from libc-bin) prints C-level backtraces on segfault.` \
       `# Used by the app-run just recipe together with PYTHONFAULTHANDLER.` \
-      libc-bin
+      libc-bin gh
 
 # Ensure the dev user exists (it does on ubuntu:23.04+, but stay defensive
 # in case the base ever drops it) and give it passwordless sudo.
