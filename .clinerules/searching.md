@@ -114,16 +114,26 @@ Rules of thumb:
 
 1. Start with `semble__search` for anything semantic or symbol-shaped.
 2. Navigate straight to the returned `file:line` — don't re-search or re-grep for the same content.
-3. `grep` is for the two carve-outs above *only*: an exhaustive literal sweep, or outlining a single file you already know.
-4. When in doubt, `semble` first — it's ranked and quieter than a repo-wide
+3. **Query in the repo's vocabulary, not your own.** A feature is often named
+   nothing like the word you'd guess, and guessy queries are the usual reason a
+   search comes back thin. In this repo: "icons" are *images* (`ImageButton`,
+   an image *slot*, an `asset` — the Elgato-ish wording survives only in
+   comments and the `touchydeck` shim), "brightness" is `backlight`,
+   "template/include" is `widget_ref`, and user "pages" are `uscr`. When a
+   query misses, re-phrase with the words the code uses — `AGENTS.md` and
+   `docs/design.md` (the stage history) are where the names are coined, and the
+   symbol table in a `.proto` usually settles it. Falling back to `grep -rn`
+   for the literal word is the *last* step, not the second.
+4. `grep` is for the two carve-outs above *only*: an exhaustive literal sweep, or outlining a single file you already know.
+5. When in doubt, `semble` first — it's ranked and quieter than a repo-wide
    `grep` that wades through `firmware/build/`, `rust/target/` and generated
    bindings.
-5. Keep sweeps out of generated + vendored trees: `firmware/build/`,
+6. Keep sweeps out of generated + vendored trees: `firmware/build/`,
    `firmware/managed_components/`, `firmware/main/proto/`, `rust/target/`,
    `build/`, `images/`, `app/dist/`, `docs/python-api/`,
    `tools/StreamController/`, `.venv/` — and ignore generated hits
    (`*_pb2.py`, `*.pb.{c,h}`, embedded `default_screen_pb.h`).
-6. If the MCP tools are unavailable, use the CLI fallback above — not grep.
+7. If the MCP tools are unavailable, use the CLI fallback above — not grep.
 
 ## Workflow
 
