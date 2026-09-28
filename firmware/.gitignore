@@ -8,7 +8,6 @@ sdkconfig.old
 sdkconfig.*
 !sdkconfig.defaults
 managed_components/
-dependencies.lock
 .cache/
 .idf_/
 

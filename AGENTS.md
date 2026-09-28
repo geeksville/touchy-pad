@@ -605,6 +605,16 @@ fails because the ESP-IDF environment isn't sourced. `just firmware-build`
 IDF `export.sh`/activate script for you, so always drive firmware builds
 through those recipes.
 
+`espressif/esp_lvgl_port` is deliberately pinned to `">=2.8.0,<2.9.0"` in
+`firmware/main/idf_component.yml`. 2.9.0 switched the MIPI-DSI (DPI)
+avoid-tearing callback to `on_frame_buf_complete` behind an `IDF >= 5.5`
+check, but IDF 6.0.x only declares `on_refresh_done` on
+`esp_lcd_dpi_panel_event_callbacks_t` — so a fresh dependency resolve
+(CI keeps no `firmware/dependencies.lock`; it's gitignored) pulls 2.9.0 and
+the esp32p4 (`elecrow_p4_lcd_7`) build dies in
+`esp_lvgl_port_disp.c:lvgl_port_add_disp_dsi`. Only lift the pin after the
+project's IDF declares the renamed field.
+
 CI: `.github/workflows/app-ci.yml` runs `build-app` on
 ubuntu/windows/macos. **Windows has no libusb** — any code path that
 touches `usb.core.find()` must guard against `NoBackendError`

@@ -10,7 +10,16 @@ dependencies:
 
   # Bridge between esp_lcd / esp_lcd_touch and LVGL (creates the display +
   # indev objects, runs the LVGL task, anti-tearing, etc).
-  espressif/esp_lvgl_port: "^2.3.0"
+  #
+  # Upper-bounded below 2.9.0: 2.9.0 points the MIPI-DSI ("DPI" — used by
+  # elecrow_p4_lcd_7) avoid-tearing callback at `on_frame_buf_complete` for
+  # every IDF >= 5.5, but `esp_lcd_dpi_panel_event_callbacks_t` only gained
+  # that member *after* IDF 6.0.x: 6.0.1 (CI) and 6.0.2 (devcontainer) still
+  # declare `on_refresh_done` only, so `lvgl_port_add_disp_dsi()` fails to
+  # compile ("has no member named 'on_frame_buf_complete'"). 2.8.x uses
+  # `on_refresh_done`, which exists in both. Relax this bound once the
+  # project's IDF carries the renamed field.
+  espressif/esp_lvgl_port: ">=2.8.0,<2.9.0"
 
   # TinyUSB wrapper – HID mouse interface (v2.x has a new API). Only pulled
   # in for chips with native USB-OTG (the esp32s2 / esp32s3); the classic
