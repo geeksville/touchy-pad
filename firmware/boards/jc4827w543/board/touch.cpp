@@ -34,6 +34,9 @@ extern "C" esp_lcd_touch_handle_t touch_init(lv_display_t *disp)
     io_cfg.flags.disable_control_phase = 1;
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(board_get_i2c_bus(), &io_cfg, &tp_io));
 
+    esp_lcd_touch_io_gt911_config_t gt911_cfg = {};
+    gt911_cfg.dev_addr = BOARD_TOUCH_I2C_ADDR;
+
     esp_lcd_touch_config_t tp_cfg = {};
     tp_cfg.x_max        = BOARD_LCD_H_RES;
     tp_cfg.y_max        = BOARD_LCD_V_RES;
@@ -44,6 +47,7 @@ extern "C" esp_lcd_touch_handle_t touch_init(lv_display_t *disp)
     tp_cfg.flags.swap_xy    = 0;
     tp_cfg.flags.mirror_x   = 0;
     tp_cfg.flags.mirror_y   = 0;
+    tp_cfg.driver_data = (void *)&gt911_cfg;
 
     esp_lcd_touch_handle_t tp = nullptr;
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io, &tp_cfg, &tp));
