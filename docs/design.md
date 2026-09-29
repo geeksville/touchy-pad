@@ -5779,6 +5779,118 @@ What changed:
   lit while the eyes move while still blanking ~5 s after the property batches
   stop (and touching the panel still wakes it).
 
+## Stage lb16: host-driven repaints happen immediately — DONE
+
+**Status: implemented in two phases (firmware + docs; the wire format is
+unchanged).** Phase 1 (a property batch) was the request that started this;
+Phase 2 is the general fix for the same root cause, requested right after and
+landed here too.
+
+Reported from `tools/googly-vr`: the app pushed a `SetPropertiesCmd` batch at
+~10 fps but the eyes visibly moved at roughly 2 fps. The batches were being
+received and applied correctly — they just were not *drawn*.
+
+**Root cause (all of it in pinned third-party code, none of it in touchy-pad's
+own logic).** On an idle panel every LVGL timer is paused, and nothing wakes the
+LVGL task when a *host* invalidates a widget:
+
+1. `display_refr_timer()` pauses its own refresh timer at the top of every pass
+   (`lvgl/src/core/lv_refr.c`, `lv_timer_pause(tmr)`) — it is only ever
+   un-paused again by a new invalidation.
+2. The touch indev is in `LV_INDEV_MODE_EVENT` (GT911 boards have an INT line,
+   so `lvgl_port_add_touch()` sets event mode), and LVGL pauses the indev read
+   timer after each read (`lvgl/src/indev/lv_indev.c`) — touches arrive via
+   `lvgl_port_task_wake(LVGL_PORT_EVENT_TOUCH)` instead of polling.
+3. Therefore `lv_timer_handler()` finds **no** un-paused timer, returns
+   `LV_NO_TIMER_READY` (`lv_timer.c`: paused timers are skipped and do not
+   contribute to `time_until_next`), and esp_lvgl_port replaces that with its
+   `task_max_sleep_ms` — **500 ms** (`ESP_LVGL_PORT_INIT_CONFIG()`) — so the
+   LVGL task sleeps up to half a second per pass.
+4. A host batch *does* unpause the refresh timer (`lv_inv_area()` →
+   `LV_EVENT_REFR_REQUEST` → `lv_timer_resume()`), but `lv_timer_resume()` only
+   notifies the port through `lv_timer_handler_set_resume_cb()` — and
+   **esp_lvgl_port never registers one** (no call anywhere in the component),
+   so the sleeping LVGL task is not woken; it just draws at the next 500 ms
+   timeout. Hence ~2 fps from a 10 fps host.
+
+Note the asymmetry that hid this for so long: a *touch* repaints fine because
+the interrupt itself wakes the task. Only host-driven updates were affected, and
+they were never bounded by the 33 ms `LV_DEF_REFR_PERIOD` the way a timer-driven
+UI would be.
+
+What changed:
+
+* **`firmware/main/widgets/widget_property.{h,cpp}`** — `set_one_locked()` now
+  reports whether an entry landed on a widget that is currently on screen
+  (`find_active()` hit + `apply_to_obj()` succeeded), and
+  `widget_property_set_batch()` uses that to (a) `lv_obj_invalidate()` the
+  widget (belt and braces — LVGL's own setters invalidate, but this guarantees a
+  repaint and is what un-pauses the refresh timer), (b) `lv_timer_resume()` +
+  `lv_timer_ready()` the display's refresh timer so the pass is due *now* rather
+  than `period` ms after the last one, and (c) after releasing the port lock,
+  `lvgl_port_task_wake(LVGL_PORT_EVENT_USER, nullptr)` to wake the LVGL task.
+  The frame then lands after one task switch instead of up to 500 ms later.
+* **Why here and not in `host_api.cpp`:** unlike Stage lb15's activity policy,
+  this needs the identity of the widgets that actually changed, which only the
+  widget layer knows, and the wake has to happen with the port lock released. It
+  is also transport-independent for free — every path (vendor USB, CDC, UART,
+  HTTP protobuf, HTTP JSON) funnels through the same `widget_property_set_batch()`.
+* **Nothing is done for a batch that changed nothing visible** — one that only
+  stages overrides for a screen that isn't loaded, or one that only *removes*
+  overrides (removal affects the next build, not the live tree). No pointless
+  wake-ups on a panel that has nothing to draw.
+* **The render still happens on the LVGL task.** Deliberately *not*
+  `lv_refr_now()` from the dispatcher: that would render + flush (~15-25 ms) on
+  the host-API task, delaying RPCs and the Stage 64.1 log/event poll, and it
+  would busy-wait on `disp->flushing` (no `flush_wait_cb` is registered). The
+  wake is the esp_lvgl_port primitive for "the panel must repaint now".
+* **No wire change:** no new field, no new command — `ProtocolVersion` stays 14
+  (`Widget.Version` 28, `PreferencesFile.Version` 9).
+* **No simulator change, deliberately:** the sim has no LVGL, no refresh timer
+  and no task — `_cmd_set_properties` re-materialises the screen synchronously,
+  so it never showed the bug.
+* **Scope of Phase 1:** the property-batch path (below is the general fix that
+  followed it). The kick is gated on the batch actually changing something
+  visible.
+* **Phase 2 — the general fix, `firmware/main/display.cpp` (+ `display.h`
+  comment):** register LVGL's resume callback **once at display bring-up**, in
+  `Display::post_init()` — the shared post-`hw_init()` hook that every board's
+  `Display` subclass and the `HeadlessDisplay` fallback run through:
+
+  ```cpp
+  lv_timer_handler_set_resume_cb(
+      [](void *) { lvgl_port_task_wake(LVGL_PORT_EVENT_USER, nullptr); }, nullptr);
+  ```
+
+  `lv_inv_area()` → `LV_EVENT_REFR_REQUEST` → `lv_timer_resume()` →
+  `lv_timer_handler_resume()` now reaches a callback that wakes the LVGL task,
+  so **every** host-driven repaint — a `Screen_Load`, an image rewrite via
+  `FileWrite`+`FileClose`, `Run_Actions`, the property path — is drawn within
+  the 33 ms `LV_DEF_REFR_PERIOD` instead of waiting out the port's 500 ms idle
+  sleep. One registration covers all boards (and all three transports plus
+  HTTP/JSON, since they all end in the same widget/screen code), and it is a
+  no-op in practice for the headless display, which invalidates nothing.
+  *Why not in a board file:* the boards' display bring-up is independent
+  (`display_create()` + `Display::init()` per board), and `post_init()` is the
+  one place they all pass through; it also finally gives that seam a real job
+  (`display.h` previously described it as "set a dim blue background", which has
+  been `#if 0` since Stage lb7). A board overriding `post_init()` must call the
+  base first — noted in `display.h`.
+* **Phase 1's kick is deliberately kept** even though Phase 2 now wakes the task
+  on its own:
+  * `lv_timer_ready()` is what makes the property path *immediate* rather than
+    "somewhere in the next 33 ms refresh period" — the wake alone only gets the
+    handler to run, and a not-yet-due refresh timer is skipped.
+  * The explicit `lvgl_port_task_wake()` keeps that path correct on its own,
+    without depending on the global registration (and setting an event-group bit
+    the callback has already set costs nothing).
+* **Verification:** firmware has no unit tests, so this is `just firmware-build`
+  (green, `display.cpp` + `widget_property.cpp` recompiled clean) plus a
+  hardware check — run googly-vr against a real pad and the eyes must move
+  smoothly at the host's rate (compare `--period 100` vs the old behaviour; the
+  sim cannot show the difference). Worth also watching CPU idle when nothing is
+  animating: the task must still sleep, just not through a pending repaint.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

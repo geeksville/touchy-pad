@@ -79,7 +79,10 @@ Commands:
   full drive-prefixed path (e.g. `F:host/s/home.pb`). The empty
   string loads the device default (`host/s/default.pb` if present,
   else the first registered screen, or the firmware's built-in
-  fallback if nothing has been uploaded).
+  fallback if nothing has been uploaded). The repaint lands within the
+  display's next refresh pass (≤33 ms) rather than whenever the device would
+  otherwise have woken up — a host-driven invalidation wakes the LVGL task
+  (Stage lb16).
 * `Screen_Wake` — Turn the backlight on and restart the auto-sleep countdown.
 * `Set_Preferences(prefs)` — partial settings update (Stage 82): merges only the
   fields present and fires each one's side effect. `screen_timeout_ms` sets the
@@ -89,7 +92,11 @@ Commands:
   A **non-empty batch also counts as display activity**: the device resets the
   auto-sleep countdown and wakes a slept panel, exactly like a touch or
   `Screen_Wake` (Stage lb15) — so a host that animates the panel at a few Hz
-  keeps it lit without sending extra wake commands.
+  keeps it lit without sending extra wake commands. Since Stage lb16 a batch that
+  actually changes a widget on screen also **repaints immediately** — the device
+  invalidates the widget, makes the display refresh timer due and wakes the LVGL
+  task — so an animation is drawn at the host's rate rather than at the device's
+  idle 500 ms slice. Batches that change nothing visible are no-ops (no wake).
 * `Run_Actions(actions)` — Run a list of `Action`s device-side, exactly
   as if a local widget had just triggered them (Stage 71). The device
   feeds each `Action` through the same runner used for widget events

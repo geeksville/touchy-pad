@@ -1,7 +1,7 @@
 # Active Context — current focus
 
-**Last updated:** 2026-09-29 (googly-vr stage 5 + Stage lb15 + the USB
-enumeration fix — "a running app never sees a re-plugged pad").
+**Last updated:** 2026-09-29 (googly-vr stage 5 + Stage lb15 + Stage lb16 +
+the USB enumeration fix — "a running app never sees a re-plugged pad").
 
 ## Where the project is right now
 
@@ -81,10 +81,45 @@ enumeration fix — "a running app never sees a re-plugged pad").
   `docs/python-api.md`). **No wire change** (versions stay 28 / 14 / 9) and no
   simulator mirror (the sim has no backlight/auto-off). `just firmware-build`
   **green** — `host_api.cpp` recompiled clean after the edit.
-* Uncommitted work in the tree: this session's googly-vr + firmware + docs
-  changes, plus the earlier (2026-09-28) doc sweep / `touchy --port` fix and the
-  `.clinerules/` files. Nothing has been committed (never auto-commit) — the
-  user decides.
+* **This session: parent-repo Stage lb16 — a property batch repaints
+  immediately.** User report against googly-vr: it pushed `SetPropertiesCmd`
+  batches at ~10 fps and the eyes moved at ~2 fps. Root cause is entirely in the
+  pinned third-party code: on an idle panel **every** LVGL timer is paused (the
+  display refresh timer pauses itself after each pass; an interrupt-driven GT911
+  puts the indev read timer in `LV_INDEV_MODE_EVENT`, which pauses it too), so
+  `lv_timer_handler()` returns `LV_NO_TIMER_READY` and esp_lvgl_port sleeps its
+  `task_max_sleep_ms` (**500 ms**). An invalidation un-pauses the refresh timer,
+  but `lv_timer_resume()` only pokes the port through
+  `lv_timer_handler_set_resume_cb()` — **which esp_lvgl_port never registers** —
+  so a host-driven repaint never woke the sleeping LVGL task. Fix in
+  `firmware/main/widgets/widget_property.{h,cpp}`: when a batch actually changes
+  a widget that is on screen, invalidate it, `lv_timer_resume()` +
+  `lv_timer_ready()` the display refresh timer, and after unlocking
+  `lvgl_port_task_wake(LVGL_PORT_EVENT_USER)`. Batches that change nothing
+  visible don't wake anything. **No wire change** (28 / 14 / 9) and no simulator
+  mirror; deliberately *not* `lv_refr_now()` on the dispatcher task.
+  `just firmware-build` **green** (`widget_property.cpp` recompiled clean).
+* **Stage lb16 phase 2 — the general fix (also this session, user asked for it
+  right after).** `firmware/main/display.cpp::Display::post_init()` now registers
+  LVGL's resume callback once at display bring-up
+  (`lv_timer_handler_set_resume_cb([](void *) { lvgl_port_task_wake(
+  LVGL_PORT_EVENT_USER, nullptr); }, nullptr)`) — the one post-`hw_init()` hook
+  every board's `Display` subclass and the `HeadlessDisplay` fallback pass
+  through — so **every** host-driven repaint (`Screen_Load`, an image rewrite via
+  `FileWrite`/`FileClose`, `Run_Actions`, and the property path) is drawn within
+  the 33 ms `LV_DEF_REFR_PERIOD` instead of the port's 500 ms idle sleep.
+  Phase 1's `lv_timer_ready()` + explicit wake are kept on purpose: the first
+  makes the property path *immediate* rather than within-a-period, the second
+  keeps that path working without the global hook. `display.h`'s stale
+  "dim blue background" `post_init()` comment was corrected (the base now says a
+  board override must call it first). `just firmware-build` **green**
+  (`display.cpp` + `widget_property.cpp` recompiled and linked clean).
+  Plan `docs/plans/host-driven-repaint-latency.md` now marked **DONE** (both
+  phases).
+* Uncommitted work in the tree: this session's googly-vr + firmware (lb15 +
+  lb16) + docs changes (including the new `docs/plans/` file), plus the earlier
+  (2026-09-28) doc sweep / `touchy --port` fix and the `.clinerules/` files.
+  Nothing has been committed (never auto-commit) — the user decides.
 
 ### Earlier session (2026-09-28) — doc sweep + a real CLI bug fix
 
@@ -138,8 +173,12 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
 
 1. **Review/commit the uncommitted work** (see "Where the project is right
    now"): this session's googly-vr stage 5 (`cli.py` + `tests/test_cli.py` +
-   README/general.md in the submodule) and the parent-repo Stage lb15
-   (`host_api.cpp` one-liner + four doc files), on top of the 2026-09-28 doc
+   README/general.md in the submodule) and the parent-repo Stages lb15
+   (`host_api.cpp` one-liner + four doc files) and lb16
+   (`widget_property.{h,cpp}` + design/AGENTS/host-api + the new
+   `docs/plans/host-driven-repaint-latency.md`), with lb16's phase 2 in
+   `display.cpp`/`display.h` (`Display::post_init()` registers LVGL's
+   timer-resume callback), on top of the 2026-09-28 doc
    sweep and the `touchy --port` fix.
 2. **CYD touch bring-up** (blocking real use of the two classic-ESP32 boards):
    buzz out the XPT2046 MISO GPIO with a multimeter, set it in
@@ -153,10 +192,13 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
    roadmap (`docs/user-widgets.md`), StreamController support, hardware guide.
 5. **googly-vr (`tools/googly-vr/` submodule): stages 0–2 + E1/E2 landed earlier;
    stage 5 (loopback OSC + lazy/never-fatal pad search + `--period` cap) is
-   IMPLEMENTED this session.** Remaining: (a) the **on-hardware** check for
-   Stage lb15 — `touchy pref backlight-timeout 5`, run googly-vr against
-   `sim-eyes`, and confirm the panel stays lit while the eyes move and still
-   blanks ~5 s after the batches stop; (b) flash the attached jc4827w543 with
+   IMPLEMENTED this session.** Remaining: (a) the **on-hardware** checks for
+   Stage lb15 (`touchy pref backlight-timeout 5`, run googly-vr against
+   `sim-eyes`, confirm the panel stays lit while the eyes move and still blanks
+   ~5 s after the batches stop) **and Stage lb16** (eyes must now move at the
+   host's `--period` rate instead of ~2 Hz steps — this is the one that needs
+   eyes on the panel, since the sim has no refresh model to show the bug);
+   (b) flash the attached jc4827w543 with
    protocol-14 firmware; (c) the plan's E3 (device-side lerp) stays speculative;
    (d) future stages = pupil-size shaping + the real EyeTrackVR hookup.
 6. **Memory-bank habit:** after each landed stage, update `progress.md`

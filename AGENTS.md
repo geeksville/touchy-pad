@@ -740,6 +740,38 @@ Highlights worth remembering:
   their old behaviour — only property setting resets the timer. Motivated by
   `tools/googly-vr/docs/plans/stage5.md`, item 3.
 
+- **Stage lb16 (host property batches repaint immediately).** googly-vr sent
+  `SetPropertiesCmd` batches at ~10 fps and the panel updated at ~2 fps: while a
+  panel is idle **every** LVGL timer is paused (the display refresh timer pauses
+  itself after each pass, and an interrupt-driven GT911 puts the indev read timer
+  in `LV_INDEV_MODE_EVENT`, which pauses it too), so `lv_timer_handler()` returns
+  `LV_NO_TIMER_READY` and esp_lvgl_port sleeps its `task_max_sleep_ms` — **500 ms**
+  — between passes. An invalidation unpauses the refresh timer, but
+  `lv_timer_resume()` only pokes the port via `lv_timer_handler_set_resume_cb()`,
+  **which esp_lvgl_port never registers**, so a host-driven repaint never woke the
+  sleeping LVGL task. `widget_property_set_batch()` now, when an entry actually
+  changed a widget that is on screen, invalidates it, `lv_timer_resume()`s +
+  `lv_timer_ready()`s the display refresh timer and (after unlocking)
+  `lvgl_port_task_wake(LVGL_PORT_EVENT_USER)`s — the frame lands after a task
+  switch instead of up to 500 ms later. Batches that change nothing visible
+  (staging overrides for an unloaded screen, removals) don't wake anything.
+  Deliberately **not** `lv_refr_now()` on the dispatcher (would render + flush on
+  the RPC task and busy-wait on `disp->flushing`). No wire change, no
+  `ProtocolVersion` bump, no sim mirror (the sim has no LVGL refresh model).
+  **Phase 2 (same stage, landed right after):** the root cause is fixed for
+  *every* host-driven repaint by registering LVGL's resume callback **once at
+  display bring-up** —
+  `lv_timer_handler_set_resume_cb([](void *) { lvgl_port_task_wake(
+  LVGL_PORT_EVENT_USER, nullptr); }, nullptr)` in
+  `firmware/main/display.cpp::Display::post_init()`, the one post-`hw_init()` hook
+  every board and the `HeadlessDisplay` fallback share — so a `Screen_Load`, an
+  image rewrite via `FileWrite`/`FileClose` and `Run_Actions` are all drawn
+  within the 33 ms `LV_DEF_REFR_PERIOD` instead of up to 500 ms. Phase 1's
+  `lv_timer_ready()` + explicit wake stay on purpose (the first makes the
+  property path *immediate* rather than within-a-period, the second keeps that
+  path working without the global hook). A board overriding `post_init()` must
+  call the base first. See `docs/plans/host-driven-repaint-latency.md`.
+
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host
   code).** libusb ≥ 1.0.27 caches its device list **per libusb context**, and
   pyusb keeps **one context per process** (`usb.backend.libusb1.get_backend()`

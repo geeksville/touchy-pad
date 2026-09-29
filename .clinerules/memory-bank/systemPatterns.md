@@ -281,6 +281,22 @@ by `just _rust-sync-version`.
 10. **Fail soft, log loudly.** Headless display on bring-up failure, `WARN`+OK
     for unimplemented sim commands, `logging.getLogger(__name__)` everywhere,
     device logs tunneled to the host.
+11. **A host-driven repaint must be kicked, not just invalidated.** With an idle
+    panel *every* LVGL timer is paused (refresh timer pauses itself after each
+    pass; an interrupt-driven touch indev pauses its read timer in
+    `LV_INDEV_MODE_EVENT`), so `lv_timer_handler()` reports
+    `LV_NO_TIMER_READY` and esp_lvgl_port sleeps `task_max_sleep_ms` (500 ms) —
+    and it registers **no** `lv_timer_handler_set_resume_cb()` of its own, so an
+    invalidation alone could not wake the sleeping task. **Fixed at the root**
+    (Stage lb16): `Display::post_init()` (`firmware/main/display.cpp`) registers
+    that callback once at bring-up → every invalidation wakes the LVGL task, so
+    any host-driven repaint lands within the 33 ms refresh period. The extra
+    "make it immediate" pattern where a screenshot-class latency matters
+    (`widget_property_set_batch`) is: `lv_obj_invalidate()` the changed widget →
+    `lv_timer_resume()` + `lv_timer_ready()` `lv_display_get_refr_timer(NULL)` →
+    after releasing the port lock `lvgl_port_task_wake(LVGL_PORT_EVENT_USER,
+    NULL)`. Never `lv_refr_now()` from the dispatcher task. Rationale:
+    `docs/plans/host-driven-repaint-latency.md`.
 
 ## Critical implementation paths (look here first)
 
@@ -298,6 +314,11 @@ by `just _rust-sync-version`.
 * **Per-key StreamDeck repaint:** host renders bytes → `ImageCache` (`T:` hash
   path) → `set_image_button_slot` → `ActionChangeWidgetRef` RELEASED/PRESSED →
   `widget_image_button_set_slot` → `widget_image_registry_notify` repaint.
+* **Host changes a widget property:** `set_properties` (Stage lb14) →
+  `widget_property_set_batch()` (`widgets/widget_property.cpp`) applies the
+  batch under one `lvgl_port_lock`, re-applies sticky overrides at build time,
+  and (Stage lb16) invalidates the changed on-screen widgets + readies the
+  refresh timer + wakes the LVGL task so the frame lands immediately.
 * **New board:** copy an existing `firmware/boards/<board>/` dir → set `target`,
   `sdkconfig.defaults`, `board/board_pins.h`, `board/CMakeLists.txt`,
   `idf_component.yml`; write `board.cpp`/`display.cpp`/`touch.cpp` (or reuse

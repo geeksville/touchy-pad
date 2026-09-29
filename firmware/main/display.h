@@ -34,8 +34,10 @@ protected:
     // lv_display_t* (stored into m_disp by init()), or nullptr on failure.
     virtual lv_display_t *hw_init() = 0;
 
-    // Post-bring-up tweaks common to all displays. The base sets a dim
-    // blue background so a blank screen reads as "on"; override to change.
+    // Post-bring-up tweaks common to all displays. The base registers LVGL's
+    // timer-resume callback (Stage lb16) so a host-driven invalidation wakes
+    // the LVGL task instead of waiting out esp_lvgl_port's 500 ms idle sleep;
+    // override to add board-specific tweaks (call the base first).
     virtual void post_init();
 
     lv_display_t *m_disp = nullptr;

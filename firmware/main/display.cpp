@@ -25,6 +25,29 @@ bool Display::init()
 
 void Display::post_init()
 {
+    // Stage lb16 (phase 2) — register LVGL's timer-resume callback so that any
+    // invalidation, from any task, wakes the LVGL task.
+    //
+    // Without it a host-driven repaint waits for esp_lvgl_port's idle sleep: on
+    // an idle panel *every* LVGL timer is paused (the display refresh timer
+    // pauses itself after each pass, and an interrupt-driven touch panel leaves
+    // its indev read timer paused in LV_INDEV_MODE_EVENT), so
+    // lv_timer_handler() reports LV_NO_TIMER_READY and the port sleeps its
+    // task_max_sleep_ms — 500 ms. Every invalidation calls lv_timer_resume()
+    // (lv_inv_area -> LV_EVENT_REFR_REQUEST), but that only notifies the port
+    // through this callback, and esp_lvgl_port registers none of its own.
+    //
+    // With it, every host-driven change is drawn within the 33 ms refresh
+    // period (LV_DEF_REFR_PERIOD) instead of up to half a second later:
+    // Screen_Load, a FileWrite/FileClose image rewrite, Run_Actions and the
+    // SetPropertiesCmd path (which additionally makes the refresh due
+    // immediately — see widgets/widget_property.cpp). Registered once, after
+    // hw_init() has brought the port up; a no-op in practice for the headless
+    // display, which invalidates nothing.
+    lv_timer_handler_set_resume_cb(
+        [](void *) { lvgl_port_task_wake(LVGL_PORT_EVENT_USER, nullptr); },
+        nullptr);
+
 // hmm doesnt work yet
 #if 0
     // Dim blue background so a blank screen (or the area behind widgets)

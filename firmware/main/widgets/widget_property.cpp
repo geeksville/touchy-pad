@@ -114,8 +114,26 @@ bool apply_to_obj(lv_obj_t *, const touchy_SetPropertyCmd &)
 }
 #endif  // LV_USE_OBJ_PROPERTY
 
-// Apply ONE entry (no locking — caller holds the LVGL port lock).
-bool set_one_locked(const touchy_SetPropertyCmd &cmd)
+// Stage lb16 — arrange for the pending repaint to happen *now* instead of at
+// the next LVGL timer slice. Rationale is in widget_property_set_batch();
+// called under the LVGL port lock. Safe to call when nothing is dirty.
+void kick_repaint_locked()
+{
+    // The default display is the only one this device has. Marking the
+    // refresh timer ready makes it due immediately (an invalidation already
+    // unpaused it — lv_inv_area -> LV_EVENT_REFR_REQUEST -> lv_timer_resume —
+    // but resume alone does not make it due, and a paused timer is skipped
+    // entirely by lv_timer_handler()).
+    lv_timer_t *refr = lv_display_get_refr_timer(nullptr);
+    if (!refr) return;
+    lv_timer_resume(refr);
+    lv_timer_ready(refr);
+}
+
+// Apply ONE entry (no locking — caller holds the LVGL port lock). Sets
+// *touched_live when the override landed on a widget that is currently on
+// screen, i.e. when the visible tree changed and needs repainting.
+bool set_one_locked(const touchy_SetPropertyCmd &cmd, bool *touched_live)
 {
     const std::string ident = ident_of(cmd);
     if (ident.empty()) {
@@ -145,6 +163,14 @@ bool set_one_locked(const touchy_SetPropertyCmd &cmd)
         lv_obj_t *obj = find_active(cmd.widget_id);
         if (obj) {
             ok = apply_to_obj(obj, cmd);
+            if (ok) {
+                // Belt and braces: LVGL's own property setters invalidate,
+                // but marking the widget dirty here guarantees a repaint even
+                // for a property whose setter forgets to (and it is what
+                // unpauses the refresh timer — see kick_repaint_locked()).
+                lv_obj_invalidate(obj);
+                if (touched_live) *touched_live = true;
+            }
         }
     }
 
@@ -159,12 +185,42 @@ bool widget_property_set_batch(const touchy_SetPropertiesCmd &cmds)
     // under a single lock acquisition so a whole animation frame lands
     // atomically. A failing entry logs + flips the result but never
     // aborts the remaining entries.
-    bool ok = true;
+    bool ok           = true;
+    bool touched_live = false;  // did an entry change a widget on screen?
     lvgl_port_lock(0);
     for (pb_size_t i = 0; i < cmds.props_count; i++) {
-        ok = set_one_locked(cmds.props[i]) && ok;
+        ok = set_one_locked(cmds.props[i], &touched_live) && ok;
     }
+    // Stage lb16 — the widgets this batch changed are dirty now, so make the
+    // repaint happen immediately instead of at the next LVGL timer slice.
+    //
+    // Why the extra poke is needed (googly-vr sent ~10 fps and got ~2 fps): the
+    // display refresh timer pauses itself at the top of every pass
+    // (lv_display_refr_timer -> lv_timer_pause), and on an interrupt-driven
+    // touch panel (this board's GT911 has an INT line, so lvgl_port_add_touch
+    // puts the indev in LV_INDEV_MODE_EVENT) LVGL also leaves the indev read
+    // timer paused — so while the panel is idle *every* timer is paused and
+    // lv_timer_handler() reports LV_NO_TIMER_READY. esp_lvgl_port then sleeps
+    // its full task_max_sleep_ms (500 ms, ESP_LVGL_PORT_INIT_CONFIG) before
+    // looking again. An invalidation does resume the refresh timer
+    // (lv_inv_area -> LV_EVENT_REFR_REQUEST -> lv_timer_resume), but
+    // lv_timer_resume() only notifies the port via
+    // lv_timer_handler_set_resume_cb() — which esp_lvgl_port never registers
+    // (touchy-pad registers one of its own at display bring-up, see
+    // display.cpp::post_init(), which already bounds any invalidation to the
+    // 33 ms refresh period).
+    //
+    // This call goes further and makes the frame *immediate* rather than
+    // within-a-refresh-period: `lv_timer_ready` makes the pass due now instead
+    // of `period` ms after the last one, and the explicit wake keeps this path
+    // working on its own rather than depending on that global registration.
+    if (touched_live) kick_repaint_locked();
     lvgl_port_unlock();
+    // Outside the lock (it is just an event-group set, and the LVGL task must
+    // be free to take the port lock the moment it wakes). Nothing to do for a
+    // batch that changed nothing visible — e.g. one that only staged overrides
+    // for a screen that isn't loaded.
+    if (touched_live) lvgl_port_task_wake(LVGL_PORT_EVENT_USER, nullptr);
     return ok;
 }
 

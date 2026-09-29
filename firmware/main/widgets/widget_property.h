@@ -32,6 +32,13 @@
 // malformed (no property name/id) or its property/value could not be
 // applied to a live widget — never because a widget is absent, and a
 // failing entry never aborts the rest of the batch.
+//
+// Stage lb16: when an entry actually changed a widget that is on screen the
+// batch also forces the repaint to happen *now* — it marks that widget dirty,
+// makes the display refresh timer due, and wakes the LVGL task — because the
+// LVGL task otherwise sleeps up to 500 ms between passes on an idle,
+// interrupt-driven panel (esp_lvgl_port never registers LVGL's timer-resume
+// callback, so a bare invalidation cannot wake it).
 bool widget_property_set_batch(const touchy_SetPropertiesCmd &cmds);
 
 // Screen-build hooks (called under the LVGL lock by the screen loader):

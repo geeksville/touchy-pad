@@ -29,8 +29,13 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
 
 ## Existing plans
 
-None yet (as of 2026-09-28) — `docs/plans/` is created by the first plan. Docs
-that are *not* plans but are easy to confuse with them:
+* `docs/plans/host-driven-repaint-latency.md` — LVGL refresh wake-ups: **Stage
+  lb16** — phase 1 (property batches repaint immediately) + phase 2 (the general
+  fix: `lv_timer_handler_set_resume_cb()` registered at display bring-up, so
+  *every* host-driven repaint is bounded by the 33 ms refresh period instead of
+  the port's 500 ms idle sleep). Both **done**.
+
+Docs that are *not* plans but are easy to confuse with them:
 
 | Doc | What it is |
 |-----|------------|

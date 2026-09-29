@@ -6,7 +6,9 @@ user committed the memory bank), `VERSION` `0.3.4`/build `21`. Host suite:
 suite **23 passed** (`just test`) with `just lint` clean; `just firmware-build`
 green for `jc4827w543`. This session implemented **googly-vr stage 5** (loopback
 OSC + lazy/never-fatal pad search), the parent-repo **Stage lb15** (host
-property writes reset the display auto-off timer) and a **USB enumeration fix**
+property writes reset the display auto-off timer), **Stage lb16** (a host
+property batch repaints immediately — idle panels were waiting for
+esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
 (a running app never saw a re-plugged pad) — see the sections below.
 
 ### Documentation/consistency fixes in this session (2026-09-28)
@@ -102,7 +104,11 @@ eyes: `sim-eyes` OSC broadcaster + `googly-vr` renderer, ~10 fps, one
 coalesced batch per frame; plan in `tools/googly-vr/docs/plans/general.md`), and
 **lb15 host property writes reset the display auto-off timer** (one
 `backlight_wake()` in `host_api.cpp`'s `set_properties` case — no wire change,
-no sim mirror; motivated by googly-vr's animation blanking the panel).
+no sim mirror; motivated by googly-vr's animation blanking the panel), and
+**lb16 a property batch repaints immediately** (idle panels pause *every* LVGL
+timer, so a host-driven revamp waited for esp_lvgl_port's 500 ms idle sleep —
+`widget_property.cpp` now invalidates + readies the refresh timer + wakes the
+LVGL task; no wire change, no sim mirror).
 
 ### googly-vr stage 5 + Stage lb15 (2026-09-29)
 
@@ -132,6 +138,52 @@ verified:
   jc4827w543, with `host_api.cpp` recompiled clean.
 * **Still open:** the on-hardware confirmation that the panel stays lit while
   googly-vr animates a 5 s auto-off timeout (needs a board).
+
+### Stage lb16 — a property batch repaints immediately (2026-09-29)
+
+* **Report:** googly-vr pushes `SetPropertiesCmd` batches at ~10 fps; the eyes
+  visibly moved at ~2 fps. The batches were received, applied and ACKed
+  correctly — they just were not drawn.
+* **Root cause (pinned third-party code, found by reading it):** on an idle
+  panel **every** LVGL timer is paused — `lv_display_refr_timer()` pauses its
+  own refresh timer after each pass, and an interrupt-driven GT911
+  (`lvgl_port_add_touch()` picks `LV_INDEV_MODE_EVENT` when the panel has an INT
+  line) leaves the indev read timer paused too — so `lv_timer_handler()` returns
+  `LV_NO_TIMER_READY` and esp_lvgl_port sleeps its `task_max_sleep_ms`
+  (**500 ms**). An invalidation does un-pause the refresh timer, but
+  `lv_timer_resume()` only notifies the port via
+  `lv_timer_handler_set_resume_cb()` and **esp_lvgl_port never registers one**,
+  so a host-driven repaint could not wake the sleeping LVGL task. Touches were
+  unaffected (the interrupt itself wakes the task), which is why the UI felt fine
+  by hand and broken for hosts.
+* **Fix:** `firmware/main/widgets/widget_property.{h,cpp}` — `set_one_locked()`
+  reports whether an entry landed on a widget currently on screen;
+  `widget_property_set_batch()` then `lv_obj_invalidate()`s it,
+  `lv_timer_resume()` + `lv_timer_ready()`s the display refresh timer, and after
+  releasing the port lock `lvgl_port_task_wake(LVGL_PORT_EVENT_USER)`s. Batches
+  that change nothing visible (overrides staged for an unloaded screen, pure
+  removals) wake nothing. Deliberately **not** `lv_refr_now()` — that would
+  render + flush on the host-API dispatcher task and busy-wait on
+  `disp->flushing`.
+* **Versions unchanged** (28 / 14 / 9); **no sim mirror** (the sim has no LVGL,
+  refresh timer or task, so it never showed the bug).
+* **Phase 2 — the general fix landed in the same session (user asked for it
+  right after):** `firmware/main/display.cpp::Display::post_init()` registers
+  LVGL's resume callback once at display bring-up —
+  `lv_timer_handler_set_resume_cb([](void *) { lvgl_port_task_wake(
+  LVGL_PORT_EVENT_USER, nullptr); }, nullptr)` — the one post-`hw_init()` hook
+  every board's `Display` subclass and the `HeadlessDisplay` fallback share. Now
+  *every* host-driven repaint (`Screen_Load`, an image rewrite via
+  `FileWrite`/`FileClose`, `Run_Actions`, the property path) is bounded by the
+  33 ms `LV_DEF_REFR_PERIOD` instead of the 500 ms idle sleep. Phase 1's
+  `lv_timer_ready()` + explicit wake stay on purpose (immediate rather than
+  within-a-period, and independent of the global hook). `display.h`'s stale
+  "dim blue background" `post_init()` comment corrected (call the base first if
+  you override). Plan: `docs/plans/host-driven-repaint-latency.md` — **DONE**.
+* **Verified:** `just firmware-build` **green** — `widget_property.cpp` and
+  `display.cpp` (plus `widget_property.h`'s dependents) recompiled clean and the
+  image linked. Hardware check still open (eyes must move at `--period` rate, not
+  in ~2 Hz steps).
 
 ### USB enumeration fix (2026-09-29) — "a running app never sees a re-plugged pad"
 
