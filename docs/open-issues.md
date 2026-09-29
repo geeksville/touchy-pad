@@ -1,5 +1,57 @@
 # Open / Known Issues
 
+## FIXED (2026-09-29) — a running host app never sees a re-plugged Touchy-Pad
+
+**Symptom:** `googly-vr` (and any other long-lived client) connects fine if the
+pad is attached when it starts, but after an unplug/re-plug — or if the pad was
+*not* attached at start — it reports `No Touchy-Pad device with VID=0x303a
+PID=0x8369 found` forever, even though `dmesg`/sysfs show the device and a fresh
+`touchy …` process finds it immediately.
+
+**Root cause (measured, libusb 1.0.27):** libusb caches the device list **per
+libusb context**, and pyusb keeps exactly **one context per process**
+(`usb.backend.libusb1.get_backend()` is a module-level singleton). A process
+whose first enumeration happened before the device appeared therefore never sees
+it again. Proven with `just usb-diag` while re-plugging:
+
+```
+sysfs(live): 5-1.1.4.3 -> node 005/036 (/dev:yes, /host/dev:yes)
+this process:  total=21 touchy=NOT FOUND      # stale cached list
+fresh process: total=22 touchy=['005/036']    # new context → sees it
+```
+
+**Fix:** `touchy_pad._usb.find_usb_devices()` — enumerate through the
+process-wide context first (unchanged fast path) and, only when that comes up
+empty, retry once with a **fresh** libusb context, which is always current. Used
+by `UsbTransport` (so `touchy_open`, the CLI, `TouchyDeck`, the OpenDeck plugin's
+Python path…), by `touchy_get_pad_ids`, and by `update._bootloader_visible`'s
+non-Linux fallback. The fresh context is pinned to the returned devices so it
+can't be collected while a handle is open.
+
+**Related dev-container wrinkle (not a code bug):** in the VS Code dev container
+the container's `/dev/bus/usb` is built at *start-up*, so a pad attached later
+can have no node there while the host's live view (`/host/dev/bus/usb`) does.
+That is what `_install_host_dev_fallback()` in `api/_transport.py` exists for —
+it opens the `/host/dev` node and wraps it with `libusb_wrap_sys_device()`
+(pre-existing; verified working: with no container node for the pad at all,
+`touchy_open()` still returns a usable transport). If the container view ever
+causes trouble, `sudo mount --bind /host/dev/bus/usb /dev/bus/usb` makes it live.
+
+**Diagnostic tool:** `bin/usb-diag.py` / `just usb-diag` (loops, prints sysfs vs
+this-process vs fresh-process enumeration, node presence in both views, and an
+open+board-info probe).
+
+**Side observation (low severity, not reproduced).** During the investigation,
+one `touchy_open()` in a *just-closed* previous session's wake returned
+`board_info` of `0x0`/empty-serial instead of `480x272`/`ta4cb8fec1ce8` — the
+signature of reading a stale frame left in the device's bulk-IN FIFO by an
+abrupt close (which is what `TouchyClient.drain_pending()` exists to clear; the
+`touchy_open()` path doesn't call it). Three consecutive probes seconds later,
+and the CLI, all read it correctly, so it was not reproducible on demand.
+Worth remembering only because it self-heals by design in the new clients: a
+bad first response shows up as a retry reason (googly-vr: `reports no display
+(0x0)` → retry in 5 s) rather than a crash.
+
 ## Stage 59 — Animated object leaves draw artifacts on LVGL slider's inactive track
 
 **Symptom:** When the Stage-59 `reddot` spacer animates across the "test"

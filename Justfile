@@ -243,6 +243,12 @@ app-lint: build-proto-py
     cd app && env -u VIRTUAL_ENV poetry lock
     env -u VIRTUAL_ENV poetry run --directory app ruff check --fix src/touchy_pad tests
 
+# Diagnose USB enumeration (dev containers: /dev/bus/usb is a start-up snapshot
+# while the host's live /dev is at /host/dev). Loops until ctrl-c; unplug and
+# re-plug the pad while it runs. See bin/usb-diag.py.
+usb-diag *args:
+    env -u VIRTUAL_ENV poetry run --directory app python ../bin/usb-diag.py {{args}}
+
 # Build the public-API HTML docs into docs/python-api/ (commit-friendly).
 # Requires the optional `docs` Poetry group: `poetry install --with docs`.
 build-docs: build-proto-py

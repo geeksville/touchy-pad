@@ -727,3 +727,29 @@ Highlights worth remembering:
   `httpd_ssl_config_t.use_secure_element` member, which tripped
   `-Werror=missing-field-initializers` in `net/http_api.cpp` (pragma +
   explicit `false`).
+
+- **Stage lb15 (host property writes are display activity).** The
+  `set_properties` dispatch case in `firmware/main/api/host_api.cpp` now calls
+  `backlight_wake()` when the batch is non-empty, so a host that animates the
+  panel keeps it awake: the Stage-19 auto-sleep timer was reset only by touch
+  and `ScreenWakeCmd`, so googly-vr's ~10 fps `SetPropertiesCmd` stream counted
+  as inactivity and the display blanked mid-animation. One line + comment in the
+  transport-independent dispatcher (so USB/CDC/UART/HTTP/JSON all behave the
+  same); **no wire change** (no version bump) and **no simulator mirror** (the
+  sim has no backlight/auto-off at all). `run_actions`/`set_preferences` keep
+  their old behaviour — only property setting resets the timer. Motivated by
+  `tools/googly-vr/docs/plans/stage5.md`, item 3.
+
+- **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host
+  code).** libusb ≥ 1.0.27 caches its device list **per libusb context**, and
+  pyusb keeps **one context per process** (`usb.backend.libusb1.get_backend()`
+  is a module-level singleton) — so a long-lived process (the CLI, googly-vr,
+  StreamController, the OpenDeck plugin) *never* sees a pad attached after its
+  first enumeration, while sysfs and a fresh process see it immediately. Always
+  enumerate through `touchy_pad._usb.find_usb_devices(usb_core, vid, pid)` (it
+  retries once with a brand-new context; debug with `just usb-diag`) instead
+  of a bare `usb.core.find(...)`. In the dev container there is a second wrinkle:
+  the container's `/dev/bus/usb` is a start-up snapshot, so a later-attached pad
+  may have a node only under `/host/dev/bus/usb` — that is what
+  `_install_host_dev_fallback()` in `api/_transport.py` handles, and
+  `docs/open-issues.md` has the full write-up.

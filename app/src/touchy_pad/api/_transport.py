@@ -456,11 +456,19 @@ class UsbTransport(Transport):
         self._usb_core = usb.core
         self._usb_util = usb.util
 
-        dev = usb.core.find(idVendor=vid, idProduct=pid)
-        if dev is None:
+        # `find_usb_devices` retries with a fresh libusb context when the
+        # process-wide one has a stale cached device list — see its docstring
+        # (`libusb >= 1.0.27` caches the list per context, and pyusb keeps one
+        # context per process, so a pad attached *after* our first enumeration
+        # is invisible without this).
+        from .._usb import find_usb_devices
+
+        devs = find_usb_devices(usb.core, vid, pid)
+        if not devs:
             raise DeviceNotFoundError(
                 f"No Touchy-Pad device with VID=0x{vid:04x} PID=0x{pid:04x} found"
             )
+        dev = devs[0]
         self._dev = dev
 
         # Find the vendor-specific interface and its three endpoints.
@@ -531,7 +539,6 @@ class UsbTransport(Transport):
         # HID / CDC interfaces intact so the host keeps receiving mouse
         # and keyboard reports while the Python CLI is connected.
         _detach_vendor_kernel_driver(intf.bInterfaceNumber)
-
         ep_out = ep_in = None
         for ep in intf:
             attrs = ep.bmAttributes & 0x03  # 0x02 = bulk

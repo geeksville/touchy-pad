@@ -207,10 +207,12 @@ def _bootloader_visible() -> bool:
 
     # 2. Fallback for non-Linux hosts (macOS/Windows have no /sys).
     try:
-        dev = usb.core.find(idVendor=ESP_BOOTLOADER_VID, idProduct=ESP_BOOTLOADER_PID)
+        from ._usb import find_usb_devices
+
+        devs = find_usb_devices(usb.core, ESP_BOOTLOADER_VID, ESP_BOOTLOADER_PID)
     except Exception:
         return False
-    return dev is not None
+    return bool(devs)
 
 
 def _wait_for_bootloader(console: Console, *, timeout: int) -> bool:

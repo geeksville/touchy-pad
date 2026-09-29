@@ -478,6 +478,13 @@ void host_api_dispatch_message(const touchy_Command *cmd, touchy_Response *resp)
         resp->code = widget_property_set_batch(cmd->cmd.set_properties)
                          ? touchy_ResultCode_OK
                          : touchy_ResultCode_INVALID_ARG;
+        // Stage lb15 — a host-driven property write is display *activity*:
+        // reset the auto-sleep countdown (and wake if already asleep), the
+        // same way a touch or a ScreenWakeCmd does. Otherwise a host that
+        // animates the panel (googly-vr at ~10 fps) goes dark after
+        // `screen_timeout_ms` of "inactivity" while the panel is visibly
+        // changing. Nothing to do for an empty batch.
+        if (cmd->cmd.set_properties.props_count > 0) backlight_wake();
         break;
     }
     case touchy_Command_sys_reboot_bootloader_tag:

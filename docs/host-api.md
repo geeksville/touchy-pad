@@ -80,8 +80,16 @@ Commands:
   string loads the device default (`host/s/default.pb` if present,
   else the first registered screen, or the firmware's built-in
   fallback if nothing has been uploaded).
-* `Screen_Wake` — Turn backlight on.
-* `Screen_Sleep_Timeout(msec)` — Auto sleep after `msec` of inactivity.
+* `Screen_Wake` — Turn the backlight on and restart the auto-sleep countdown.
+* `Set_Preferences(prefs)` — partial settings update (Stage 82): merges only the
+  fields present and fires each one's side effect. `screen_timeout_ms` sets the
+  auto-sleep timeout; the old `Screen_Sleep_Timeout` command no longer exists on
+  the wire (see [Preferences](#preferences-setpreferencescmd)).
+* `Set_Properties(props)` — runtime widget-property overrides (Stage lb12/lb14).
+  A **non-empty batch also counts as display activity**: the device resets the
+  auto-sleep countdown and wakes a slept panel, exactly like a touch or
+  `Screen_Wake` (Stage lb15) — so a host that animates the panel at a few Hz
+  keeps it lit without sending extra wake commands.
 * `Run_Actions(actions)` — Run a list of `Action`s device-side, exactly
   as if a local widget had just triggered them (Stage 71). The device
   feeds each `Action` through the same runner used for widget events

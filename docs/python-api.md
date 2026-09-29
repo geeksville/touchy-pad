@@ -259,6 +259,11 @@ a property before its widget is loaded. The batch is applied atomically
 under one device-side lock, in order; a malformed entry fails the RPC but
 never aborts the remaining entries, and an absent widget is not an error.
 
+A batch also counts as **display activity** on the device: it resets the
+backlight auto-sleep countdown (and wakes a slept panel), just like a touch or
+`pad.client.screen_wake()` — so animating widgets at a few Hz keeps the display
+awake without any extra wake calls (stage lb15).
+
 The CLI keeps a string-only shortcut:
 `touchy property set WIDGET_ID PROPERTY VALUE` (sent as a one-entry batch).
 

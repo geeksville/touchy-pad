@@ -112,7 +112,11 @@ def touchy_get_pad_ids() -> list[str]:
         try:
             # NoBackendError is raised on systems where pyusb is installed but
             # libusb is not (e.g. Windows CI runners). Treat it like "no devices".
-            usb_devs = usb.core.find(idVendor=VID, idProduct=PID, find_all=True) or []
+            # `find_usb_devices` also retries with a fresh libusb context, so a
+            # pad attached after this process started is still discovered.
+            from .._usb import find_usb_devices
+
+            usb_devs = find_usb_devices(usb.core, VID, PID, find_all=True)
         except Exception:
             usb_devs = []
         for dev in usb_devs:

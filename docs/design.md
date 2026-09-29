@@ -5737,6 +5737,48 @@ What changed:
   the shared dialect, `renderer.py` as the only `touchy_pad` importer,
   12 pytest cases incl. a real OSC loopback round-trip.
 
+## Stage lb15: host property writes reset the display auto-off timer — DONE
+
+**Status: implemented (firmware + docs; the wire format is unchanged).**
+
+Motivated by `tools/googly-vr` (plan stage 5, item 3): the eye animation is a
+`SetPropertiesCmd` batch per frame at ~10 fps and never touches the panel, so the
+backlight auto-sleep timer (Stage 19) treated it as inactivity and blanked the
+display mid-animation. A host property write is *display activity* — it makes the
+thing the user is looking at change — so it now counts exactly like a touch or a
+`ScreenWakeCmd`.
+
+What changed:
+
+* **`firmware/main/api/host_api.cpp`** — the `set_properties` dispatch case calls
+  `backlight_wake()` when `props_count > 0` (and only then: an empty batch is not
+  activity). `backlight.h` was already included. One line + comment.
+* **Why that call site:** `api/host_api.cpp`'s `dispatch()` is the single
+  transport-independent chokepoint, so vendor-USB, USB-CDC, UART, the HTTP(S)
+  protobuf endpoint and the JSON endpoint are all covered at once, and the
+  `screen_wake` case two branches up already established "a host command counts
+  as activity" there. Rejected: poking inside `widget_property_set_batch()`
+  (host-activity policy in the widget layer, and it would fire for an empty
+  batch); a new `backlight_host_activity()` alias (the `backlight_touch_activity`
+  alias exists because its LVGL-lambda call site is opaque — here a comment
+  suffices); and a host-side `screen_wake` heartbeat (an RPC per frame papering
+  over a device-side omission, which would leave every other animating host
+  broken).
+* **No wire change:** no new field, no new command, nothing moved —
+  `ProtocolVersion` stays 14 (`Widget.Version` 28, `PreferencesFile.Version` 9).
+* **No simulator change, deliberately:** the sim has no backlight and no
+  auto-off timer at all (`sim/device.py::_cmd_set_preferences` already stores
+  `screen_timeout_ms` as a no-op), so there is nothing to mirror; the
+  `sim`-based googly-vr dev loop was never affected by the bug.
+* **Scope:** only *property setting* resets the timer, per the plan. `run_actions`
+  (which can also mutate the visible UI) and `set_preferences` keep their old
+  behaviour; a follow-up can extend it if another host app needs it.
+* **Verification:** firmware has no unit tests, so this is
+  `just firmware-build` (green) plus a hardware check — `touchy pref
+  backlight-timeout 5`, run googly-vr against `sim-eyes`, and the panel must stay
+  lit while the eyes move while still blanking ~5 s after the property batches
+  stop (and touching the panel still wakes it).
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

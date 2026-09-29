@@ -1,11 +1,13 @@
 # Progress — what works, what's left, decision history
 
-**Snapshot (2026-09-28, later session):** `main` @ `22d3f97` ("try cline" — the
+**Snapshot (2026-09-29):** `main` @ `22d3f97` ("try cline" — the
 user committed the memory bank), `VERSION` `0.3.4`/build `21`. Host suite:
-**244 passed, 2 skipped** (`just app-test`, ~20 s) — the 3 extra tests are the
-new `app/tests/test_cli.py` transport-selection regression tests. Firmware was
-not rebuilt this session (no board attached); firmware changes were comments
-only.
+**259 passed, 2 skipped** (`just app-test`, ~20 s); `tools/googly-vr`'s own
+suite **23 passed** (`just test`) with `just lint` clean; `just firmware-build`
+green for `jc4827w543`. This session implemented **googly-vr stage 5** (loopback
+OSC + lazy/never-fatal pad search), the parent-repo **Stage lb15** (host
+property writes reset the display auto-off timer) and a **USB enumeration fix**
+(a running app never saw a re-plugged pad) — see the sections below.
 
 ### Documentation/consistency fixes in this session (2026-09-28)
 
@@ -97,7 +99,70 @@ endpoint, **lb14 batched `SetPropertiesCmd` *replacing* `set_property`**
 `x`/`y`/`w`/`h`/`bg_color`/`text` at the proto level — sticky + lossless
 removal), driven by the new `tools/googly-vr` submodule (animated googly
 eyes: `sim-eyes` OSC broadcaster + `googly-vr` renderer, ~10 fps, one
-coalesced batch per frame; plan in `tools/googly-vr/docs/plans/general.md`).
+coalesced batch per frame; plan in `tools/googly-vr/docs/plans/general.md`), and
+**lb15 host property writes reset the display auto-off timer** (one
+`backlight_wake()` in `host_api.cpp`'s `set_properties` case — no wire change,
+no sim mirror; motivated by googly-vr's animation blanking the panel).
+
+### googly-vr stage 5 + Stage lb15 (2026-09-29)
+
+Plan first (`tools/googly-vr/docs/plans/stage5.md`), then implemented and
+verified:
+
+* **googly-vr `--host` is loopback-only by default** (`127.0.0.1`; `0.0.0.0` is
+  the explicit opt-in) — the OSC socket drives what the panel shows, so it
+  should not be LAN-reachable by accident.
+* **The render loop is event-driven and never exits on its own.**
+  `_Hub` carries a `threading.Event` set by every OSC update; the loop parks in
+  `hub.wait()` and only *tries* to connect to a touchy-pad as a side effect of
+  an update (`_PadSearch`, rate-limited to one attempt / 5 s). A missing,
+  unplugged, headless (`0x0`) or incompatible-firmware pad is a retry reason
+  printed at most once per 5 s — never fatal — so a pad attached later is picked
+  up; ctrl-c is the only exit. `--period` (100 ms) still caps frames at ~10 fps
+  even if a real tracker pushes 100+ Hz. Idle cost = the OSC thread's blocked
+  `recvfrom` + one parked `Event.wait()` (no timer).
+* **Tests:** new `tests/test_cli.py` (10 cases) covering the loopback default,
+  "no device I/O while OSC is silent", the 5 s rate limit, a pad appearing
+  later, headless/incompatible never exiting, a mid-run frame failure closing
+  the pad and restarting the search, the `--period` ceiling, ctrl-c, and the
+  real `_Hub` wakeup. `tools/googly-vr`: `just test` = **23 passed**,
+  `just lint` clean.
+* **Parent repo:** `just app-test` = **251 passed, 2 skipped** (unchanged —
+  no Python/Rust surface was touched); `just firmware-build` **green** for
+  jc4827w543, with `host_api.cpp` recompiled clean.
+* **Still open:** the on-hardware confirmation that the panel stays lit while
+  googly-vr animates a 5 s auto-off timeout (needs a board).
+
+### USB enumeration fix (2026-09-29) — "a running app never sees a re-plugged pad"
+
+* Reported by the user testing googly-vr's new reconnect loop: `just run` works
+  if the pad is attached at launch, but a pad attached later (or after an
+  unplug/re-plug) is never found — `No Touchy-Pad device with VID=0x303a
+  PID=0x8369 found`, forever — despite `dmesg` and a fresh process seeing it.
+* **Root cause, measured**: libusb **1.0.27** caches the device list **per
+  libusb context**, and pyusb keeps **one context per process**
+  (`usb.backend.libusb1.get_backend()` is a module-level singleton). Proof from
+  the new diagnostic (`just usb-diag`), same instant: `this process: total=21
+  touchy=NOT FOUND` vs `fresh process: total=22 touchy=['005/036']`.
+* **Fix**: `app/src/touchy_pad/_usb.py::find_usb_devices()` — first enumerate
+  through the process-wide context (unchanged fast path), and only when that is
+  empty retry once with a **fresh** libusb context (`libusb_init`), pinning that
+  context to the returned devices so it can't be collected while a handle is
+  open. Used by `UsbTransport` (so `touchy_open`/CLI/`TouchyDeck`),
+  `touchy_get_pad_ids` and `_bootloader_visible`'s non-Linux fallback. 8 new
+  tests in `app/tests/test_usb_find.py` (pure fakes; Windows/macOS CI safe).
+* **Environment wrinkle (documented, no code change):** the dev container's
+  `/dev/bus/usb` is captured at container start, so a later-attached pad may
+  have a node only under `/host/dev/bus/usb` — handled by the pre-existing
+  `_install_host_dev_fallback()` (verified: with no container node at all,
+  `touchy_open()` still worked; libusb_open fails `NO_DEVICE`=19, already in its
+  retry list — an added `NOT_FOUND` guess was measured to be wrong and reverted).
+* **New tool**: `bin/usb-diag.py` + `just usb-diag` — prints the live sysfs view
+  (with the device's node in `/dev/bus/usb` *and* `/host/dev/bus/usb`), this
+  process's raw pyusb enumeration, a fresh process's, what the shipping
+  `find_usb_devices` sees, and an open+board-info probe.
+* Docs: `docs/open-issues.md` (FIXED write-up), `AGENTS.md` (never call bare
+  `usb.core.find` in long-lived code).
 Note a **real jc4827w543 device is attached** to this devcontainer running
 protocol-13 firmware — it needs a re-flash before the batched commands work
 on hardware.
