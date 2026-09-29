@@ -5670,6 +5670,73 @@ All of the above shipped as specified. Details worth knowing:
   wake/sleep; it is *not* wired to the Stage-94 `backlight_level`
   preference yet.
 
+## Stage lb14: batched SetPropertiesCmd (googly-vr prerequisite) — DONE
+
+**Status: implemented (host + firmware + sim; `just app-test` green,
+`just firmware-build` green for jc4827w543, Rust workspace builds).**
+
+Motivated by `tools/googly-vr` (the animated-googly-eyes app; plan at
+`tools/googly-vr/docs/plans/general.md`): a ~10 fps animation frame needs
+~4 property writes, and the plan's owner explicitly chose to **replace**
+the singular `set_property` with a batch rather than add alongside —
+*no wire backwards compatibility during early development*.
+
+What changed:
+
+* **Wire:** new `SetPropertiesCmd { repeated SetPropertyCmd props = 1; }`;
+  `Command.set_properties = 14` **replaces** `Command.set_property` (same
+  tag, new type — deliberate break); `ProtocolVersion.CURRENT` 13→14.
+  nanopb: `SetPropertiesCmd.props` is `FT_POINTER` with `max_count:16`
+  (a 16-entry inline array would bloat the stack-resident dispatcher
+  `touchy_Command`; each entry is a ~200-byte fixed struct).
+* **Firmware:** `widget_property_set_batch()` (in
+  `widgets/widget_property.{h,cpp}`) applies all entries in order under
+  one `lvgl_port_lock`; the per-entry body is the old `widget_property_set`
+  logic, now the lock-free `set_one_locked`. Dispatch case + JSON parser
+  follow (`api/host_api.cpp`, `net/json.cpp`). The JSON command key is
+  canonical `{"setProperties":{"props":[…]}}`; both the JSON Command and
+  Response are now `pb_release`d (`net/http_api.cpp`). NB: `pb_realloc` /
+  `pb_free` are **private to the nanopb component** (`PB_ENABLE_MALLOC`
+  is only on its lib), so our code allocates with plain `calloc` (the
+  default `pb_free` is `free`, so `pb_release` stays compatible) and
+  includes `<pb_decode.h>` for `pb_release`.
+* **Host (Python):** the value mapping moved to
+  `touchy_pad.api.build_property_override(widget_id, prop, value)`
+  (exported; `Color`/`Point` semantics unchanged), and
+  `TouchyClient.set_properties(entries)` / `Touchy.set_properties(entries)`
+  send one RPC per batch. The singular `set_property` was **removed**
+  (`cli.py`'s `touchy property set` sends a one-entry batch).
+  `_proto/__init__.py` re-exports `SetPropertiesCmd`.
+* **Simulator (googly-vr plan E1):** `_cmd_set_properties` implements the
+  override engine at the **proto level** — a session
+  `(widget_id, ident) → entry` table plus pristine serialized bytes of the
+  active screen; every load/batch re-materialises
+  `active_screen = parse(pristine) + overrides` and notifies, giving
+  firmware-identical sticky semantics with lossless removal. Supported
+  subset: `x`/`y`/`w`/`h` (rect placement), `bg_color` (style replace or
+  append), `text` (button/label). Anything else — or a widget without a
+  rect — WARNs and is skipped; absent widgets are remembered, not errors.
+  This unblocks no-hardware development of live-property apps: googly-vr's
+  eyes visibly move in the sim.
+* **Tests:** `app/tests/test_set_properties.py` (proto round-trip, value
+  mapping, one-RPC batching, sim geometry/colour/text application,
+  sticky-across-reload, lossless removal, unsupported-property WARN+OK,
+  absent-widget OK) + the JSON-HTTP test now posts a `setProperties` batch.
+  `test_set_property.py` was removed.
+* **Drive-by build fix:** IDF 6.1 added
+  `httpd_ssl_config_t.use_secure_element` but `HTTPD_SSL_CONFIG_DEFAULT()`
+  doesn't initialise it, failing `-Werror=missing-field-initializers` in
+  `net/http_api.cpp` — suppressed with a targeted pragma + explicit
+  `conf.use_secure_element = false`.
+* **googly-vr itself** (stages 0–2 of its plan) landed in the submodule:
+  Poetry project (legacy `[tool.poetry]` layout so the touchy-pad **path
+  dep resolves** — the Poetry 2.x `[project]`-table quirk), `sim-eyes`
+  (fake EyeTrackVR broadcaster: sine wander/stare/crazy + Poisson blinks,
+  ~10 Hz) and `googly-vr` (OSC listener → one coalesced
+  `set_properties` batch per frame) console scripts, `osc_proto.py` as
+  the shared dialect, `renderer.py` as the only `touchy_pad` importer,
+  12 pytest cases incl. a real OSC loopback round-trip.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

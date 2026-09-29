@@ -26,6 +26,8 @@
 #include "esp_https_server.h"
 #include "esp_log.h"
 
+#include <pb_decode.h>  // pb_release() for the FT_POINTER props array
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -131,6 +133,10 @@ static esp_err_t command_post_handler(httpd_req_t *req)
         host_api_dispatch_message(&cmd, &resp);
 
         char *js = response_to_json(&resp);
+        // googly-vr / stage lb14 — the set_properties batch is FT_POINTER,
+        // so both messages can own heap now; free it via nanopb's release.
+        pb_release(touchy_Command_fields, &cmd);
+        pb_release(touchy_Response_fields, &resp);
         if (!js) {
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
             return ESP_FAIL;
@@ -187,7 +193,15 @@ static int start_https_mtls(void)
         return -1;
     }
 
+    // IDF v6.1 added httpd_ssl_config_t.use_secure_element but its
+    // HTTPD_SSL_CONFIG_DEFAULT() doesn't initialise it, which trips
+    // -Werror=missing-field-initializers (the unlisted member is
+    // value-initialized to false either way).
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
     httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
+#pragma GCC diagnostic pop
+    conf.use_secure_element = false;
     conf.transport_mode = HTTPD_SSL_TRANSPORT_SECURE;
     conf.port_secure    = 443;
     conf.httpd.stack_size = HTTPD_STACK;

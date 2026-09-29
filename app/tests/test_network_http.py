@@ -172,17 +172,26 @@ def _post(url: str, body: bytes, content_type: str) -> tuple[int, str, bytes]:
         return resp.status, resp.headers.get("Content-Type", ""), resp.read()
 
 
-def test_json_set_property_round_trips_over_http() -> None:
+def test_json_set_properties_round_trips_over_http() -> None:
     import json
 
     with make_tempdir_transport() as t:
         with SimHttpServer(t.device, port=0) as http:
             body = json.dumps(
                 {
-                    "setProperty": {
-                        "widgetId": "welcome",
-                        "propertyName": "text",
-                        "stringValue": "hello from json",
+                    "setProperties": {
+                        "props": [
+                            {
+                                "widgetId": "welcome",
+                                "propertyName": "text",
+                                "stringValue": "hello from json",
+                            },
+                            {
+                                "widgetId": "box",
+                                "propertyName": "x",
+                                "intValue": 12,
+                            },
+                        ]
                     }
                 }
             ).encode()

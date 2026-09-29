@@ -29,6 +29,6 @@ esc_value=$(printf '%s' "$value" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
 curl -sS -X POST \
     -H 'Content-Type: application/json' \
-    --data "{\"setProperty\":{\"widgetId\":\"${widget}\",\"propertyName\":\"text\",\"stringValue\":\"${esc_value}\"}}" \
+    --data "{\"setProperties\":{\"props\":[{\"widgetId\":\"${widget}\",\"propertyName\":\"text\",\"stringValue\":\"${esc_value}\"}]}}" \
     "${base_url}/touchy/api/v1/command"
 echo

@@ -223,6 +223,20 @@ message SetPropertyCmd {
     }
 }
 
+// googly-vr / stage lb14 — override SEVERAL LVGL properties in ONE
+// round-trip: a batch of `SetPropertyCmd` entries the device applies in
+// order, atomically (one lock acquisition). This is how a host animates
+// several widgets per frame (e.g. googly-vr moves two pupils at ~10 fps)
+// without paying an RPC round-trip per property.
+//
+// `Command.set_properties` REPLACES the former singular
+// `Command.set_property` (same tag, new type) — during early development
+// no wire backwards compatibility is kept. Session/sticky/removal
+// semantics are per entry and identical to `SetPropertyCmd`'s.
+message SetPropertiesCmd {
+    repeated SetPropertyCmd props = 1;   // max 16 entries (touchy.options)
+}
+
 // Top-level command envelope. Exactly one `cmd` is set per message.
 message Command {
     // Stage 82 — retired tags. `screen_load` (3) → SetPreferencesCmd
@@ -241,7 +255,11 @@ message Command {
         RunActionsCmd          run_actions           = 11;
         SetPreferencesCmd      set_preferences       = 12;
         GetPreferencesCmd      get_preferences       = 13;
-        SetPropertyCmd         set_property          = 14;
+        // googly-vr / stage lb14 — batched runtime property overrides,
+        // REPLACING the singular `set_property` that lived at tag 14 in
+        // protocol versions ≤ 13 (deliberate wire break; no backwards
+        // compatibility during early development).
+        SetPropertiesCmd       set_properties        = 14;
     }
 }
 
@@ -273,8 +291,8 @@ message SysBoardInfoResponse {
         option allow_alias = true;
         UNSPECIFIED = 0;
 
-        CURRENT = 13;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
-        MIN_FIRMWARE_VERSION = 10;  // minimum version the PC library supports 
+        CURRENT = 14;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
+        MIN_FIRMWARE_VERSION = 13;  // minimum version the PC library supports 
 
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
         V2 = 2;  // stage 16: Action repeated + ActionHost/ActionMacro variants,
@@ -304,6 +322,9 @@ message SysBoardInfoResponse {
                   //           let the host read back the live prefs
         V13 = 13; // stage lb12: Command gains SetPropertyCmd (runtime widget
                   //           property overrides) — additive
+        V14 = 14; // googly-vr / stage lb14: SetPropertiesCmd (batched
+                  //           repeated SetPropertyCmd) REPLACES the singular
+                  //           set_property at tag 14 — deliberate wire break
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number

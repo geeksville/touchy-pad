@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Union
 
@@ -36,7 +36,6 @@ from . import _events, images_dynamic, protobuf
 from ._transport import Transport
 from ._usb_ids import PID, VID
 from .client import TouchyClient
-from .props import Color, Point
 from .screens import Screen as _DslScreen
 
 logger = logging.getLogger(__name__)
@@ -541,21 +540,18 @@ class Touchy:
         logger.debug("show_user_screen: %s", path)
         self._client.run_actions([change_widget_ref_action("page", path)])
 
-    def set_property(
-        self,
-        widget_id: str,
-        prop: str | int,
-        value: bool | int | str | Color | Point | None,
-    ) -> None:
-        """Override one LVGL property on a widget at runtime (Stage lb12).
+    def set_properties(self, entries: Iterable[_proto.SetPropertyCmd]) -> None:
+        """Apply a batch of runtime LVGL property overrides in ONE RPC.
 
-        Thin wrapper over :meth:`TouchyClient.set_property` — see there for
-        the *prop* (name/id) and *value* (bool / int / str / :class:`Color`
-        / :class:`Point` / ``None`` to remove) mapping. The override is a
-        sticky, RAM-only session override: it re-applies on every rebuild
-        of the target widget and works even if the widget isn't loaded yet.
+        googly-vr / stage lb14 — thin wrapper over
+        :meth:`TouchyClient.set_properties`. Build the batch entries with
+        :func:`~touchy_pad.api.props.build_property_override`
+        ((*widget_id, prop, value*) → the right oneof arm; ``None`` value
+        removes the override). Overrides are sticky, RAM-only session
+        overrides: they re-apply on every rebuild of the target widget and
+        work even if the widget isn't loaded yet.
         """
-        self._client.set_property(widget_id, prop, value)
+        self._client.set_properties(entries)
 
     def set_image_button_slot(
         self,

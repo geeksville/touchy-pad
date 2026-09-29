@@ -54,3 +54,12 @@ touchy.LogRecord.tag                   max_size:16
 touchy.SetPropertyCmd.widget_id        max_size:32
 touchy.SetPropertyCmd.property_name    max_size:32
 touchy.SetPropertyCmd.string_value     max_size:128
+
+# googly-vr / stage lb14 — SetPropertiesCmd batches several overrides into
+# one RPC. Heap-allocate the repeated array (FT_POINTER, like
+# RunActionsCmd.actions): each entry is a ~200-byte fixed struct (its
+# strings are FT_STATIC above), and a 16-entry inline array would bloat
+# the stack-resident `touchy_Command` in the dispatcher. max_count bounds
+# the batch size; the on-wire frame must fit HOST_API_RX_MAX anyway.
+touchy.SetPropertiesCmd.props           type:FT_POINTER
+touchy.SetPropertiesCmd.props           max_count:16

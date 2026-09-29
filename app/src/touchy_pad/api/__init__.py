@@ -72,7 +72,7 @@ from .macros import (
     type_text,
     zoom_move,
 )
-from .props import Color, Point
+from .props import Color, Point, build_property_override
 from .screens import (
     AnimPath,
     ImageSource,
@@ -197,9 +197,11 @@ __all__ = [
     "DEFAULT_SCREEN_PATH",
     # Content-addressed image cache (Stage 100).
     "ImageCache",
-    # Runtime widget property overrides (Stage lb12).
+    # Runtime widget property overrides (stage lb12; batched SetPropertiesCmd
+    # since googly-vr / stage lb14).
     "Color",
     "Point",
+    "build_property_override",
     # Macros.
     "key_down",
     "key_up",

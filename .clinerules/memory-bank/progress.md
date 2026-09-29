@@ -44,7 +44,7 @@ only.
 
 ## Wire-format versions in force
 
-`Widget.Version.CURRENT == 28` · `SysBoardInfoResponse.ProtocolVersion.CURRENT == 13`
+`Widget.Version.CURRENT == 28` · `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`
 · `PreferencesFile.Version.CURRENT == 9` · (no `Screen.Version` exists — the
 version rides the root `Widget`).
 
@@ -92,6 +92,15 @@ certs present), lb10 tiled LED panel chains + per-panel wiring flags
 resolution-independent animations (`AnimTrack.start_inverted`/`end_inverted`,
 touch-less fallback rewritten around it), lb12 runtime widget property overrides
 (`SetPropertyCmd`, session-scoped + sticky), lb13 protobuf-JSON on the network
+endpoint, **lb14 batched `SetPropertiesCmd` *replacing* `set_property`**
+(wire break, `ProtocolVersion` 14; sim honours a documented property subset
+`x`/`y`/`w`/`h`/`bg_color`/`text` at the proto level — sticky + lossless
+removal), driven by the new `tools/googly-vr` submodule (animated googly
+eyes: `sim-eyes` OSC broadcaster + `googly-vr` renderer, ~10 fps, one
+coalesced batch per frame; plan in `tools/googly-vr/docs/plans/general.md`).
+Note a **real jc4827w543 device is attached** to this devcontainer running
+protocol-13 firmware — it needs a re-flash before the batched commands work
+on hardware.
 POST endpoint (`Content-Type` selects JSON vs binary; `bin/set-property.sh`).
 
 **Stage 100 — Python image cache + TouchyDeck user-screen port: implemented**
@@ -146,7 +155,7 @@ Deferred by design (from stage docs):
    proven on either CYD board.
 3. **Simulator serves plaintext HTTP only** (port 8083); real mTLS exists in
    firmware only.
-4. **JSON network API is intentionally partial** — `setProperty`,
+4. **JSON network API is intentionally partial** — `setProperties`,
    `sysBoardInfoGet`, `screenWake`, `getPreferences`, `sysRebootBootloader`,
    `eventConsume` only; `setPreferences`/`runActions` are protobuf-only; an
    unknown command key returns HTTP 400.

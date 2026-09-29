@@ -32,6 +32,7 @@ from .touchy_pb2 import (  # noqa: F401  (re-exported)
     RunActionsCmd,
     ScreenWakeCmd,
     SetPreferencesCmd,
+    SetPropertiesCmd,
     SetPropertyCmd,
     SysBoardInfoGetCmd,
     SysBoardInfoResponse,

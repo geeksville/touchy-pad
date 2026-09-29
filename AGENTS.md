@@ -131,9 +131,9 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
-`lb` line (lb5–lb13) are **done**. Latest active wire-format:
+`lb` line (lb5–lb14) are **done**. Latest active wire-format:
 `Widget.Version.CURRENT == 28`,
-`SysBoardInfoResponse.ProtocolVersion.CURRENT == 13`,
+`SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
 `PreferencesFile.Version.CURRENT == 9`.
 
 > There is **no `Screen.Version`** (the pre-Stage-56 enum was removed). Since
@@ -695,3 +695,35 @@ Highlights worth remembering:
   `json_format`. `bin/set-property.sh IPADDR WIDGET VALUE...` is the curl
   example. The **host** `HttpTransport` stays binary — JSON is for external
   clients. Docs: `docs/network-api.md`.
+
+- **Stage lb14 (batched `SetPropertiesCmd` — googly-vr prerequisite).**
+  `Command.set_properties = 14` now carries a `SetPropertiesCmd`
+  (`repeated SetPropertyCmd props`, nanopb `FT_POINTER` + `max_count:16`)
+  and **replaces** the singular `Command.set_property` of lb12 — a
+  deliberate wire break (backwards compatibility explicitly dropped during
+  early development); `ProtocolVersion.CURRENT` 13→14. The device applies
+  every entry in order under **one** `lvgl_port_lock` acquisition
+  (`widget_property_set_batch` in `widgets/widget_property.{h,cpp}`), so a
+  whole animation frame is one atomic RPC; a failing entry flips the
+  result to `INVALID_ARG` but never aborts the rest. Host: the value
+  mapping moved out of the client into
+  `touchy_pad.api.build_property_override(widget_id, prop, value)`
+  (exported from `touchy_pad.api`), and
+  `TouchyClient.set_properties([...])` / `Touchy.set_properties([...])`
+  send the batch; the singular `set_property` is **gone** (CLI
+  `touchy property set` sends a one-entry batch). The JSON network
+  endpoint's key became canonical `setProperties` with a nested `props`
+  array (`{"setProperties":{"props":[…]}}`); the JSON path now
+  `pb_release`s both messages (`firmware/main/net/json.cpp` +
+  `http_api.cpp`). The **simulator** now honours a documented property
+  subset (`x`/`y`/`w`/`h` rect geometry, `bg_color` style, `text` on
+  button/label) at the proto level: `_cmd_set_properties` keeps a session
+  override table and re-materialises the active screen from pristine
+  bytes + overrides on every load/batch (sticky + lossless removal) —
+  anything else WARNs and is ignored. Driven by
+  `tools/googly-vr` (the eye-animation app this was built for; see
+  `tools/googly-vr/docs/plans/general.md`). Also fixed here: IDF 6.1's
+  `HTTPD_SSL_CONFIG_DEFAULT()` doesn't initialise the new
+  `httpd_ssl_config_t.use_secure_element` member, which tripped
+  `-Werror=missing-field-initializers` in `net/http_api.cpp` (pragma +
+  explicit `false`).

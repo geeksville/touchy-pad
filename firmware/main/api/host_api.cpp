@@ -468,12 +468,14 @@ void host_api_dispatch_message(const touchy_Command *cmd, touchy_Response *resp)
         break;
     }
 
-    case touchy_Command_set_property_tag: {
-        // Stage lb12 — override a single LVGL property on a named widget.
-        // Stored as a sticky session override and applied now if the widget
-        // is on screen; INVALID_ARG only when the command is malformed
-        // (no property name/id) — an absent widget is not an error.
-        resp->code = widget_property_set(cmd->cmd.set_property)
+    case touchy_Command_set_properties_tag: {
+        // googly-vr / stage lb14 — override a batch of LVGL properties on
+        // named widgets, applied in order under one lock acquisition.
+        // Stored as sticky session overrides and applied now for any
+        // widget already on screen; INVALID_ARG only when an entry is
+        // malformed — an absent widget is not an error, and a failing
+        // entry does not abort the rest of the batch.
+        resp->code = widget_property_set_batch(cmd->cmd.set_properties)
                          ? touchy_ResultCode_OK
                          : touchy_ResultCode_INVALID_ARG;
         break;

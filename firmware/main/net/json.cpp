@@ -7,7 +7,10 @@
 #include "cJSON.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include <pb_decode.h>  // pb_release() for the FT_POINTER props array
 
 // ---------------------------------------------------------------------------
 // JSON -> Command
@@ -24,7 +27,7 @@ void copy_str(char *dst, size_t cap, const cJSON *item)
     }
 }
 
-// Fill a touchy_SetPropertyCmd from the "setProperty" JSON object.
+// Fill one touchy_SetPropertyCmd from a "setProperties" array element.
 bool parse_set_property(const cJSON *o, touchy_SetPropertyCmd *sp, const char **err)
 {
     copy_str(sp->widget_id, sizeof(sp->widget_id),
@@ -42,7 +45,7 @@ bool parse_set_property(const cJSON *o, touchy_SetPropertyCmd *sp, const char **
         sp->which_property = touchy_SetPropertyCmd_property_id_tag;
         sp->property.property_id = (uint32_t)pid->valuedouble;
     } else {
-        if (err) *err = "setProperty needs propertyName or propertyId";
+        if (err) *err = "setProperties entry needs propertyName or propertyId";
         return false;
     }
 
@@ -77,6 +80,49 @@ bool parse_set_property(const cJSON *o, touchy_SetPropertyCmd *sp, const char **
     return true;
 }
 
+// googly-vr / stage lb14 — fill a touchy_SetPropertiesCmd (batch) from the
+// "setProperties" JSON object. Canonical protobuf-JSON keeps the repeated
+// entries under the nested "props" key:
+// {"setProperties": {"props": [ {...}, ... ]}}. Each element parses with
+// parse_set_property. The props array is FT_POINTER, so it is heap
+// allocated here and freed by the caller's pb_release() on the Command.
+bool parse_set_properties(const cJSON *o, touchy_SetPropertiesCmd *sp, const char **err)
+{
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(o, "props");
+    if (!cJSON_IsArray(arr)) {
+        if (err) *err = "setProperties needs a \"props\" array of override objects";
+        return false;
+    }
+    const int n = cJSON_GetArraySize(arr);
+    if (n < 1 || n > 16) {
+        if (err) *err = "setProperties.props needs 1..16 entries";
+        return false;
+    }
+    // NB: pb_realloc/pb_free are private to the nanopb component
+    // (PB_ENABLE_MALLOC is defined only on its lib), so allocate with
+    // plain calloc — the entries are fixed-size structs and the default
+    // pb_free is free(), which is calloc-compatible.
+    sp->props = (touchy_SetPropertyCmd *)calloc(
+        (size_t)n, sizeof(touchy_SetPropertyCmd));
+    if (!sp->props) {
+        if (err) *err = "oom";
+        return false;
+    }
+    memset(sp->props, 0, (size_t)n * sizeof(touchy_SetPropertyCmd));
+    sp->props_count = (pb_size_t)n;
+    for (int i = 0; i < n; i++) {
+        const cJSON *e = cJSON_GetArrayItem(arr, i);
+        if (!cJSON_IsObject(e)) {
+            if (err) *err = "setProperties.props entries must be objects";
+            return false;
+        }
+        if (!parse_set_property(e, &sp->props[i], err)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 bool json_to_command(const char *json, size_t len, touchy_Command *out,
@@ -93,12 +139,12 @@ bool json_to_command(const char *json, size_t len, touchy_Command *out,
     }
 
     // Canonical protobuf-JSON wraps the chosen oneof arm under its own key,
-    // e.g. {"setProperty": {...}}. Find the single command key.
+    // e.g. {"setProperties": {"props": [...]}}. Find the single command key.
     bool ok = true;
-    const cJSON *sp = cJSON_GetObjectItemCaseSensitive(root, "setProperty");
+    const cJSON *sp = cJSON_GetObjectItemCaseSensitive(root, "setProperties");
     if (sp) {
-        out->which_cmd = touchy_Command_set_property_tag;
-        ok = parse_set_property(sp, &out->cmd.set_property, err);
+        out->which_cmd = touchy_Command_set_properties_tag;
+        ok = parse_set_properties(sp, &out->cmd.set_properties, err);
     } else if (cJSON_GetObjectItemCaseSensitive(root, "sysBoardInfoGet")) {
         out->which_cmd = touchy_Command_sys_board_info_get_tag;
     } else if (cJSON_GetObjectItemCaseSensitive(root, "screenWake")) {
@@ -115,6 +161,12 @@ bool json_to_command(const char *json, size_t len, touchy_Command *out,
     }
 
     cJSON_Delete(root);
+    // On failure the partially-filled Command may own heap (the stage-lb14
+    // set_properties props array) — release it so the caller can just
+    // drop the struct.
+    if (!ok) {
+        pb_release(touchy_Command_fields, out);
+    }
     return ok;
 }
 

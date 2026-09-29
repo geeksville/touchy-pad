@@ -74,7 +74,13 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
    (its board README documents the log).
 4. Pick up `docs/TODO.md`: system-info/Steam pages for autopage, the user-widget
    roadmap (`docs/user-widgets.md`), StreamController support, hardware guide.
-5. **Memory-bank habit:** after each landed stage, update `progress.md`
+5. **googly-vr (new `tools/googly-vr/` submodule): IMPLEMENTED** — stages 0–2
+   + E1/E2 of `tools/googly-vr/docs/plans/general.md` all landed this session
+   (see "Recent changes"). Left for later: flash the attached jc4827w543 with
+   protocol-14 firmware and validate on hardware; the plan's E3
+   (device-side lerp) stays speculative; future stages = pupil-size shaping
+   + real EyeTrackVR hookup.
+6. **Memory-bank habit:** after each landed stage, update `progress.md`
    (status + version tables) and `activeContext.md` (focus + next steps), and
    record new version bumps / reversals in `systemPatterns.md` + `progress.md`.
    Also re-check that `AGENTS.md`/`CLAUDE.md`, `firmware/README.md` and the
@@ -84,18 +90,22 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
 ## Active decisions & considerations
 
 * Wire-format versions must stay in sync across three schemas —
-  `Widget` 28, `ProtocolVersion` 13, `PreferencesFile` 9. Adding an enum value
+  `Widget` 28, `ProtocolVersion` 14, `PreferencesFile` 9. Adding an enum value
   to an existing action payload does **not** need a `ProtocolVersion` bump;
-  adding a command does.
+  adding a command does — and since lb14, *replacing* a command (the
+  `set_properties` wire break) bumps it too, per the googly-vr owner's
+  explicit no-backwards-compat-for-now stance.
 * Backwards-compat policy: new gesture/feature behaviour must be **opt-in via
   field presence** (a master-enable field) and **additive** (never suppress
   existing behaviour). This is why Stages 90-95 did not change the default
   trackpad's behaviour.
 * The device stays a renderer; user-facing features land as proto + host DSL
   changes, with firmware additions only where physically necessary.
-* Simulator changes must mirror every wire-visible feature (including
-  `setProperty` WARN+OK and `T:` drive semantics), and new sim behaviour needs a
-  pytest.
+* Simulator changes must mirror every wire-visible feature (lb14: the sim
+  now *implements* `set_properties` for the documented subset
+  `x`/`y`/`w`/`h`/`bg_color`/`text` at the proto level — sticky across
+  reloads, lossless removal, WARN+OK for anything else), and new sim
+  behaviour needs a pytest.
 * USB protocol work must never assume libusb exists (Windows CI).
 * `just`-only for builds/tests; **no auto-commit/push** — the user commits.
 * Docs are part of the deliverable: a stage isn't done until `docs/design.md`

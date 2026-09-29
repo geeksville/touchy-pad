@@ -15,3 +15,6 @@
 [submodule "tools/autopage"]
 	path = tools/autopage
 	url = https://github.com/geeksville/autopage.git
+[submodule "tools/googly-vr"]
+	path = tools/googly-vr
+	url = https://github.com/geeksville/googly-vr.git

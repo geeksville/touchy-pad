@@ -83,6 +83,80 @@ def _load_default_screen() -> _proto.Screen | None:
 # ---------------------------------------------------------------------------
 
 
+def _iter_widgets(widget: _proto.Widget):
+    """Yield *widget* and every descendant (layout kinds only — a
+    ``widget_ref``'s content lives in a separate file and is not spliced
+    into this tree)."""
+    yield widget
+    kind = widget.WhichOneof("kind")
+    if kind in ("layout_absolute", "layout_flex", "layout_grid"):
+        for child in getattr(widget, kind).layout.children:
+            yield from _iter_widgets(child)
+
+
+def _screen_layers(screen: _proto.Screen):
+    for layer_name in ("active", "top", "sys", "bottom"):
+        if screen.HasField(layer_name):
+            yield getattr(screen, layer_name)
+
+
+def _find_widget(screen: _proto.Screen, widget_id: str) -> _proto.Widget | None:
+    for layer in _screen_layers(screen):
+        for w in _iter_widgets(layer):
+            if w.id == widget_id:
+                return w
+    return None
+
+
+def _apply_override_to_widget(w: _proto.Widget, entry: _proto.SetPropertyCmd) -> bool:
+    """Apply one SetPropertyCmd entry to a Widget proto (sim subset).
+
+    Mirrors a small, explicitly-documented slice of the firmware's LVGL
+    property behaviour at the proto level: ``x`` / ``y`` / ``w`` / ``h``
+    (integer) map onto the widget's ``rect`` placement, ``bg_color``
+    (colour) onto a style entry, and ``text`` (string) onto a
+    button/label's text. Anything else WARNs and is ignored.
+    """
+    prop_arm = entry.WhichOneof("property")
+    ident = entry.property_name if prop_arm == "property_name" else f"#{entry.property_id}"
+    value_arm = entry.WhichOneof("value")
+
+    if ident in ("x", "y", "w", "h") and value_arm == "int_value":
+        if not w.HasField("rect"):
+            _log.warning(
+                "sim: set_properties %r on %r needs a rect placement — ignored",
+                ident,
+                entry.widget_id,
+            )
+            return False
+        setattr(w.rect, ident, entry.int_value)
+        return True
+    if ident == "bg_color" and value_arm == "color_value":
+        for s in w.styles:
+            if s.HasField("bg_color"):
+                s.bg_color = entry.color_value
+                return True
+        w.styles.append(_proto.Style(bg_color=entry.color_value))
+        return True
+    if ident == "text" and value_arm == "string_value":
+        kind = w.WhichOneof("kind")
+        if kind in ("button", "label"):
+            getattr(w, kind).text = entry.string_value
+            return True
+        _log.warning(
+            "sim: set_properties 'text' only on button/label (%r is %s) — ignored",
+            entry.widget_id,
+            kind,
+        )
+        return False
+    _log.warning(
+        "sim: set_properties unsupported property %r on %r — ignored",
+        ident,
+        entry.widget_id,
+    )
+    return False
+
+
 class SimDevice:
     """Stateful Python device emulator.
 
@@ -141,6 +215,14 @@ class SimDevice:
         self._active_path: str | None = None
         #: Decoded active screen, or None when nothing has loaded yet.
         self._active_screen: _proto.Screen | None = None
+        #: Pristine serialized bytes of the active screen. Session property
+        #: overrides (stage lb14, googly-vr E1) are re-applied onto a fresh
+        #: parse of this on every (re)load / override change, so removals
+        #: are lossless — the firmware's sticky-override semantics mirrored
+        #: at the proto level.
+        self._active_screen_pristine: bytes | None = None
+        #: Session property overrides: (widget_id, property ident) → entry.
+        self._property_overrides: dict[tuple[str, str], _proto.SetPropertyCmd] = {}
 
         # Auto-load a screen on startup, mirroring firmware boot
         # behaviour: prefer the canonical chrome ``host/s/default.pb``
@@ -161,8 +243,8 @@ class SimDevice:
             default = _load_default_screen()
             if default is not None:
                 self._active_path = "<built-in>"
-                self._active_screen = default
-                self._notify_screen_change()
+                self._active_screen_pristine = default.SerializeToString()
+                self._rebuild_active_screen()
 
     # -- public API used by the GUI / tests ------------------------------
 
@@ -314,12 +396,26 @@ class SimDevice:
     def _cmd_screen_wake(self, _msg: _proto.ScreenWakeCmd) -> _proto.Response:
         return _result()
 
-    def _cmd_set_property(self, msg: _proto.SetPropertyCmd) -> _proto.Response:
-        # Stage lb12 — the simulator renders widgets with Qt, not LVGL's
-        # generic property API, so runtime property overrides are ignored.
-        prop = msg.WhichOneof("property") or "?"
-        ident = getattr(msg, prop, prop) if prop != "?" else "?"
-        _log.warning("sim: set_property ignored (widget=%r property=%r)", msg.widget_id, ident)
+    def _cmd_set_properties(self, msg: _proto.SetPropertiesCmd) -> _proto.Response:
+        # googly-vr / stage lb14 — batched runtime property overrides.
+        # The sim mirrors the firmware's sticky-override engine at the
+        # proto level: entries live in a session table and re-apply on
+        # every screen (re)load. Only a documented subset of LVGL property
+        # names is honoured (x/y/w/h, bg_color, text); anything else WARNs
+        # and is ignored. An absent widget is not an error (the override
+        # is remembered and will apply once that widget appears).
+        for entry in msg.props:
+            if entry.WhichOneof("property") is None:
+                _log.warning("sim: set_properties entry with no property — ignored")
+                continue
+            prop_arm = entry.WhichOneof("property")
+            ident = entry.property_name if prop_arm == "property_name" else f"#{entry.property_id}"
+            key = (entry.widget_id, ident)
+            if entry.WhichOneof("value") is None:
+                self._property_overrides.pop(key, None)
+            else:
+                self._property_overrides[key] = entry
+        self._rebuild_active_screen()
         return _result()
 
     def _cmd_set_preferences(self, msg: _proto.SetPreferencesCmd) -> _proto.Response:
@@ -498,16 +594,42 @@ class SimDevice:
                 if default is None:
                     raise FileNotFoundError("no screens available")
                 self._active_path = "<built-in>"
-                self._active_screen = default
-                self._notify_screen_change()
+                self._active_screen_pristine = default.SerializeToString()
+                self._rebuild_active_screen()
                 return
         if not self._fs.exists(path):
             raise FileNotFoundError(path)
         screen = _proto.Screen()
         screen.ParseFromString(self._fs.read(path))
         self._active_path = path
-        self._active_screen = screen
+        self._active_screen_pristine = screen.SerializeToString()
         _log.info("sim: loaded screen %r", path)
+        self._rebuild_active_screen()
+
+    def _rebuild_active_screen(self) -> None:
+        """Materialize the active screen = pristine bytes + session overrides.
+
+        Called on every screen (re)load and every SetPropertiesCmd, mirroring
+        the firmware's sticky overrides at the proto level: we always start
+        from the untouched source bytes, so an override removal is lossless
+        and the same override table keeps re-applying to future loads.
+        """
+        if self._active_screen_pristine is None:
+            return
+        screen = _proto.Screen()
+        screen.ParseFromString(self._active_screen_pristine)
+        for entry in self._property_overrides.values():
+            w = _find_widget(screen, entry.widget_id)
+            if w is None:
+                # Firmware semantics: not-yet-loaded widgets are remembered,
+                # never an error.
+                _log.debug(
+                    "sim: set_properties widget %r not on screen — remembered",
+                    entry.widget_id,
+                )
+                continue
+            _apply_override_to_widget(w, entry)
+        self._active_screen = screen
         self._notify_screen_change()
 
     def _notify_screen_change(self) -> None:

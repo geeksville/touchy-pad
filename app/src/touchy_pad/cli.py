@@ -983,10 +983,13 @@ def property_set(widget_id: str, prop: str, value: tuple[str, ...]) -> None:
     string — multi-word values do not need quoting:
     ``touchy property set welcome text Hello world``.
     The override is session-scoped and sticky: it survives screen reloads
-    and applies whenever the widget next appears.
+    and applies whenever the widget next appears. (Sent as a one-entry
+    stage-lb14 ``SetPropertiesCmd`` batch.)
     """
+    from .api.props import build_property_override
+
     with _client() as c:
-        c.set_property(widget_id, prop, " ".join(value))
+        c.set_properties([build_property_override(widget_id, prop, " ".join(value))])
 
 
 # ---------------------------------------------------------------------------

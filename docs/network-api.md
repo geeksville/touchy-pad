@@ -42,12 +42,12 @@ as JSON with `Content-Type: application/json`; any other content type
 POST /touchy/api/v1/command HTTP/1.1
 Content-Type: application/json
 
-{"setProperty":{"widgetId":"welcome","propertyName":"text","stringValue":"hi"}}
+{"setProperties":{"props":[{"widgetId":"welcome","propertyName":"text","stringValue":"hi"}]}}
 ```
 
 An OK reply with no payload is `{}` (proto3 JSON omits default fields);
 `sysBoardInfoGet` returns a `{"sysBoardInfo":{…}}` object. The
-initially-supported JSON commands are `setProperty`, `sysBoardInfoGet`,
+initially-supported JSON commands are `setProperties`, `sysBoardInfoGet`,
 `screenWake`, `getPreferences`, `sysRebootBootloader`, and
 `eventConsume`; an unknown command key returns HTTP 400. (The nested
 `setPreferences` / `runActions` commands are protobuf-only for now.) The

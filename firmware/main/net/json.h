@@ -5,7 +5,7 @@
 // browser fetch, …) drive the device without protobuf tooling.
 //
 // nanopb has no reflection, so the mapping is hand-written per message.
-// json_to_command() covers setProperty plus the simple scalar commands;
+// json_to_command() covers setProperties plus the simple scalar commands;
 // response_to_json() renders the top-level code + the sys_board_info
 // payload. Field names / enum values follow canonical proto3 JSON
 // (lowerCamelCase, enum names, default/zero fields omitted).

@@ -114,9 +114,8 @@ bool apply_to_obj(lv_obj_t *, const touchy_SetPropertyCmd &)
 }
 #endif  // LV_USE_OBJ_PROPERTY
 
-}  // namespace
-
-bool widget_property_set(const touchy_SetPropertyCmd &cmd)
+// Apply ONE entry (no locking — caller holds the LVGL port lock).
+bool set_one_locked(const touchy_SetPropertyCmd &cmd)
 {
     const std::string ident = ident_of(cmd);
     if (ident.empty()) {
@@ -126,8 +125,6 @@ bool widget_property_set(const touchy_SetPropertyCmd &cmd)
 
     const bool remove = (cmd.which_value == 0);
     bool ok = true;
-
-    lvgl_port_lock(0);
 
     auto it = s_overrides.begin();
     for (; it != s_overrides.end(); ++it) {
@@ -151,6 +148,22 @@ bool widget_property_set(const touchy_SetPropertyCmd &cmd)
         }
     }
 
+    return ok;
+}
+
+}  // namespace
+
+bool widget_property_set_batch(const touchy_SetPropertiesCmd &cmds)
+{
+    // googly-vr / stage lb14 — one RPC carries N overrides; apply them all
+    // under a single lock acquisition so a whole animation frame lands
+    // atomically. A failing entry logs + flips the result but never
+    // aborts the remaining entries.
+    bool ok = true;
+    lvgl_port_lock(0);
+    for (pb_size_t i = 0; i < cmds.props_count; i++) {
+        ok = set_one_locked(cmds.props[i]) && ok;
+    }
     lvgl_port_unlock();
     return ok;
 }
