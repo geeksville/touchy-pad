@@ -5675,8 +5675,8 @@ All of the above shipped as specified. Details worth knowing:
 **Status: implemented (host + firmware + sim; `just app-test` green,
 `just firmware-build` green for jc4827w543, Rust workspace builds).**
 
-Motivated by `tools/googly-vr` (the animated-googly-eyes app; plan at
-`tools/googly-vr/docs/plans/general.md`): a ~10 fps animation frame needs
+Motivated by `googly-vr` (the animated-googly-eyes app; plan at
+`docs/plans/general.md` in the then-submodule): a ~10 fps animation frame needs
 ~4 property writes, and the plan's owner explicitly chose to **replace**
 the singular `set_property` with a batch rather than add alongside —
 *no wire backwards compatibility during early development*.
@@ -5728,7 +5728,9 @@ What changed:
   doesn't initialise it, failing `-Werror=missing-field-initializers` in
   `net/http_api.cpp` — suppressed with a targeted pragma + explicit
   `conf.use_secure_element = false`.
-* **googly-vr itself** (stages 0–2 of its plan) landed in the submodule:
+* **googly-vr itself** (stages 0–2 of its plan) landed in the `tools/googly-vr`
+  submodule (since removed from this repo — the app is developed out-of-tree
+  now, so its code is no longer browsable here):
   Poetry project (legacy `[tool.poetry]` layout so the touchy-pad **path
   dep resolves** — the Poetry 2.x `[project]`-table quirk), `sim-eyes`
   (fake EyeTrackVR broadcaster: sine wander/stare/crazy + Poisson blinks,
@@ -5741,7 +5743,7 @@ What changed:
 
 **Status: implemented (firmware + docs; the wire format is unchanged).**
 
-Motivated by `tools/googly-vr` (plan stage 5, item 3): the eye animation is a
+Motivated by `googly-vr` (plan stage 5, item 3): the eye animation is a
 `SetPropertiesCmd` batch per frame at ~10 fps and never touches the panel, so the
 backlight auto-sleep timer (Stage 19) treated it as inactivity and blanked the
 display mid-animation. A host property write is *display activity* — it makes the
@@ -5786,7 +5788,7 @@ unchanged).** Phase 1 (a property batch) was the request that started this;
 Phase 2 is the general fix for the same root cause, requested right after and
 landed here too.
 
-Reported from `tools/googly-vr`: the app pushed a `SetPropertiesCmd` batch at
+Reported from `googly-vr`: the app pushed a `SetPropertiesCmd` batch at
 ~10 fps but the eyes visibly moved at roughly 2 fps. The batches were being
 received and applied correctly — they just were not *drawn*.
 
@@ -5903,7 +5905,7 @@ host DSL is `label(..., recolor=True)`; the Qt sim mirrors it with rich text
 it. Additive — the default (`false`) renders the markup literally, exactly as
 before.
 
-**Why:** the `creep3r` lightbar apps and `tools/voicebot` stream coloured
+**Why:** the `creep3r` lightbar apps and `voicebot` stream coloured
 scrolling text over the Stage-lb14 `SetPropertiesCmd` path, and the label's
 `recolor` flag is **not** reachable through the runtime property system (the
 label's property table exposes only `text` / `long_mode` / `text_selection_*`).

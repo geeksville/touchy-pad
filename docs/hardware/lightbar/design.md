@@ -2168,5 +2168,5 @@ truncate (voicebot does, to 511). Not a wire-schema change, so no
 ### Deferred / out of scope
 
 * Escaping a literal `#` — LVGL's `##` escape is dead code in this version, so
-  hosts strip `#` instead (see `tools/voicebot`).
+  hosts strip `#` instead (see `voicebot`).
 * Recolour on other text widgets (button / checkbox) — labels only for now.

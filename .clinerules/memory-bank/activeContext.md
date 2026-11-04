@@ -1,11 +1,32 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-04 (**Stage lb18** — LED-matrix boards now default to
-10 % brightness when `backlight_level` is unset; see the session bullet below.
-Before that: `tools/voicebot` Stage 4a — "audio in": mic → VAD → STT → reply,
-logged; `tools/voicebot` Stage 1+2 — the remote-Ollama responder CLI; and
-2026-09-29 — googly-vr stage 5 + Stage lb15 + Stage lb16 + the USB enumeration
-fix, "a running app never sees a re-plugged pad").
+**Last updated:** 2026-11-04 (**`tools/googly-vr` + `tools/voicebot` submodules
+removed** — both apps are now developed in another container, so they are no
+longer checked in here; see the session bullet below. Before that: **Stage lb18**
+— LED-matrix boards now default to 10 % brightness when `backlight_level` is
+unset; voicebot Stage 4a — "audio in": mic → VAD → STT → reply, logged;
+voicebot Stage 1+2 — the remote-Ollama responder CLI; and 2026-09-29 —
+googly-vr stage 5 + Stage lb15 + Stage lb16 + the USB enumeration fix, "a
+running app never sees a re-plugged pad").
+
+### This session (2026-11-04, later): googly-vr + voicebot submodules removed
+
+* The user now develops `googly-vr` and `voicebot` in a **different container**,
+  so both were dropped from this repo: `git submodule deinit -f` + `git rm`
+  (gitlinks and their `.gitmodules` stanzas) + `rm -rf
+  .git/modules/tools/{googly-vr,voicebot}`. Both checkouts were clean and fully
+  pushed (voicebot was even *behind* `origin/main`), so no work was lost.
+* **Nothing built or tested referenced them**: no `Justfile` recipe, CI job,
+  devcontainer hook, Python/Rust module or firmware file names those paths — the
+  references were prose history only. Only the pointers aiming at the vanished
+  paths were reworded (`AGENTS.md` *Repo layout* note + its lb14/lb15/lb17
+  bullets, `docs/design.md`, `docs/python-api.md`,
+  `docs/hardware/lightbar/design.md`,
+  `docs/plans/host-driven-repaint-latency.md`). **No wire change, no version
+  bump, no code change.**
+* Remaining submodules — `StreamController`, `OpenDeck`, `plugins`,
+  `streamcontroller-python-elgato-streamdeck`, `autopage` — verified intact
+  (`git submodule status`).
 
 ### This session (2026-11-04): Stage lb18 — LED-matrix default brightness
 
@@ -31,6 +52,25 @@ fix, "a running app never sees a re-plugged pad").
   `board.cpp.obj`), `just app-test` **268 passed, 2 skipped**.
 * Docs updated: `docs/design.md` (Stage lb18), `AGENTS.md` (bullet), plan set to
   DONE, `.clinerules/plans.md` index.
+
+### This session (2026-11-04): `tools/voicebot` Moonshine-usage audit
+
+* Audited the only Moonshine integration in the repo
+  (`tools/voicebot/src/voicebot/audio.py`) against the user's new
+  `tools/voicebot/.agents/skills/moonshine-voice/SKILL.md` and the installed
+  `moonshine-voice` **0.1.5** wheel (introspected). The lifecycle was already
+  correct (`MicTranscriber` → chainable setters → `load()` → `start()`; `on_line`
+  not `on_text`; non-blocking worker; `models_from`/download cache;
+  `stop()`+`close()`; lazy import). **Three hardening fixes** landed: attach
+  `on_error` (the lib delivers a final-flush `Error` event from `Stream.stop()`
+  and otherwise drops it), coerce a bare-numeric `--device` to an *index* (it
+  arrived as the name `"5"`), and `close()` a half-built transcriber when
+  `start()` fails after `load()` opened the model. `just test` **88 passed, 2
+  live-skipped**, `just lint` clean. **No parent-repo code, no wire change.**
+  Also corrected two inaccuracies in the new `SKILL.md` itself (it claimed a
+  nonexistent *static* `MicTranscriber.load(...)`; and "Tiny/Base raise" for
+  `keyterms`/`context` ignores that `TINY_STREAMING`/`BASE_STREAMING` are fine —
+  only the *non-streaming* `TINY`/`BASE` raise).
 
 ## Where the project is right now
 

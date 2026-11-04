@@ -28,6 +28,13 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `Justfile` | All build/test/run tasks — prefer `just <recipe>` over raw commands |
 | `VERSION` | Single-source version (read by Python + CMake) |
 
+> **`tools/googly-vr` and `tools/voicebot` are no longer submodules.** Both are
+> real, actively developed apps (googly-vr: the googly-eyes animation demo;
+> voicebot: the voice/LED companion) but they now live in their own repos and
+> containers. `tools/googly-vr/...` / `tools/voicebot/...` paths mentioned in
+> `docs/design.md`, `docs/open-issues.md`, `docs/plans/` and the stage notes
+> below are **historical** — they point at the code that used to be checked in
+> here, not at anything in this tree.
 
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /
@@ -720,9 +727,9 @@ Highlights worth remembering:
   button/label) at the proto level: `_cmd_set_properties` keeps a session
   override table and re-materialises the active screen from pristine
   bytes + overrides on every load/batch (sticky + lossless removal) —
-  anything else WARNs and is ignored. Driven by
-  `tools/googly-vr` (the eye-animation app this was built for; see
-  `tools/googly-vr/docs/plans/general.md`). Also fixed here: IDF 6.1's
+  anything else WARNs and is ignored. Driven by `googly-vr` (the
+  eye-animation app this was built for; its plan was `docs/plans/general.md`
+  inside the then-submodule). Also fixed here: IDF 6.1's
   `HTTPD_SSL_CONFIG_DEFAULT()` doesn't initialise the new
   `httpd_ssl_config_t.use_secure_element` member, which tripped
   `-Werror=missing-field-initializers` in `net/http_api.cpp` (pragma +
@@ -738,7 +745,7 @@ Highlights worth remembering:
   same); **no wire change** (no version bump) and **no simulator mirror** (the
   sim has no backlight/auto-off at all). `run_actions`/`set_preferences` keep
   their old behaviour — only property setting resets the timer. Motivated by
-  `tools/googly-vr/docs/plans/stage5.md`, item 3.
+  googly-vr's plan (`docs/plans/stage5.md` in the then-submodule), item 3.
 
 - **Stage lb16 (host property batches repaint immediately).** googly-vr sent
   `SetPropertiesCmd` batches at ~10 fps and the panel updated at ~2 fps: while a
@@ -780,7 +787,7 @@ Highlights worth remembering:
   it (Qt rich text); `docs/python-api.md` + `docs/design.md` document it.
   Additive (default `false` renders the markup literally). Gotcha: `#` is the
   command delimiter and this LVGL's `##` escape is dead code, so a literal `#`
-  is swallowed — hosts strip it (see `tools/voicebot`, the first consumer, which
+  is swallowed — hosts strip it (see `voicebot`, the first consumer, which
   streams coloured scrolling quips over the lb14 `SetPropertiesCmd` path). The
   same stage raised `SetPropertyCmd.string_value`'s nanopb cap from 128 to **512
   bytes** (`proto/touchy.options`) — a `text` override was capped at 127 chars

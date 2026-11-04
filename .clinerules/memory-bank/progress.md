@@ -10,6 +10,23 @@ property writes reset the display auto-off timer), **Stage lb16** (a host
 property batch repaints immediately — idle panels were waiting for
 esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
 (a running app never saw a re-plugged pad) — see the sections below.
+### Repo housekeeping — googly-vr + voicebot submodules removed (2026-11-04)
+
+* Both apps are now developed in a different container/repo, so their submodules
+  were dropped: `git submodule deinit -f` + `git rm` (gitlinks and the
+  `.gitmodules` stanzas) + `rm -rf .git/modules/tools/{googly-vr,voicebot}`.
+  Both checkouts were clean with nothing unpushed (voicebot was even behind
+  `origin/main`), so no work was lost. Remaining submodules untouched:
+  `StreamController`, `OpenDeck`, `plugins`,
+  `streamcontroller-python-elgato-streamdeck`, `autopage`.
+* **No code/build change:** neither path was referenced by the `Justfile`, CI,
+  the devcontainer or any Python/Rust/firmware source — only by prose. Doc
+  pointers naming the vanished paths were reworded (`AGENTS.md` gained a "no
+  longer submodules" note under *Repo layout*; `docs/design.md`,
+  `docs/python-api.md`, `docs/hardware/lightbar/design.md` and
+  `docs/plans/host-driven-repaint-latency.md` now reference the app names, not
+  `tools/...` paths). No wire change, no version bump.
+
 ### Stage lb18 — LED-matrix default brightness (2026-11-04)
 
 * LED-matrix boards now default to **10 %** brightness (`LED_DEFAULT_BRIGHTNESS`)
@@ -34,6 +51,18 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   **XVF3800** (device 5, `hw:2,0`, 16 kHz) and the remote LLM. **No parent-repo
   code, no wire change** — the plan is `tools/voicebot/docs/plans/audioin.md`.
   (Stage 1+2, the responder CLI, landed earlier the same day.)
+* **Moonshine-usage audit (2026-11-04).** Reviewed `audio.py` against the new
+  `.agents/skills/moonshine-voice/SKILL.md` + the installed `moonshine-voice`
+  0.1.5: the lifecycle already matched (construct → setters → `load()` →
+  `start()`, `on_line` not `on_text`, non-blocking worker, `models_from`/cache,
+  `stop()`+`close()`). Three hardening fixes: attach `on_error` (the lib emits a
+  final-flush `Error` event from `Stream.stop()` and otherwise drops it), coerce
+  a bare-numeric `--device` string to an index, and `close()` a half-built
+  transcriber when `start()` fails after `load()`. `just test` **88 passed / 2
+  live-skipped**, `just lint` clean. Also fixed two `SKILL.md` inaccuracies: the
+  nonexistent *static* `MicTranscriber.load(...)` anti-pattern, and the
+  "Tiny/Base raise" wording for `keyterms`/`context` (only the non-streaming
+  `TINY`/`BASE` raise).
 
 
 

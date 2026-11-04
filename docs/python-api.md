@@ -71,9 +71,9 @@ s += label("marquee", text="#FF0000 Danger!# watch out", recolor=True,
 A `#RRGGBB text#` run is drawn in that colour; anything *outside* a run uses the
 label's `text_color` style (white by default) — i.e. plain LVGL default
 behaviour, with no state to carry between updates. It is what lets a host stream a
-multi-coloured scrolling message (see `tools/voicebot`), and because the runtime
-`text` property override re-parses the markup, a new frame is still one property
-write.
+multi-coloured scrolling message (see `voicebot`, now developed out-of-tree), and
+because the runtime `text` property override re-parses the markup, a new frame is
+still one property write.
 
 Off by default (the markup then renders literally). Note `#` is the command
 delimiter: this LVGL version's `##` escape is dead code, so a literal `#` in the
@@ -292,7 +292,7 @@ The **simulator** honours the documented subset `x` / `y` / `w` / `h`
 (geometry, via the widget's rect), `bg_color` (style) and `text`
 (button/label) at the proto level — entries for other properties, or for
 widgets without a rect placement, log a warning and are ignored. This is
-what lets host animation apps (e.g. `tools/googly-vr`) be developed
+what lets host animation apps (e.g. `googly-vr`) be developed
 against the sim with visible motion.
 
 ## Lifecycle

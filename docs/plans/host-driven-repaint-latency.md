@@ -9,7 +9,7 @@ as the record of the diagnosis and the reasoning behind the choices.
 Make a host-driven UI change appear on the panel *promptly*, instead of at the
 next LVGL slice the device happens to wake up for.
 
-This started as a bug report against `tools/googly-vr`: it pushed a
+This started as a bug report against `googly-vr`: it pushed a
 `SetPropertiesCmd` batch at ~10 fps and the eyes moved at ~2 fps. The batches
 were received and applied correctly — they were just not drawn.
 
