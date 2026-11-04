@@ -171,3 +171,26 @@ RUN curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --no
 RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.deno" sh \
  && echo 'export DENO_INSTALL="$HOME/.deno"' | tee -a $HOME/.bashrc $HOME/.zshrc \
  && echo 'export PATH="$DENO_INSTALL/bin:$PATH"' | tee -a $HOME/.bashrc $HOME/.zshrc
+
+# Audio: userspace ALSA + small CLI tools, so a host USB mic/speaker (e.g. the
+# reSpeaker XVF3800 4-mic array) can be used from inside the container. The
+# /dev/snd bind mount and the PULSE_SERVER/XDG_RUNTIME_DIR wiring live in
+# devcontainer.json; this is just the software side.
+#   libasound2t64   - the library ALSA clients dlopen (PortAudio, i.e. python
+#                     `sounddevice`/`pyaudio`, SDL, GStreamer, VLC, ...).
+#                     Without it they fail with "libasound.so.2: cannot open
+#                     shared object file".
+#   alsa-utils      - arecord/aplay/alsamixer for quick "is the mic there?"
+#                     checks that bypass the host sound server entirely.
+#   libportaudio2   - what python `sounddevice` / `pyaudio` dlopen on Linux
+#                     (the wheel only bundles PortAudio for macOS/Windows).
+#   pulseaudio-utils - pactl/parec, which talk to the *host's* PipeWire through
+#                     the /run/user/1000 socket (see PULSE_SERVER).
+# Appended after the expensive ESP-IDF/Rust/deno layers so that adding it does
+# not invalidate their build cache.
+RUN sudo apt-get install -y --no-install-recommends \
+      libasound2t64 \
+      alsa-utils \
+      libportaudio2 \
+      pulseaudio-utils \
+ && sudo rm -rf /var/lib/apt/lists/*

@@ -33,7 +33,41 @@ install (`. $HOME/esp/esp-idf/export.sh`) for firmware builds. On Linux the user
 must be able to open the device (udev rule in `bin/99-touchy-pad.rules`,
 installed by `bin/install-rules.sh`; docs in `docs/udev.md`).
 
-## Standard commands
+## Dev container: host devices & audio
+
+The devcontainer runs `--privileged` with the host's `/dev` bind-mounted at
+`/host/dev`, but the container's **own** `/dev` is a start-time snapshot: a
+device plugged in after the container was created gets no node there. That is
+why host-side USB code looks at `/host/dev/bus/usb` (see
+`docs/open-issues.md`) and why USB *audio* needs an explicit fix:
+
+* `mounts` in `.devcontainer/devcontainer.json` binds the host `/dev/snd`
+  **directory** over the container's `/dev/snd`. A bind mount of a directory is
+  a live view, so cards added later appear immediately
+  (`controlCN`, `pcmCND0c`, `pcmCND0p`). Node permissions work because the
+  host's seat ACL (uid 1000) still applies through `--userns=keep-id`.
+* `remoteEnv` sets `PULSE_SERVER=unix:/run/user/1000/pulse/native` and
+  `XDG_RUNTIME_DIR=/run/user/1000` — the container has no sound server, and the
+  host's session runtime dir is already bind-mounted, so libpulse / PipeWire
+  clients reach the **host** PipeWire (mic *and* speakers), which is the nicer
+  path for apps (device hot-plug, volume, per-app routing).
+* The image installs `libasound2t64` (what PortAudio/`sounddevice`, SDL, GStreamer
+  dlopen), `alsa-utils` (`arecord`/`aplay`/`alsamixer`), `libportaudio2` (the
+  Linux PortAudio that `sounddevice`/`pyaudio` link against — the wheel only
+  bundles it for macOS/Windows) and `pulseaudio-utils` (`pactl`/`parec`) at the
+  **end** of the `Containerfile` so the expensive ESP-IDF/Rust/deno layers stay
+  cached.
+
+Validated 2026-11-04 with a Seeed reSpeaker XVF3800 4-mic array
+(`2886:001a`): `arecord -l` shows it as card 2 inside the container,
+`arecord -D hw:2,0 -f S16_LE -r 16000 -c 2 -d 2` produced a 2.00 s wav, and
+`parec -d alsa_input.usb-Seeed_Studio_reSpeaker_XVF3800_…` streamed audio from
+the host PipeWire over the mounted socket.
+
+Gotcha: `sudo` inside this container stalls for seconds on a reverse lookup of
+the container hostname (`sudo: unable to resolve host dc_touchy-pad`); use
+`podman exec -u 0 …` for root operations when scripting.
+
 
 ```sh
 just app-test         # build-proto-py then `poetry run pytest`  (PRIMARY host test)

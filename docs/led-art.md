@@ -15,11 +15,3 @@ Listens to people talking and plays along with the idea that people are creeped 
 ESP32-S3-ROOM inside.
 * touchy-pad module will talk to host linux CPU that is doing (locally hosted) ai voice rec to find funny things to start scrolling.
 
-### Voice input
-Great thread https://www.reddit.com/r/homeassistant/s/wl02ow67MK
-https://www.reddit.com/r/RockchipNPU/comments/1g3cetq/fast_and_accurate_speechtotext_on_rk3588_with/?share_id=5YA3sA8R8K1hXxF8YJaFh 
-
-What about if I use this device over USB instead of esp32s3?  Can I hook it to my rpi and still take advantage of the built in vad?
-Possibly this version reSpeaker USB 4-Mic Array XVF3000 v3.0 | Seeed Studio Wiki https://share.google/SmlZbrjco82vemvfg
-Best mic module https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/ has esp32s3 
-Orangepi info https://www.reddit.com/r/SBCs/s/LBz8vA3nx5

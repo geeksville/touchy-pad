@@ -1,7 +1,9 @@
 # Active Context — current focus
 
-**Last updated:** 2026-09-29 (googly-vr stage 5 + Stage lb15 + Stage lb16 +
-the USB enumeration fix — "a running app never sees a re-plugged pad").
+**Last updated:** 2026-11-04 (`tools/voicebot` Stage 1+2 — the remote-Ollama
+responder CLI; see the newest session bullet below. Before that:
+2026-09-29 — googly-vr stage 5 + Stage lb15 + Stage lb16 + the USB enumeration
+fix, "a running app never sees a re-plugged pad").
 
 ## Where the project is right now
 
@@ -116,7 +118,46 @@ the USB enumeration fix — "a running app never sees a re-plugged pad").
   (`display.cpp` + `widget_property.cpp` recompiled and linked clean).
   Plan `docs/plans/host-driven-repaint-latency.md` now marked **DONE** (both
   phases).
-* Uncommitted work in the tree: this session's googly-vr + firmware (lb15 +
+* **This session (2026-11-04): `tools/voicebot` Stage 1 + 2 — the responder.**
+  New Poetry app in the `tools/voicebot` submodule that ports `launch-funny.sh`
+  off local `llama.cpp` onto a **remote Ollama server**
+  (`https://kai.pygmy-map.ts.net`, OpenAI-compatible `/v1` + native
+  `/api/chat`). `src/voicebot/{cli,config,persona,responder,server}.py`:
+  `voicebot reply` (stdin / `-f` / `--line`, plus `--json`, `--no-notfunny`) and
+  `voicebot models`; the persona and loosened sampler (`temp 0.85`,
+  `min_p 0.05`) are lifted from the script; the `NOTFUNNY` sentinel is
+  suppressed. The chat client is injected everywhere (no network in CI —
+  `VOICEBOT_LIVE=1` enables one live smoke). Default model = **Hermes-3-8B**
+  (reliable NOTFUNNY); the funnier Nemo is one `--model` away. Verified:
+  `just test` green (**17 pass / 1 skip**), `just lint` clean, and a live
+  end-to-end `reply -f sim-overheard.txt` on **both** API surfaces. Plan:
+  `tools/voicebot/docs/plans/initial.md` (Stages 3–5 — LED display / STT / full
+  creep3r loop — explicitly deferred). **No touchy-pad wire change.**
+* **This session (2026-11-04, second task): host USB mic reachable from the
+  devcontainer.** The user wants the **Seeed reSpeaker XVF3800 4-mic array**
+  (`2886:001a`, card 2 on the host) usable *inside* the container — it is the
+  mic voicebot Stage 4 (STT) will capture from. Two independent paths, both now
+  wired in `.devcontainer/`:
+  * `mounts` gained `source=/dev/snd,target=/dev/snd,type=bind` — the container's
+    own `/dev` is a creation-time snapshot (it had `controlC0/C1` but never
+    `controlC2`), while a bind of the host *directory* is a live view, so the
+    card appears as soon as it is plugged in. Node permissions work off the
+    host's seat ACL for uid 1000 via `--userns=keep-id`.
+  * `remoteEnv` gained `PULSE_SERVER=unix:/run/user/1000/pulse/native` +
+    `XDG_RUNTIME_DIR=/run/user/1000`, so libpulse/PipeWire clients use the
+    **host's PipeWire** through the already-mounted session dir.
+  * `Containerfile` (appended last, so the ESP-IDF/Rust/deno layers stay cached)
+    installs `libasound2t64` (PortAudio/`sounddevice`/SDL dlopen it),
+    `alsa-utils`, `libportaudio2`, `pulseaudio-utils`.
+  * **Verified live in the running container**: `arecord -l` lists card 2,
+    `arecord -D hw:2,0 -f S16_LE -r 16000 -c 2 -d 2` wrote a 2.00 s wav, and
+    `parec -d alsa_input.usb-Seeed_Studio_reSpeaker_XVF3800_…` streamed real
+    audio (peak 817) from the host server. Details in
+    `.clinerules/memory-bank/techContext.md` → *Dev container: host devices &
+    audio*. No repo code, no wire change; needs one container **rebuild**.
+
+* Uncommitted work in the tree: this session's voicebot app, plus this session's
+  googly-vr + firmware (lb15 +
   lb16) + docs changes (including the new `docs/plans/` file), plus the earlier
   (2026-09-28) doc sweep / `touchy --port` fix and the `.clinerules/` files.
   Nothing has been committed (never auto-commit) — the user decides.

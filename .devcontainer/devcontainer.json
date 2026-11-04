@@ -33,6 +33,20 @@
 		"source=/dev/,target=/host/dev/,type=bind,consistency=consistent",
 		"source=/run/user/1000,target=/run/user/1000,type=bind",
 
+		// Host ALSA sound devices (mics + speakers), e.g. the reSpeaker XVF3800
+		// USB 4-mic array. The container's *own* /dev is a snapshot taken when
+		// the container was created, so a USB audio device plugged in after
+		// launch never gets a node there (same reason our code has to look at
+		// /host/dev/bus/usb for touchpads). Binding the host's /dev/snd
+		// *directory* is a live view, so cards added later show up immediately
+		// as /dev/snd/controlCN + pcmCND0c/pcmCND0p.
+		// Node permissions come from the host's seat ACL for uid 1000, which
+		// still applies here because of --userns=keep-id in runArgs.
+		// NOTE: /dev/snd must exist on the host (it does as soon as any sound
+		// card is present); a missing bind source makes the container refuse to
+		// start, so drop this line on a host with no sound support at all.
+		"source=/dev/snd,target=/dev/snd,type=bind,consistency=consistent",
+
 		// vscode auto export of git config into my container sometimes seems busted (I'm not sure why this is only needed sometimes)
 		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/ubuntu/.gitconfig,type=bind,consistency=cached",
 
@@ -111,6 +125,17 @@
 	"remoteEnv": {
 		"DISPLAY": ":0",
 		"XAUTHORITY": "/tmp/.docker.xauth",
+
+		// Audio: the container runs no sound server of its own, so point
+		// PulseAudio/PipeWire-pulse clients at the *host's* session server,
+		// which is reachable through the /run/user/1000 bind mount above (that
+		// socket is world-readable/writable inside the container). This is what
+		// makes the reSpeaker mic show up as a normal record source for
+		// libpulse apps (pactl/parec, Firefox, Chromium, Qt Multimedia, ...).
+		// XDG_RUNTIME_DIR also lets native PipeWire clients (pw-record/pw-cat)
+		// find /run/user/1000/pipewire-0.
+		"PULSE_SERVER": "unix:/run/user/1000/pulse/native",
+		"XDG_RUNTIME_DIR": "/run/user/1000",
 
 		// Project-scoped Cline MCP servers: keep the list in the repo (.cline/cline_mcp_settings.json)
 		// instead of the global ~/.cline/data/settings/cline_mcp_settings.json.
