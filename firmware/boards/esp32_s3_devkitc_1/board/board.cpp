@@ -39,6 +39,11 @@ void backlight_set(uint8_t level)
 // default screen and tells the host to hide touch-only UI.
 extern "C" bool platform_is_touchable(void) { return false; }
 
+// Stage lb18 — strong override of the weak platform_is_led_matrix() default:
+// this board drives a WS2812B LED matrix, so Prefs defaults its brightness
+// to LED_DEFAULT_BRIGHTNESS rather than 100 %.
+extern "C" bool platform_is_led_matrix(void) { return true; }
+
 extern "C" const struct Platform *platform_get(void)
 {
     static const struct Platform p = { .is_multitouch = false, .has_usb = true };

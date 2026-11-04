@@ -61,14 +61,17 @@ bool Prefs::begin()
         if (pf->has_current_screen) m_current_screen = pf->current_screen;
         if (pf->has_min_log_level) m_min_log_level = pf->min_log_level;
         if (pf->has_boot_delay_s) m_boot_delay_s = pf->boot_delay_s;
-        if (pf->has_backlight_level) m_backlight_level = (uint8_t)pf->backlight_level;
+        if (pf->has_backlight_level) {
+            m_backlight_level = (uint8_t)pf->backlight_level;
+            m_backlight_explicit = true;   // Stage lb18: host-chosen, not auto
+        }
         if (pf->has_board_config) m_board_config = pf->board_config;
         if (pf->has_network) m_network = pf->network;
         ESP_LOGI(TAG, "Loaded prefs: screen_timeout_ms=%" PRIu32
                       " current_screen='%s' min_log_level=%" PRIu32
                       " boot_delay_s=%" PRIu32 " backlight_level=%u",
                  m_timeout_ms, m_current_screen.c_str(), m_min_log_level,
-                 m_boot_delay_s, (unsigned)m_backlight_level);
+                 m_boot_delay_s, (unsigned)backlight_level());
     } else {
         ESP_LOGW(TAG, "Prefs file corrupt — using defaults");
     }
@@ -92,6 +95,7 @@ void Prefs::set_backlight_level(uint8_t level)
 {
     if (level > 100) level = 100;
     m_backlight_level = level;
+    m_backlight_explicit = true;   // Stage lb18: host-chosen, not auto
     save();
 }
 
@@ -170,6 +174,14 @@ void Prefs::save()
     PbMessage<touchy_PreferencesFile> pf(touchy_PreferencesFile_fields);
     *pf.get() = to_proto();
 
+    // Stage lb18 — never bake an auto default into flash. When the host has
+    // never chosen a level, drop the field so it is recomputed from the board
+    // type on the next boot (and a future default change still applies).
+    if (!m_backlight_explicit) {
+        pf->has_backlight_level = false;
+        pf->backlight_level = 0;
+    }
+
     uint8_t buf[PREFS_BUF_SIZE];
     size_t  n = 0;
     if (!pf.encode(buf, sizeof(buf), &n)) {
@@ -198,7 +210,9 @@ touchy_PreferencesFile Prefs::to_proto() const
     pf.has_boot_delay_s = true;
     pf.boot_delay_s = m_boot_delay_s;
     pf.has_backlight_level = true;
-    pf.backlight_level = m_backlight_level;
+    // Report the effective value (Stage lb18): a fresh LED board shows 33,
+    // not the internal 100 placeholder, so the host sees the real setting.
+    pf.backlight_level = backlight_level();
     // Stage lb6 — board_config is only serialised when something was
     // programmed (at least one display); an empty config stays absent so
     // a never-configured device round-trips as "no board_config".

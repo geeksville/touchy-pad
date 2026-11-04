@@ -40,6 +40,14 @@ const struct Platform *platform_get(void);
 // UI (reported over the host API as SysBoardInfoResponse.is_touchable).
 bool platform_is_touchable(void);
 
+// Stage lb18 — true when the board's display is a WS2812B LED matrix rather
+// than an LCD panel. LED matrices are far brighter (and harder on the
+// hardware / power budget) at full duty than an LCD backlight, so the
+// firmware defaults their brightness lower — see Prefs::backlight_level().
+// Has a *weak* default (in platform.cpp) returning false; LED-matrix boards
+// provide a strong override returning true in their boards/<board>/board.cpp.
+bool platform_is_led_matrix(void);
+
 // Stage 71 — stable device serial derived from the factory MAC
 // (`esp_read_mac`), formatted "txxxxxxxxxxxx" (leading 't' + 12 lowercase
 // hex digits, no separators). Computed once on first call and cached; the

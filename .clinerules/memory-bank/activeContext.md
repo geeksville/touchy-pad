@@ -1,9 +1,36 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-04 (`tools/voicebot` Stage 1+2 — the remote-Ollama
-responder CLI; see the newest session bullet below. Before that:
+**Last updated:** 2026-11-04 (**Stage lb18** — LED-matrix boards now default to
+10 % brightness when `backlight_level` is unset; see the session bullet below.
+Before that: `tools/voicebot` Stage 4a — "audio in": mic → VAD → STT → reply,
+logged; `tools/voicebot` Stage 1+2 — the remote-Ollama responder CLI; and
 2026-09-29 — googly-vr stage 5 + Stage lb15 + Stage lb16 + the USB enumeration
 fix, "a running app never sees a re-plugged pad").
+
+### This session (2026-11-04): Stage lb18 — LED-matrix default brightness
+
+* Turned `docs/plans/led-brightness.md` from a rough note into a full plan, then
+  implemented the remaining piece. **Key finding: the dimming mechanism already
+  existed** (committed) — `LEDChain`'s 0..255 scalar applied in
+  `led_panel.cpp::set_pixel()` *after* the gamma LUT in
+  `led_display.cpp::flush_cb()`, so it dims text, shapes **and images**; the
+  three LED boards already forwarded `backlight_set()` →
+  `led_display_set_brightness()`; and the Stage-94 `backlight_level` pref +
+  host surface already reached it. Only the low *default* was missing.
+* What landed: a weak `platform_is_led_matrix()` board hook
+  (`firmware/main/platform.{h,cpp}`, mirroring `platform_is_touchable()`) with
+  strong `true` overrides in `esp32_s3_devkitc_1` / `esp32_s3_matrix` /
+  `jc_esp32p4_m3` `board.cpp`; and `Prefs::m_backlight_explicit` so
+  `backlight_level()` returns `LED_DEFAULT_BRIGHTNESS` (10) on an LED board /
+  100 on LCD when the host never chose a value, `save()` omits the field while
+  not explicit, and `to_proto()` reports the effective value.
+* **No wire change** (reuses `backlight_level`): no `PreferencesFile.Version` /
+  `ProtocolVersion` bump, no `app/` / `rust/` / sim change.
+* Validated: `just firmware-build` green for the LED board `esp32_s3_matrix`
+  (strong override wins the link; `nm` shows `T platform_is_led_matrix` from
+  `board.cpp.obj`), `just app-test` **268 passed, 2 skipped**.
+* Docs updated: `docs/design.md` (Stage lb18), `AGENTS.md` (bullet), plan set to
+  DONE, `.clinerules/plans.md` index.
 
 ## Where the project is right now
 
@@ -155,8 +182,32 @@ fix, "a running app never sees a re-plugged pad").
     audio (peak 817) from the host server. Details in
     `.clinerules/memory-bank/techContext.md` → *Dev container: host devices &
     audio*. No repo code, no wire change; needs one container **rebuild**.
+* **This session (2026-11-04, third task): `tools/voicebot` Stage 4a — "audio
+  in" (mic → VAD → STT → reply, logged).** Rewrote
+  `tools/voicebot/docs/plans/audioin.md` from a sketch into a full plan, then
+  built it. New `voicebot listen`: a `TranscriptSource` seam
+  (`src/voicebot/audio.py` — Moonshine `MicTranscriber` behind a lazy import, or
+  a `FakeTranscriptSource` for `--fake FILE`), an `UtteranceGate` (`gate.py`:
+  ≥3 content words after filler-stripping, min-duration, 5 s repeat-debounce)
+  and the loop (`listen.py`: gate → the existing `Responder` on a worker thread
+  with a bounded drop-oldest queue; emits `HEARD:`/`SKIP(…)`/`REPLY:` log lines
+  or `--json`). Deps added: **`moonshine-voice`** (streaming STT, CPU-only,
+  bundles its own native lib — **no onnxruntime**) + `sounddevice`. Default
+  `--model-arch small`; the mic is auto-selected by the `respeaker` name hint.
+  **Verified:** `just test` **49 passed / 2 live-skipped** + `just lint` clean;
+  a live run selected device 5 (`reSpeaker XVF3800 … (hw:2,0)`, 2-in-ch,
+  16 kHz), loaded the model and started the engine; `listen --fake
+  sim-overheard.txt` produced real `HEARD`/`REPLY`/`SKIP(notfunny)` against the
+  remote LLM; a TTS→WAV→STT round trip transcribed "The bread is done baking."
+  Out of the plan's Q4 the container's **PipeWire was unreachable** (`pactl`
+  refused), so capture uses **direct ALSA** (`hw:2,0` via PortAudio) — **no
+  `libasound2-plugins` needed**. `tools/voicebot` only: **no parent-repo code,
+  no wire change.** Display (Stage 3) still deferred.
 
-* Uncommitted work in the tree: this session's voicebot app, plus this session's
+
+* Uncommitted work in the tree: this session's voicebot app (Stage 1+2 responder
+  **and** the Stage 4a `listen` audio-in work: new `audio.py`/`gate.py`/`listen.py`
+  + tests, uncommitted in the `tools/voicebot` submodule), plus this session's
   googly-vr + firmware (lb15 +
   lb16) + docs changes (including the new `docs/plans/` file), plus the earlier
   (2026-09-28) doc sweep / `touchy --port` fix and the `.clinerules/` files.

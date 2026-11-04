@@ -22,7 +22,9 @@ this module stays pure-rendering.
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 from collections.abc import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -31,6 +33,29 @@ from .. import _proto
 from .fs import SimFs
 
 _log = logging.getLogger("touchy_pad.sim")
+
+#: LVGL inline-recolour run: ``#RRGGBB text#`` (colour to the first space,
+#: text to the closing ``#``). Stage LB17.
+_RECOLOR_RE = re.compile(r"#([0-9a-fA-F]{6}) (.*?)#", re.DOTALL)
+
+
+def _recolor_to_html(text: str) -> str:
+    """Render LVGL inline-recolour markup as Qt rich text (stage LB17).
+
+    A minimal, advisory equivalent of the firmware's ``lv_label_set_recolor``:
+    each ``#RRGGBB text#`` run becomes a coloured ``<span>``; everything else is
+    plain (the label's default colour). Anything the pattern doesn't match is
+    kept literally.
+    """
+    out: list[str] = []
+    pos = 0
+    for match in _RECOLOR_RE.finditer(text):
+        out.append(html.escape(text[pos : match.start()]))
+        out.append(f'<span style="color:#{match.group(1)}">{html.escape(match.group(2))}</span>')
+        pos = match.end()
+    out.append(html.escape(text[pos:]))
+    return "".join(out)
+
 
 #: Callback fired when a leaf widget is activated.
 #:
@@ -290,6 +315,12 @@ def _build_leaf(
             f = lbl.font()
             f.setPointSize(int(font_size))
             lbl.setFont(f)
+        # Stage LB17 — inline recolour. With the flag on, `#RRGGBB text#` runs
+        # are rendered in colour (Qt rich text); with it off the markup is
+        # shown literally, matching the firmware.
+        if w.label.recolor:
+            lbl.setTextFormat(QtCore.Qt.RichText)
+            lbl.setText(_recolor_to_html(w.label.text or ""))
         # Long mode: Qt has no built-in marquee, so WRAP turns on word
         # wrap (Qt's default-ish behaviour) while every other mode stays
         # single-line and lets Qt clip at the label's fixed width — close

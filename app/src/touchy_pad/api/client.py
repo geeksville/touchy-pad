@@ -140,20 +140,55 @@ class TouchyClient:
                 if serial_transport is None:
                     raise
                 client = cls(serial_transport)
+        # A host process that died mid-RPC leaves its reply unread in the
+        # device's bulk-IN FIFO. The device answers strictly *one frame per
+        # request*, so every later reply is then one command behind — which
+        # shows up as the first `sys_board_info_get()` of the new session
+        # reading a stale `NOT_FOUND` (docs/open-issues.md). Discard whatever
+        # is already sitting there before we start talking.
+        try:
+            client._flush_stale_frames()
+        except Exception:  # noqa: BLE001 — best-effort
+            logger.debug("flush_stale_frames() raised at open; ignoring", exc_info=True)
         # Stage 64.1: device may have buffered ESP_LOG records since
         # boot (or across a previous host disconnect). Drain them
         # eagerly so they surface on `device_logger` before the
-        # caller's first foreground RPC — both as user-visible
-        # context and to make sure no stale frame bytes remain in
-        # the vendor-bulk FIFO.
+        # caller's first foreground RPC.
         try:
             client.drain_pending()
         except Exception:  # noqa: BLE001 — best-effort
             logger.debug("drain_pending() raised at open; ignoring", exc_info=True)
         return client
 
+    def _flush_stale_frames(self, max_frames: int = 8, timeout_ms: int = 40) -> int:
+        """Drop complete frames already queued in the device's bulk-IN FIFO.
+
+        Called once at open (see :meth:`open`). Each read uses a short timeout
+        and the loop stops as soon as the FIFO is empty — the frame decoder
+        keeps any *partial* bytes across calls, so this can never corrupt a
+        genuine reply that arrives mid-flush. Returns the number of stale
+        frames discarded.
+        """
+        dropped = 0
+        for _ in range(max_frames):
+            try:
+                self._t.recv_response(timeout_ms)
+            except Exception:  # noqa: BLE001 — a timeout just means "empty"
+                break
+            dropped += 1
+        if dropped:
+            logger.info("dropped %d stale frame(s) left in the device FIFO", dropped)
+        return dropped
+
     def close(self) -> None:
-        self._t.close()
+        # Take the RPC lock first: a request whose reply we never read stays in
+        # the device's FIFO and desynchronises every later session (see
+        # docs/open-issues.md), so let any in-flight exchange finish (and
+        # consume its reply) before the transport goes away. The background
+        # event thread holds this lock for the span of one RPC, so we can't be
+        # blocked for longer than a single read timeout.
+        with self._rpc_lock:
+            self._t.close()
 
     def __enter__(self) -> TouchyClient:
         return self

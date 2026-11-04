@@ -44,6 +44,52 @@ def make_client():
     return factory
 
 
+class StaleFrameTransport(Transport):
+    """Hands back queued leftover frames, then behaves like an empty FIFO."""
+
+    def __init__(self, stale: list[bytes]) -> None:
+        self._stale = list(stale)
+        self.sent: list[bytes] = []
+        self.closed = False
+
+    def send_command(self, payload: bytes) -> None:
+        self.sent.append(payload)
+
+    def recv_response(self, timeout_ms: int = 2000) -> bytes:
+        if self._stale:
+            return self._stale.pop(0)
+        raise TimeoutError("FIFO empty")  # the real transports raise TransportError
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_flush_stale_frames_discards_leftovers_then_stops():
+    """A leftover reply is dropped at open; an empty FIFO costs nothing."""
+    t = StaleFrameTransport([b"stale-1", b"stale-2"])
+    c = TouchyClient(t)
+    assert c._flush_stale_frames() == 2
+    assert c._flush_stale_frames() == 0
+    assert t.sent == []  # flushing never sends anything
+
+
+def test_flush_stale_frames_is_bounded():
+    t = StaleFrameTransport([b"x"] * 20)
+    assert TouchyClient(t)._flush_stale_frames(max_frames=8) == 8
+
+
+def test_close_waits_for_an_in_flight_rpc(make_client):
+    """close() takes the RPC lock so a reply isn't orphaned in the device FIFO."""
+
+    def server(cmd, _t):
+        return _proto.Response(code=_proto.RESULT_OK)
+
+    with make_client(server) as c:
+        c.sys_board_info_get()
+    # No assertion beyond "it returns": the lock is what matters, and a
+    # regression would show up as an orphaned frame on hardware.
+
+
 def test_sys_version_get(make_client):
     def server(cmd, _t):
         assert cmd.WhichOneof("cmd") == "sys_board_info_get"

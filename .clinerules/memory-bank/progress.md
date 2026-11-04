@@ -10,6 +10,32 @@ property writes reset the display auto-off timer), **Stage lb16** (a host
 property batch repaints immediately — idle panels were waiting for
 esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
 (a running app never saw a re-plugged pad) — see the sections below.
+### Stage lb18 — LED-matrix default brightness (2026-11-04)
+
+* LED-matrix boards now default to **10 %** brightness (`LED_DEFAULT_BRIGHTNESS`)
+  instead of 100 % when the host has never set `PreferencesFile.backlight_level`;
+  LCD boards keep 100 %. The dimming *mechanism* already existed (`LEDChain`'s
+  0..255 scalar applied after the gamma LUT, so it dims images too); this added a
+  weak `platform_is_led_matrix()` board hook + `Prefs::m_backlight_explicit` so
+  `backlight_level()` reports the board default, `save()` keeps an auto default
+  out of flash, and `to_proto()` reports the effective value. No wire change
+  (no `PreferencesFile.Version` / `ProtocolVersion` bump), no host/Rust/sim
+  change. `just firmware-build` green for `esp32_s3_matrix`; `just app-test`
+  **268 passed, 2 skipped**. Plan: `docs/plans/led-brightness.md`.
+
+
+### Tool project: `tools/voicebot` Stage 4a — audio in (2026-11-04)
+
+* The `voicebot` submodule gained **`voicebot listen`**: mic → **Moonshine Voice**
+  streaming STT → min-words gate → the existing remote-LLM `Responder` → log
+  lines (`HEARD:` / `SKIP(…)` / `REPLY:`). New `src/voicebot/{audio,gate,listen}.py`
+  plus tests; new deps `moonshine-voice` + `sounddevice`. `just test` **49 passed
+  / 2 live-skipped**, `just lint` clean, and live-verified against the reSpeaker
+  **XVF3800** (device 5, `hw:2,0`, 16 kHz) and the remote LLM. **No parent-repo
+  code, no wire change** — the plan is `tools/voicebot/docs/plans/audioin.md`.
+  (Stage 1+2, the responder CLI, landed earlier the same day.)
+
+
 
 ### Documentation/consistency fixes in this session (2026-09-28)
 

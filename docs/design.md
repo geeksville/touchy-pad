@@ -5891,6 +5891,84 @@ What changed:
   sim cannot show the difference). Worth also watching CPU idle when nothing is
   animating: the task must still sleep, just not through a pending repaint.
 
+## Stage lb17: inline label recolour — DONE
+
+**Status: implemented.** A new `bool recolor = 5` on `Label` (`Widget.Version`
+28→29) enables LVGL's inline-recolour *markup*, so one string can carry several
+colours: a `#RRGGBB text#` run renders in that colour, and everything outside a
+run uses the label's `text_color`. `firmware/main/widgets/widget_builders.cpp::
+build_label` calls `lv_label_set_recolor(lbl, true)` when the flag is set; the
+host DSL is `label(..., recolor=True)`; the Qt sim mirrors it with rich text
+(`touchy_pad/sim/widgets.py::_recolor_to_html`); `docs/python-api.md` documents
+it. Additive — the default (`false`) renders the markup literally, exactly as
+before.
+
+**Why:** the `creep3r` lightbar apps and `tools/voicebot` stream coloured
+scrolling text over the Stage-lb14 `SetPropertiesCmd` path, and the label's
+`recolor` flag is **not** reachable through the runtime property system (the
+label's property table exposes only `text` / `long_mode` / `text_selection_*`).
+With the flag on, the runtime `text` override re-parses the markup on every
+change, so a new frame is still a single property write. It leans on LB3
+(`long_mode` SCROLL_CIRCULAR) and lb14/lb15/lb16 (batched, panel-waking,
+immediate repaints).
+
+**Gotcha:** `#` is the command delimiter, and this LVGL version's `##` escape is
+dead code — a literal `#` in the text is swallowed, so hosts strip it.
+
+**Wire:** `Widget.Version` 28→29. No `ProtocolVersion` / `PreferencesFile.Version`
+change. Full stage notes: `docs/hardware/lightbar/design.md` → "stage LB17".
+
+**Follow-up, same stage — the `text` override cap.** `SetPropertyCmd.string_value`
+was capped at 128 bytes in `proto/touchy.options`, so a scrolling `text` override
+maxed out at **127 characters**. A chatty host hit that immediately: voicebot's
+quips ran to ~270 chars and the device answered `INVALID_ARG` + a device-side
+`pb_decode failed` (nanopb rejects an over-long `FT_STATIC` string at decode
+time). The cap is now **512** (a 120-token reply fits comfortably). Nothing
+reports the cap to the host, so voicebot truncates to 512 and, if the pad still
+rejects the quip, retries once at 127 and logs a "re-flash the firmware" hint —
+that keeps it working against an un-reflashed device instead of silently
+dropping the message. No wire-schema change (so no version bump): old firmware
+simply rejects strings longer than it can hold.
+
+## Stage lb18: LED-matrix default brightness — DONE
+
+**Status: implemented.** LED-matrix boards now default to **10 %** brightness
+instead of 100 % when the host has never set `PreferencesFile.backlight_level`.
+The dimming *mechanism* already existed (below); this stage only adds the
+board-aware default.
+
+**Mechanism (pre-existing, unchanged).** `LEDChain` carries a brightness scalar
+(0..255) that `led_panel.cpp::set_pixel()` multiplies into each channel, applied
+*after* the RGB565→RGB888 expansion and gamma LUT in
+`led_display.cpp::flush_cb()` — so it dims **everything** (text, shapes, images).
+`led_display_set_brightness(0..100)` converts % → 0..255 and forces a repaint;
+the three LED boards already forward their `backlight_set(level)` to it, and the
+Stage-94 `backlight_level` pref (host surface: `set_backlight_level` /
+`touchy pref backlight-level` / Rust `Touchy::set_backlight_level`) already
+reached it. Additive; no LVGL opacity pass — one integer multiply per channel.
+
+**New in this stage.**
+
+* `bool platform_is_led_matrix(void)` — a *weak* default `false` in
+  `firmware/main/platform.cpp` (LCD-ish), mirroring `platform_is_touchable()`.
+  The three LED boards (`esp32_s3_devkitc_1`, `esp32_s3_matrix`,
+  `jc_esp32p4_m3`) provide a strong `true` override in their `board.cpp`.
+* `Prefs` gained `bool m_backlight_explicit`. `backlight_level()` now returns the
+  host-set value when explicit, else `LED_DEFAULT_BRIGHTNESS` (10) on an LED
+  board or 100 on an LCD board. `set_backlight_level()` / a loaded
+  `has_backlight_level` mark it explicit; `to_proto()` reports the **effective**
+  value (so `pref get` shows 10 on a fresh LED board); `save()` **omits** the
+  field while it is not explicit, so the auto default is never frozen into flash
+  (a later change to the default still applies).
+
+**Behaviour:** fresh LED board → 10 %; `touchy pref backlight-level 100` → 100 %
+(persisted as an explicit choice); LCD board → 100 % unchanged.
+
+**Wire:** no change — reuses the existing `backlight_level` field. No
+`PreferencesFile.Version` / `ProtocolVersion` bump, and no `app/` / `rust/` /
+simulator change. Plan: `docs/plans/led-brightness.md`.
+
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

@@ -58,6 +58,27 @@ with touchy_open() as pad:
 `Screen.to_proto()` is also exposed for advanced users who want the raw
 protobuf message before upload.
 
+### Inline colour on a label (stage LB17)
+
+`label(..., recolor=True)` switches on LVGL's inline recolour **markup**, so a
+single string can carry several colours:
+
+```python
+s += label("marquee", text="#FF0000 Danger!# watch out", recolor=True,
+           long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR)
+```
+
+A `#RRGGBB text#` run is drawn in that colour; anything *outside* a run uses the
+label's `text_color` style (white by default) — i.e. plain LVGL default
+behaviour, with no state to carry between updates. It is what lets a host stream a
+multi-coloured scrolling message (see `tools/voicebot`), and because the runtime
+`text` property override re-parses the markup, a new frame is still one property
+write.
+
+Off by default (the markup then renders literally). Note `#` is the command
+delimiter: this LVGL version's `##` escape is dead code, so a literal `#` in the
+text is swallowed rather than shown — strip it host-side if it matters.
+
 ## Raw protobuf
 
 When you'd rather hand-build the message:

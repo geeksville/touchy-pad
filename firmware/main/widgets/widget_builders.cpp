@@ -225,9 +225,19 @@ lv_obj_t *build_label(lv_obj_t *parent, const touchy_Widget &w)
         lv_label_set_long_mode(lbl,
             (lv_label_long_mode_t)w.kind.label.long_mode);
     }
-    ESP_LOGI(TAG, "build_label id='%s' text='%.40s' text_align=%d long_mode=%d",
+    // Stage LB17 — inline recolour. Enabling this lets the label parse
+    // `#RRGGBB text#` runs so one string can carry several colours; text
+    // outside a run uses the style's text_color. Off by default (the
+    // markup would otherwise be shown literally). Runtime `text` property
+    // overrides re-parse the markup on every change, so nothing else is
+    // needed for the live path.
+    if (w.kind.label.recolor) {
+        lv_label_set_recolor(lbl, true);
+    }
+    ESP_LOGI(TAG, "build_label id='%s' text='%.40s' text_align=%d long_mode=%d recolor=%d",
              w.id, w.kind.label.text,
-             (int)w.kind.label.text_align, (int)w.kind.label.long_mode);
+             (int)w.kind.label.text_align, (int)w.kind.label.long_mode,
+             (int)w.kind.label.recolor);
     // font_size now lives on Style (applied via lv_style_set_text_font in
     // widget_styles.cpp) — nothing font-related to do here.
     return lbl;

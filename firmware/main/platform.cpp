@@ -39,3 +39,12 @@ __attribute__((weak)) bool platform_is_touchable(void)
 {
     return true;
 }
+
+// Weak "base class" implementation: every board whose display is an LCD
+// panel inherits this and returns false. LED-matrix boards (Stage lb18)
+// override it with a strong definition returning true in their
+// boards/<board>/board.cpp, which lets Prefs pick a lower default brightness.
+__attribute__((weak)) bool platform_is_led_matrix(void)
+{
+    return false;
+}

@@ -1019,6 +1019,25 @@ def test_label_long_mode_round_trips():
     assert w.label.long_mode == _proto.LongMode.LONG_MODE_SCROLL_CIRCULAR
 
 
+def test_label_recolor_round_trips():
+    """Stage LB17 — Label.recolor survives proto serialise → parse."""
+    s = Screen("rc", layout=col())
+    s += label("marquee", text="#FF0000 Danger!# watch out", recolor=True)
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert w.WhichOneof("kind") == "label"
+    assert w.label.recolor is True
+
+
+def test_label_recolor_defaults_off():
+    """Default recolor is False, so nothing renders the old way."""
+    s = Screen("rc", layout=col())
+    s += label("plain", text="hello")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert w.label.recolor is False
+
+
 def test_build_setup_screen_touchless_has_scrolling_welcome():
     """The touch-less default screen overlays a SCROLL_CIRCULAR welcome."""
     screen = build_setup_screen_touchless()

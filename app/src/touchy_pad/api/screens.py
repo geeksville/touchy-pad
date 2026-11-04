@@ -754,6 +754,7 @@ def label(
     font_size: int = 0,
     text_align: int = TextAlign.AUTO,
     long_mode: int = LongMode.LONG_MODE_WRAP,
+    recolor: bool = False,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
@@ -777,6 +778,13 @@ def label(
     than the text — set via ``rect`` (e.g. under an absolute layout) or a
     sizing parent (flex grow / grid stretch). ``DOTS`` trims with ``…``;
     ``CLIP`` hard-clips.
+
+    ``recolor`` (stage LB17) turns on LVGL inline recolour parsing: a
+    ``#RRGGBB text#`` run inside ``text`` is drawn in that colour, while
+    anything outside a run uses the label's ``text_color`` (set via
+    ``style=style(text_color=...)``). It is what lets one string carry
+    several colours. Only meaningful on a firmware that knows the field;
+    off by default.
     """
     styles = _normalise_styles(style)
     if font_size:
@@ -790,6 +798,7 @@ def label(
     w.label.text = text
     w.label.text_align = text_align
     w.label.long_mode = long_mode
+    w.label.recolor = recolor
     return w
 
 

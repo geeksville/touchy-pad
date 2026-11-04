@@ -2109,3 +2109,63 @@ and the `value` oneof (`boolValue`/`intValue`/`stringValue`/`colorValue`/
   existing mTLS gate.
 * A JSON variant of the non-HTTP transports (USB/UART framing stays
   binary-only).
+
+## stage LB17 — inline label recolour
+
+**Status: implemented.** `Label` gained an optional `bool recolor` (proto +
+`Widget.Version` 28→29). When set, `build_label` enables LVGL's inline-recolour
+parsing, so a `#RRGGBB text#` run in the string renders in that colour and text
+outside a run uses the label's `text_color`. The host DSL gained
+`label(..., recolor=True)`, the Qt sim mirrors it (rich text), `docs/python-api.md`
+documents it, and `AGENTS.md` carries the highlight. `just build-proto`,
+`just app-test`, `just app-lint` and `just firmware-build` all pass.
+
+### Background
+
+LVGL can colour runs *inside* a label via markup (`lv_label_set_recolor` + the
+`#RRGGBB text#` syntax, `LV_TXT_COLOR_CMD`). That flag lives on the label object
+and is **not** reachable through the runtime property system (the label's
+property table exposes only `text` / `long_mode` / `text_selection_*`), so a host
+that wants multi-colour scrolling text needs a real proto field. Default `false`
+keeps today's behaviour — the markup is shown literally — so the change is
+additive.
+
+### Definition of done
+
+* `Label.recolor` round-trips; `label(recolor=True)` writes it.
+* `build_label` enables recolour **only** when the flag is set.
+* Host DSL, sim + tests, `docs/python-api.md` updated; `Widget.Version` 28→29.
+
+### Work items
+
+1. **Proto** — `Label.recolor = 5` + `Widget.Version.CURRENT` 28→29
+   (`proto/widgets.proto`; the Rust tree reads the same file through a symlink at
+   `rust/touchy-pad/proto/`). `just build-proto` regenerates C / Python / Rust.
+2. **Firmware** — `firmware/main/widgets/widget_builders.cpp::build_label`:
+   `if (w.kind.label.recolor) lv_label_set_recolor(lbl, true);`, plus `recolor=%d`
+   in the existing `ESP_LOGI`. The runtime `text` property override re-parses the
+   markup, so nothing else is needed for the live path.
+3. **Host DSL** — `app/src/touchy_pad/api/screens.py::label(..., recolor=False)`.
+4. **Sim** — `app/src/touchy_pad/sim/widgets.py` renders `#RRGGBB text#` runs as
+   Qt rich text via `_recolor_to_html`.
+5. **Tests** — `app/tests/test_screens.py` (round-trip + default-off) and
+   `app/tests/test_sim_recolor.py`.
+6. **Docs** — this section, `docs/design.md` (Stage lb17), `docs/python-api.md`,
+   `AGENTS.md`.
+
+### Follow-up (same stage): raise the `text`-override string cap
+
+`SetPropertyCmd.string_value` was capped at 128 bytes, which limited any
+`text` override to 127 characters — a chatty host (voicebot's quips ran to ~270)
+got `INVALID_ARG` and the device logged `pb_decode failed` (nanopb refuses an
+over-long `FT_STATIC` string when decoding). Raised to **512** in
+`proto/touchy.options`; `just build-proto` regenerates, and the firmware needs a
+re-flash. Hosts that can't know the cap should truncate (voicebot does: 512, then
+a 127-byte retry with a re-flash hint). Not a wire-schema change, so no
+`ProtocolVersion` bump.
+
+### Deferred / out of scope
+
+* Escaping a literal `#` — LVGL's `##` escape is dead code in this version, so
+  hosts strip `#` instead (see `tools/voicebot`).
+* Recolour on other text widgets (button / checkbox) — labels only for now.

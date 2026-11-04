@@ -34,6 +34,11 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   fix: `lv_timer_handler_set_resume_cb()` registered at display bring-up, so
   *every* host-driven repaint is bounded by the 33 ms refresh period instead of
   the port's 500 ms idle sleep). Both **done**.
+* `docs/plans/led-brightness.md` — LED-matrix brightness: reuse the Stage-94
+  `backlight_level` pref to dim the whole surface (mechanism already landed via
+  the `LEDChain` brightness scalar, which scales images too), and make LED
+  boards default to **10 %** when the pref is unset. **Done — Stage lb18** (the
+  LED default landed; `platform_is_led_matrix()` + `Prefs` explicit-flag).
 
 Docs that are *not* plans but are easy to confuse with them:
 

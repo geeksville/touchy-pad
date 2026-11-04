@@ -772,6 +772,38 @@ Highlights worth remembering:
   path working without the global hook). A board overriding `post_init()` must
   call the base first. See `docs/plans/host-driven-repaint-latency.md`.
 
+- **Stage lb17 (inline label recolour).** `Label` gained `bool recolor = 5`
+  (`Widget.Version` 28→29): when set, `build_label` calls
+  `lv_label_set_recolor(lbl, true)`, so one string can carry several colours —
+  a `#RRGGBB text#` run renders in that colour and text outside a run uses the
+  label's `text_color`. Host DSL `label(..., recolor=True)`; the Qt sim mirrors
+  it (Qt rich text); `docs/python-api.md` + `docs/design.md` document it.
+  Additive (default `false` renders the markup literally). Gotcha: `#` is the
+  command delimiter and this LVGL's `##` escape is dead code, so a literal `#`
+  is swallowed — hosts strip it (see `tools/voicebot`, the first consumer, which
+  streams coloured scrolling quips over the lb14 `SetPropertiesCmd` path). The
+  same stage raised `SetPropertyCmd.string_value`'s nanopb cap from 128 to **512
+  bytes** (`proto/touchy.options`) — a `text` override was capped at 127 chars
+  and a chatty host hit `INVALID_ARG` + a device-side `pb_decode failed`.
+
+- **Stage lb18 (LED-matrix default brightness).** LED-matrix boards now default
+  to **10 %** brightness instead of 100 % when the host has never set
+  `PreferencesFile.backlight_level` (LCD boards keep 100 %). The dimming
+  *mechanism* already existed — `LEDChain`'s 0..255 brightness scalar applied in
+  `led_panel.cpp::set_pixel()`, i.e. *after* the gamma LUT in
+  `led_display.cpp::flush_cb()`, so it dims text, shapes **and images** — and
+  the three LED boards already forwarded `backlight_set()` →
+  `led_display_set_brightness()`. New: a weak `platform_is_led_matrix()` board
+  hook (`platform.cpp`, strong `true` overrides in `esp32_s3_devkitc_1` /
+  `esp32_s3_matrix` / `jc_esp32p4_m3`), and a `Prefs::m_backlight_explicit` flag
+  so `backlight_level()` returns the board default when the host never chose a
+  value; `save()` omits the field while it is not explicit (an auto default is
+  never frozen into flash) and `to_proto()` reports the effective value. **No
+  wire change** (reuses `backlight_level`) — no `PreferencesFile.Version` /
+  `ProtocolVersion` bump, no `app/` / `rust/` / sim change. Plan:
+  `docs/plans/led-brightness.md`.
+
+
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host
   code).** libusb ≥ 1.0.27 caches its device list **per libusb context**, and
   pyusb keeps **one context per process** (`usb.backend.libusb1.get_backend()`

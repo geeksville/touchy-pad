@@ -620,6 +620,12 @@ message Label {
     // a fixed width narrower than the text — set via `rect` or a sizing
     // parent (flex grow / grid stretch).
     LongMode long_mode = 4;
+    // When true, LVGL inline-recolour parsing is enabled for this label
+    // (stage LB17): a `#RRGGBB text#` run renders `text` in that colour
+    // while anything outside a run uses the label's `text_color` style —
+    // so one string can carry several colours. Default false keeps the
+    // old behaviour (the markup is rendered literally).
+    bool recolor = 5;
 }
 
 message Slider {
@@ -987,7 +993,9 @@ message Widget {
     // `Screen`, or any message they reference.
     enum Version {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
-        CURRENT         = 28;  // LB11: AnimTrack start/end_inverted
+        // LB11: AnimTrack start/end_inverted.
+        // LB17: Label.recolor (inline recolour markup).
+        CURRENT         = 29;
     }
     Version version = 6;
 

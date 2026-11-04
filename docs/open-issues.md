@@ -41,16 +41,54 @@ causes trouble, `sudo mount --bind /host/dev/bus/usb /dev/bus/usb` makes it live
 this-process vs fresh-process enumeration, node presence in both views, and an
 open+board-info probe).
 
-**Side observation (low severity, not reproduced).** During the investigation,
-one `touchy_open()` in a *just-closed* previous session's wake returned
-`board_info` of `0x0`/empty-serial instead of `480x272`/`ta4cb8fec1ce8` — the
-signature of reading a stale frame left in the device's bulk-IN FIFO by an
-abrupt close (which is what `TouchyClient.drain_pending()` exists to clear; the
-`touchy_open()` path doesn't call it). Three consecutive probes seconds later,
-and the CLI, all read it correctly, so it was not reproducible on demand.
-Worth remembering only because it self-heals by design in the new clients: a
-bad first response shows up as a retry reason (googly-vr: `reports no display
-(0x0)` → retry in 5 s) rather than a crash.
+## FIXED (2026-11-04) — a killed host desynchronises the next session (stale reply in the device FIFO)
+
+**Symptom:** the *first* RPC of a fresh session dies with
+`TouchyError: device returned NOT_FOUND (3)` — typically `touchy_open()`'s
+`sys_board_info_get()`. In practice `voicebot listen --display pad` logged
+`no touchy-pad to show this on (device returned NOT_FOUND (3))` at startup and
+`found a touchy-pad but can't drive it (…)` on the next message, even though the
+pad was attached and working.
+
+**Root cause (measured on `esp32_s3_matrix`, protocol 14):** the vendor bulk pair
+answers **strictly one frame per request** — the firmware queues its reply
+whether or not the host ever reads it. A host that dies mid-RPC (Ctrl-C during
+the event poll, a killed `voicebot`, …) therefore leaves that reply in the
+device's bulk-IN FIFO, and **every later reply is one command behind**. Six
+consecutive `sysBoardInfoGet` replies showed it exactly:
+
+```
+0 code: 3 payload: None bytes: 2        # ← the leftover frame
+1 code: 0 payload: sys_board_info …     # ← actually the reply to command 0
+2 code: 0 payload: sys_board_info …     # ← actually the reply to command 1
+…
+```
+
+`TouchyClient.open()` *did* call `drain_pending()`, but that makes it worse: the
+drain's own `EventConsume` reply becomes the new head, so the **next** command is
+guaranteed to read a stale `NOT_FOUND`. Each *failed* `touchy_open()` also
+orphans its own board-info reply, so the state persisted across sessions. (This
+is the "side observation" the 2026-09-29 investigation recorded as low severity
+and unreproducible — it is reproducible, and it self-perpetuates.)
+
+**Fix (`app/src/touchy_pad/api/client.py`):**
+
+* **`TouchyClient._flush_stale_frames()`** — called at open: read with a short
+  (40 ms) timeout until the FIFO is empty, discarding whatever was left. The
+  frame decoder keeps *partial* bytes across calls, so a genuine reply arriving
+  mid-flush is never corrupted, and an already-clean FIFO costs one 40 ms read.
+* **`TouchyClient.close()`** now takes `_rpc_lock` before closing the transport,
+  so an in-flight exchange finishes (and consumes its reply) instead of
+  orphaning it — that stops *new* stale frames being created on a clean close.
+
+**Verified:** on the `esp32_s3_matrix` pad, `touchy_open()` + a full
+`screen_save`/`screen_load` cycle now succeeds repeatedly (previously ~50 %, and
+worse as the backlog grew). The fix is transport-agnostic and protects every host
+client (the `touchy` CLI, `TouchyDeck`, googly-vr, voicebot). A host can still
+create a stale frame by being hard-killed mid-RPC; `_flush_stale_frames()`
+absorbs it on the next open.
+
+**Tests:** `app/tests/test_client.py::test_flush_stale_frames_*`.
 
 ## Stage 59 — Animated object leaves draw artifacts on LVGL slider's inactive track
 

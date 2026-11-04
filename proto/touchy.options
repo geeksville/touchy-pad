@@ -51,9 +51,12 @@ touchy.LogRecord.tag                   max_size:16
 # Stage lb12 — SetPropertyCmd. Bound the strings so nanopb stack-allocates
 # them (FT_STATIC). widget_id matches LvEvent.user_data; property_name is a
 # short LVGL property name; string_value holds e.g. a label's new text.
+# string_value was 128, which capped a scrolling `text` override at 127 bytes —
+# too short for a chatty host (voicebot's quips ran to ~270). 512 covers a
+# 120-token reply; raise further if a host ever needs more.
 touchy.SetPropertyCmd.widget_id        max_size:32
 touchy.SetPropertyCmd.property_name    max_size:32
-touchy.SetPropertyCmd.string_value     max_size:128
+touchy.SetPropertyCmd.string_value     max_size:512
 
 # googly-vr / stage lb14 — SetPropertiesCmd batches several overrides into
 # one RPC. Heap-allocate the repeated array (FT_POINTER, like

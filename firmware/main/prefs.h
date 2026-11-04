@@ -12,7 +12,14 @@
 #include <cstdint>
 #include <string>
 
+#include "platform.h"
 #include "touchy.pb.h"
+
+// Stage lb18 — backlight level (percent) an LED-matrix board uses when the
+// host has never set `backlight_level`. WS2812B matrices are uncomfortably
+// (and potentially unsafe) bright at 100 %, so they default well below full;
+// LCD boards keep the historical 100 %.
+inline constexpr uint8_t LED_DEFAULT_BRIGHTNESS = 10;
 
 class Prefs {
 public:
@@ -37,8 +44,15 @@ public:
     uint32_t boot_delay_s() const { return m_boot_delay_s; }
 
     // Stage 94 — display backlight brightness as a percentage (0 = off …
-    // 100 = max). Default 100. Applied on boot by backlight_init().
-    uint8_t backlight_level() const { return m_backlight_level; }
+    // 100 = max). When the host has never set the pref this returns the
+    // board-appropriate default (Stage lb18): LED matrices are very bright
+    // at full duty, so they default to LED_DEFAULT_BRIGHTNESS; LCD boards
+    // default to 100 %. Applied on boot by backlight_init().
+    uint8_t backlight_level() const
+    {
+        if (m_backlight_explicit) return m_backlight_level;
+        return platform_is_led_matrix() ? LED_DEFAULT_BRIGHTNESS : 100;
+    }
 
     // Update the backlight brightness and persist it immediately to flash.
     void set_backlight_level(uint8_t level);
@@ -103,8 +117,12 @@ private:
     uint32_t    m_min_log_level  = touchy_LogPriority_ERROR;
     uint32_t    m_boot_delay_s   = 0;
 
-    // Stage 94 — backlight brightness percent (0..100). Default full.
-    uint8_t     m_backlight_level = 100;
+    // Stage 94 — backlight brightness percent (0..100). Only meaningful when
+    // m_backlight_explicit is true; otherwise backlight_level() returns the
+    // board default (Stage lb18). The explicit flag is kept separate so an
+    // auto default is never persisted into flash as if the host chose it.
+    uint8_t     m_backlight_level    = 100;
+    bool        m_backlight_explicit = false;
 
     // Stage lb6 — board hardware description (LED panel geometry). Empty
     // (no displays) until the host programs it via SetPreferencesCmd.
