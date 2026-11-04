@@ -5923,12 +5923,10 @@ was capped at 128 bytes in `proto/touchy.options`, so a scrolling `text` overrid
 maxed out at **127 characters**. A chatty host hit that immediately: voicebot's
 quips ran to ~270 chars and the device answered `INVALID_ARG` + a device-side
 `pb_decode failed` (nanopb rejects an over-long `FT_STATIC` string at decode
-time). The cap is now **512** (a 120-token reply fits comfortably). Nothing
-reports the cap to the host, so voicebot truncates to 512 and, if the pad still
-rejects the quip, retries once at 127 and logs a "re-flash the firmware" hint —
-that keeps it working against an un-reflashed device instead of silently
-dropping the message. No wire-schema change (so no version bump): old firmware
-simply rejects strings longer than it can hold.
+time). The cap is now **512** (a 120-token reply fits comfortably; `max_size`
+counts the NUL, so 511 characters of text). Nothing reports the cap to the host,
+so voicebot truncates a longer reply to fit. No wire-schema change (so no version
+bump): old firmware simply rejects strings longer than it can hold.
 
 ## Stage lb18: LED-matrix default brightness — DONE
 

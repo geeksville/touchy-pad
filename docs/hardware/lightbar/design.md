@@ -2159,9 +2159,10 @@ additive.
 `text` override to 127 characters — a chatty host (voicebot's quips ran to ~270)
 got `INVALID_ARG` and the device logged `pb_decode failed` (nanopb refuses an
 over-long `FT_STATIC` string when decoding). Raised to **512** in
-`proto/touchy.options`; `just build-proto` regenerates, and the firmware needs a
-re-flash. Hosts that can't know the cap should truncate (voicebot does: 512, then
-a 127-byte retry with a re-flash hint). Not a wire-schema change, so no
+`proto/touchy.options` — which counts the NUL terminator, so 511 characters of
+text: measured on hardware, 511 passes and 512 fails. `just build-proto`
+regenerates and the firmware was re-flashed. Hosts that can't know the cap should
+truncate (voicebot does, to 511). Not a wire-schema change, so no
 `ProtocolVersion` bump.
 
 ### Deferred / out of scope

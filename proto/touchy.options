@@ -53,7 +53,8 @@ touchy.LogRecord.tag                   max_size:16
 # short LVGL property name; string_value holds e.g. a label's new text.
 # string_value was 128, which capped a scrolling `text` override at 127 bytes —
 # too short for a chatty host (voicebot's quips ran to ~270). 512 covers a
-# 120-token reply; raise further if a host ever needs more.
+# 120-token reply. Note `max_size` counts the NUL terminator, so hosts may send
+# at most 511 bytes of text (voicebot truncates to that).
 touchy.SetPropertyCmd.widget_id        max_size:32
 touchy.SetPropertyCmd.property_name    max_size:32
 touchy.SetPropertyCmd.string_value     max_size:512
