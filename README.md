@@ -153,7 +153,7 @@ However, in some of my other open-source projects, I've seen the current hell PR
 
 ## Credits/Thanks
 
-* [@Kn3h] jc4827w543: fix intermittent GT911 I2C init crash due to floating INT pin
+* [@Kn3h](https://github.com/Kn3h) jc4827w543: fix intermittent GT911 I2C init crash due to floating INT pin
 * [@chmouel](https://github.com/chmouel) added support for the resistive touchscreen variant of the jc4827w543 board.
 * [@ckirmse](https://github.com/ckirmse) added support for:
   * MakerFabs MaTouch 4.3" (`matouch_43`)
