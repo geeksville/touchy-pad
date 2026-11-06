@@ -55,6 +55,20 @@ the USB enumeration fix ("a running app never sees a re-plugged pad").
   touch-less vs touch-capable) and verified against a real in-process sim with
   `is_touchable=False` (setup screen: `swatch_red/green/blue` + `welcome`, zero
   `widget_ref`s) and `True` (chrome: `page` ref present).
+* **Second report on the same board: "I only see the bouncing red square, no
+  'Welcome to touchypad' marquee" after `touchy init`.** Again *not* lb19 — the
+  screen JSON was byte-identical. Real cause: **lb18's 10 % LED default** (first
+  time flashed) applied on top of a *pre-dimmed* stock screen. The LED flush path
+  is `gamma[i] = (i/255)^2.2 * 255` (`led_display.cpp`) **then** `× brightness/255`
+  (`led_panel.cpp::set_pixel`), so the authored `0x400000`/`0x003000`/`0x000030`
+  shapes and `0x303030` text became `12/6/6 → ×26/255 = 1/255` — a nearly blank
+  panel (only the biggest red square registered). Fixed by authoring the touch-less
+  setup screen at **full saturation** (`0xFF0000`/`0x00FF00`/`0x0000FF` + white
+  marquee → 26/255 at the default, full duty at 100 %), regenerating
+  `proto/default_screen_touchless.json` + the embedded `default_screen_pb.h`, and
+  noting the rule in `docs/design.md` (lb18 follow-up): **author LED colours at
+  full scale and let `backlight_level` do the dimming**. No wire change; the user
+  just re-runs `touchy init` (the host uploads the screen — no re-flash needed).
 
 ### This session (2026-11-04, later): googly-vr + voicebot submodules removed
 

@@ -96,6 +96,29 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   touch-capable) — suite now **285 passed, 2 skipped**; plus a real-sim check
   (`is_touchable` False → setup screen, no refs; True → chrome with a `page`
   ref).
+
+### Fix — the stock LED setup screen was invisible at the lb18 10 % default (2026-11-06)
+
+* **Symptom** (same board, after `touchy init`): only a faint bouncing red square —
+  no green/blue shapes, no "Welcome to touchypad" marquee. Again **not** an lb19
+  regression: `proto/default_screen_touchless.json` was unchanged by that commit.
+* **Cause:** the screen had been authored with *pre-dimmed* colours
+  (`0x400000`/`0x003000`/`0x000030`, `0x303030` text) when LED matrices ran at
+  100 %. The LED path is gamma-2.2 (`led_display.cpp`) **then** brightness
+  (`led_panel.cpp::set_pixel`), so at lb18's 10 % default (`26/255`):
+  `0x40 → gamma 12 → ×26/255 = 1`, `0x30 → 6 → 1` — visually black. At the old
+  100 % default the same values were 12/6/6 (dim but visible), which is why it
+  "used to work".
+* **Fix (host authoring, no wire change):** `build_setup_screen_touchless()` now
+  uses full-saturation colours — `0xFF0000` / `0x00FF00` / `0x0000FF` shapes and a
+  `0xFFFFFF` marquee → 26/255 at the 10 % default, full duty at 100 %.
+  Regenerated `proto/default_screen_touchless.json` (tracked) and
+  `firmware/main/default_screen_pb.h` (gitignored, rebuilt by
+  `just firmware-build`). Documented the rule in `docs/design.md` (lb18
+  follow-up): **author LED colours at full scale; `backlight_level` is the only
+  dimmer.**
+* **Action needed on a device:** re-run `touchy init` (the host uploads the new
+  screen; no re-flash required, though the embedded fallback was rebuilt too).
 * Drive-by: fixed the long-dead `touchy screens push` / `touchy screen init`
   references in `docs/design.md`, `docs/companion-app.md`, `docs/why-not-xml.md`
   and the `screens.py` docstrings (real surface: `touchy init` +

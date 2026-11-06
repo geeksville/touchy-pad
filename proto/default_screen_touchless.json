@@ -12,7 +12,7 @@
             },
             "styles": [
               {
-                "bgColor": 4194304,
+                "bgColor": 16711680,
                 "radius": 0
               }
             ],
@@ -67,7 +67,7 @@
             },
             "styles": [
               {
-                "bgColor": 12288,
+                "bgColor": 65280,
                 "radius": 32767
               }
             ],
@@ -124,7 +124,7 @@
             },
             "styles": [
               {
-                "bgColor": 48,
+                "bgColor": 255,
                 "radius": 0
               }
             ],
@@ -180,7 +180,7 @@
             },
             "styles": [
               {
-                "textColor": 3158064
+                "textColor": 16777215
               },
               {
                 "fontSize": 8

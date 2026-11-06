@@ -5970,6 +5970,19 @@ reached it. Additive; no LVGL opacity pass — one integer multiply per channel.
 `PreferencesFile.Version` / `ProtocolVersion` bump, and no `app/` / `rust/` /
 simulator change. Plan: `docs/plans/led-brightness.md`.
 
+**Follow-up (2026-11-06): author LED screens at full saturation.** The stock
+touch-less setup screen (`build_setup_screen_touchless()`) had been authored with
+*pre-dimmed* colours (`0x400000` / `0x003000` / `0x000030` shapes, `0x303030`
+welcome text) back when LED matrices ran at 100 %. The LED flush path applies the
+gamma-2.2 LUT (`led_display.cpp`) **before** the brightness scalar
+(`led_panel.cpp::set_pixel`), so at the new 10 % default those colours became
+`0x40 → gamma 12 → ×26/255 = 1/255` — i.e. an almost blank panel (the user saw
+only a faint red square and no "Welcome to touchypad" marquee). The screen now
+uses **full-scale** colours (pure R/G/B + a white marquee → 26/255 at the
+default, full duty at 100 %), so the brightness pref is the only dimmer. Rule of
+thumb for LED content: author colours at full scale and let `backlight_level` do
+the dimming; a colour that is already dark is invisible after gamma + 10 %.
+
 
 ## Stage lb19: custom label scroll speed — DONE
 

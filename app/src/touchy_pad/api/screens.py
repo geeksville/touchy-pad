@@ -1729,6 +1729,13 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     panel without the host knowing the geometry. The ``width`` / ``height``
     arguments are therefore ignored (kept for backwards compatibility);
     the same compiled-in screen works on a 32×8 strip or a 64×64 matrix.
+
+    Stage lb18 follow-up — the colours are **full saturation** (pure
+    red/green/blue plus a white marquee) because an unconfigured LED board now
+    runs at 10 % brightness and the LED flush path applies its gamma-2.2 LUT
+    *before* the brightness scalar: the old pre-dimmed colours (``0x400000`` /
+    ``0x003000`` / ``0x000030``, ``0x303030`` text) ended up at 1/255 — visually
+    black. Brightness is the knob; authored colours are authored at full scale.
     """
     del width, height  # Stage LB11 — geometry resolved on-device via inversion.
 
@@ -1778,9 +1785,18 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
         )
 
     # radius=0 → square corners; radius=32767 → fully rounded (circle).
+    #
+    # Stage lb18 follow-up — use *saturated* colours. These used to be
+    # pre-dimmed (0x400000 / 0x003000 / 0x000030) because LED matrices ran at
+    # 100 % brightness by default. Since lb18 an unconfigured LED board runs at
+    # LED_DEFAULT_BRIGHTNESS = 10 %, and the LED flush path applies a gamma-2.2
+    # LUT (led_display.cpp) *then* the brightness scalar (led_panel.cpp), so
+    # 0x40 → gamma 12 → ×26/255 = 1/255 — i.e. off. Full-scale colours land at
+    # 26/255 at the default and are comfortably visible; the brightness pref
+    # stays the single dimmer.
     screen += _bouncer(
         "swatch_red",
-        0x400000,
+        0xFF0000,
         radius=0,
         dur_x=900,
         dur_y=1300,
@@ -1790,7 +1806,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     )
     screen += _bouncer(
         "swatch_green",
-        0x003000,
+        0x00FF00,
         radius=32767,
         dur_x=1200,
         dur_y=800,
@@ -1800,7 +1816,7 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     )
     screen += _bouncer(
         "swatch_blue",
-        0x000030,
+        0x0000FF,
         radius=0,
         dur_x=750,
         dur_y=1100,
@@ -1816,13 +1832,17 @@ def build_setup_screen_touchless(width: int = 32, height: int = 8) -> Screen:
     # inverted WIDTH animation (start=end=0, both inverted → display_width
     # at both ends, so it snaps to full width and holds). font_size=8 keeps
     # it to a single 8px row (Montserrat 8 enabled in sdkconfig.defaults).
+    #
+    # White, not the old 0x303030: at the lb18 LED default (10 %) the
+    # gamma-then-brightness path turns 0x30 into 1/255 — i.e. invisible.
+    # 0xFFFFFF becomes 26/255 at the default and full brightness at 100 %.
     welcome = label(
         "welcome",
         text="Welcome to touchypad.",
         font_size=8,
         long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
         rect=rect(x=0, y=0, w=0, h=8),
-        style=style(text_color=0x303030),
+        style=style(text_color=0xFFFFFF),
         animations=[
             animation(
                 anim_track(StyleProp.WIDTH, 0, 0, start_inverted=True, end_inverted=True),
