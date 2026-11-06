@@ -119,6 +119,41 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   dimmer.**
 * **Action needed on a device:** re-run `touchy init` (the host uploads the new
   screen; no re-flash required, though the embedded fallback was rebuilt too).
+
+### CI fix — the ESP-IDF cache was poisoned (venv missing `rich`) (2026-11-06)
+
+* **Symptom:** every `build-firmware` cell (all 11 boards, in `app-ci` *and*
+  `release`) failed at `just firmware-reconfigure` with
+  `error: Unable to import the rich module: No module named 'rich'. Please
+  execute the install script.` → `ERROR: Activation script failed` →
+  `bash: idf.py: command not found` (exit 127).
+* **Cause:** the shared toolchain cache (`~/.espressif` + `~/esp/esp-idf`,
+  `save-always: true`) held an ESP-IDF Python venv missing `rich` (ESP-IDF 6's
+  `idf.py` imports it) — the residue of one `install.sh` that failed partway.
+  Two design mistakes kept it alive: the "validity check" was
+  `[ -f export.sh ]`, which proves nothing because `export.sh` ships with the
+  git clone, and the build cells restored the cache with **no** install/repair
+  step on a cache hit, so nothing ever fixed the venv. Not related to lb18/lb19.
+* **Fix (`.github/workflows/build-firmware.yml`):**
+  * cache key gained a schema suffix `…-esp32-esp32s3-esp32p4-v2` → the poisoned
+    entry is dropped (both jobs use the same key);
+  * new **"Verify the ESP-IDF Python env (repair a stale cache)"** step in *both*
+    `install-esp-idf` and every `build-firmware` cell: `(source export.sh &&
+    idf.py --version)`; on failure it re-runs the idempotent
+    `./install.sh esp32,esp32s3,esp32p4` and re-verifies (cells self-heal, since
+    they run in parallel with — possibly before — the repaired cache is saved);
+  * the fresh-install step now also proves `idf.py --version` instead of
+    checking for `export.sh`'s existence.
+* **Justfile:** `firmware-build` / `firmware-reconfigure` now fail fast with an
+  actionable message (`_idf_fail`) instead of the confusing
+  `idf.py: command not found` 127; `docs/development.md` gained a short
+  "If `just firmware-build` says `idf.py: command not found`" section with the
+  `./install.sh` repair command.
+* **Validated:** workflow YAML parses; the verify snippet was extracted from the
+  YAML and executed against a fake `$HOME` — broken env → warning + `install.sh`
+  + verification (rc 0), healthy env → "ESP-IDF python env OK", missing tree →
+  clear error (rc 1); `just firmware-build` still green locally with the new
+  wrapper.
 * Drive-by: fixed the long-dead `touchy screens push` / `touchy screen init`
   references in `docs/design.md`, `docs/companion-app.md`, `docs/why-not-xml.md`
   and the `screens.py` docstrings (real surface: `touchy init` +

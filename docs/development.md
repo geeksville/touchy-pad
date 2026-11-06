@@ -37,6 +37,29 @@ just build-proto
 For the C/firmware build you also need a working ESP-IDF installation; see
 [firmware/README.md](../firmware/README.md) for details.
 
+### If `just firmware-build` says `idf.py: command not found`
+
+That almost always means the ESP-IDF **Python venv** is incomplete, not that
+`idf.py` is missing: `export.sh` reports the real error first, e.g.
+
+```
+error: Unable to import the rich module: No module named 'rich'. Please execute the install script.
+ERROR: Activation script failed
+```
+
+(left over from an interrupted `install.sh`, or a stale CI cache). Repair it with
+the idempotent install script for the architectures this repo builds
+(`esp32` for the CYD boards, `esp32s3` for most, `esp32p4` for
+`elecrow_p4_lcd_7`):
+
+```sh
+( cd ~/esp/esp-idf && ./install.sh esp32,esp32s3,esp32p4 )
+```
+
+CI does this automatically: `.github/workflows/build-firmware.yml` validates the
+cached toolchain with `idf.py --version` and re-runs `install.sh` when that
+fails, instead of trusting `export.sh`'s presence.
+
 ## Day-to-day recipes
 
 ```sh

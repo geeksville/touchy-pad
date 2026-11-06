@@ -37,16 +37,20 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3-esp32p4
+          # The `-v2` suffix is a cache *schema* version: bump it whenever the
+          # cached layout changes or when a poisoned cache has to be dropped
+          # (e.g. a venv that is missing a package idf.py needs — see the
+          # verify/repair step below). v2 = the repair step that validates
+          # `idf.py --version` instead of trusting `export.sh`'s existence.
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3-esp32p4-v2
           # This item is very expensive to fetch, so try to always keep it cached.
-          # One caveat worth knowing: save-always: true means if the ESP-IDF
-          # install step itself fails partway through (corrupted clone, network
-          # blip), the broken partial installation gets cached. The existing
-          # validity check ([ -f export.sh ] || exit 1) guards against this — a
-          # broken install fails fast before the post-job save runs, so the bad
-          # state never makes it into cache. If you ever get a mysteriously
-          # broken cache, actions/cache has a UI to manually delete cache
-          # entries by key.
+          # Caveat: save-always: true means a partially-failed install can be
+          # cached. `export.sh` exists as soon as the clone does, so checking for
+          # it proves nothing — the "Verify the ESP-IDF Python env" step below is
+          # what actually validates the cache (and repairs it by re-running the
+          # idempotent install script). If you ever get a mysteriously broken
+          # cache, bump the key suffix above; actions/cache also has a UI to
+          # delete entries by key.
           save-always: true
 
       - name: Install libusb
@@ -67,8 +71,36 @@ jobs:
           # esp32_2432s028rv3 / esp32_2432s024 (CYD) are classic esp32, and
           # elecrow_p4_lcd_7 uses esp32p4.
           ./install.sh esp32,esp32s3,esp32p4
-          [ -f "$HOME/esp/esp-idf/export.sh" ] || \
-            { echo "error: ESP-IDF installation incomplete - export.sh not found" >&2; exit 1; }
+          # `export.sh` ships with the clone, so its presence proves nothing;
+          # prove the python env actually works. (The verify step below
+          # re-checks this on every run and repairs a stale cache.)
+          ( source ./export.sh && idf.py --version )
+
+      # The cache stores both the toolchains AND the ESP-IDF Python venv
+      # (~/.espressif/python_env/idf*_py*_env). A venv saved by a run whose
+      # `install.sh` failed partway is missing packages that `idf.py` imports —
+      # notably `rich` in ESP-IDF 6 — and every `export.sh` call then dies with
+      # "Unable to import the rich module", which surfaces in the build jobs as
+      # `idf.py: command not found`. `export.sh` existing does not prove the env
+      # is usable (it ships with the git clone), so validate the thing we
+      # actually need and repair by re-running the idempotent install script.
+      # Runs on cache hits *and* misses so the repaired env is what gets saved.
+      - name: Verify the ESP-IDF Python env (repair a stale cache)
+        run: |
+          set -o pipefail
+          idf_dir="$HOME/esp/esp-idf"
+          if [ ! -d "$idf_dir" ]; then
+            echo "error: $idf_dir is missing — the toolchain cache did not restore" >&2
+            exit 1
+          fi
+          cd "$idf_dir"
+          if ( source ./export.sh >/dev/null 2>&1 && idf.py --version >/dev/null 2>&1 ); then
+            echo "ESP-IDF python env OK"
+          else
+            echo "::warning::ESP-IDF python env incomplete (missing python packages) - re-running ./install.sh"
+            ./install.sh esp32,esp32s3,esp32p4
+            ( source ./export.sh && idf.py --version )
+          fi
 
   # ---------------------------------------------------------------------------
   # build-firmware: matrix over all supported boards.  Runs in parallel once
@@ -110,7 +142,29 @@ jobs:
           path: |
             ~/.espressif
             ~/esp/esp-idf
-          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3-esp32p4
+          key: ${{ runner.os }}-esp-idf-${{ env.IDF_VERSION }}-esp32-esp32s3-esp32p4-v2
+
+      # Must match the verification step in `install-esp-idf` (keep the two in
+      # sync): a cached ESP-IDF venv can be missing python packages (e.g.
+      # `rich`, which ESP-IDF 6's idf.py imports), and cells run in parallel
+      # with — possibly before — the repaired cache is re-saved, so each one
+      # self-checks and repairs instead of assuming the cache is healthy.
+      - name: Verify the ESP-IDF Python env (repair a stale cache)
+        run: |
+          set -o pipefail
+          idf_dir="$HOME/esp/esp-idf"
+          if [ ! -d "$idf_dir" ]; then
+            echo "error: $idf_dir is missing — the toolchain cache did not restore" >&2
+            exit 1
+          fi
+          cd "$idf_dir"
+          if ( source ./export.sh >/dev/null 2>&1 && idf.py --version >/dev/null 2>&1 ); then
+            echo "ESP-IDF python env OK"
+          else
+            echo "::warning::ESP-IDF python env incomplete (missing python packages) - re-running ./install.sh"
+            ./install.sh esp32,esp32s3,esp32p4
+            ( source ./export.sh && idf.py --version )
+          fi
 
       - name: Install libusb
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0

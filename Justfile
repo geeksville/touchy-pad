@@ -419,11 +419,23 @@ firmware-build: build-proto-c build-default-screen
     # used in CI and manual installs (no error if neither — idf.py may already
     # be on PATH from an outer shell).
     exec bash -c '
+        # Shared failure hint: an ESP-IDF venv missing python packages (e.g.
+        # `rich` in IDF 6) makes export.sh fail, and the next line would just be
+        # a confusing "idf.py: command not found".
+        _idf_fail() {
+            echo "error: ESP-IDF activation failed — idf.py is not available." >&2
+            echo "  If export.sh mentioned a missing python module (e.g. rich)," >&2
+            echo "  repair the venv and retry:" >&2
+            echo "    ( cd ~/esp/esp-idf && ./install.sh esp32,esp32s3,esp32p4 )" >&2
+            echo "  (in the devcontainer: re-run the container setup)." >&2
+            exit 1
+        }
         if [ -f "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" ]; then
-            source "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" 2>/dev/null
+            source "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" 2>/dev/null || _idf_fail
         elif [ -f "$HOME/esp/esp-idf/export.sh" ]; then
-            source "$HOME/esp/esp-idf/export.sh"
+            source "$HOME/esp/esp-idf/export.sh" || _idf_fail
         fi
+        command -v idf.py >/dev/null 2>&1 || _idf_fail
         idf.py -C firmware build
     '
 
@@ -461,16 +473,28 @@ firmware-reconfigure board="":
     fi
     export _IDF_TARGET
     exec bash -c '
+        # Shared failure hint: an ESP-IDF venv missing python packages (e.g.
+        # `rich` in IDF 6) makes export.sh fail, and the next line would just be
+        # a confusing "idf.py: command not found".
+        _idf_fail() {
+            echo "error: ESP-IDF activation failed — idf.py is not available." >&2
+            echo "  If export.sh mentioned a missing python module (e.g. rich)," >&2
+            echo "  repair the venv and retry:" >&2
+            echo "    ( cd ~/esp/esp-idf && ./install.sh esp32,esp32s3,esp32p4 )" >&2
+            echo "  (in the devcontainer: re-run the container setup)." >&2
+            exit 1
+        }
         if [ -f "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" ]; then
-            source "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" 2>/dev/null
+            source "$HOME/.espressif/tools/activate_idf_{{idf_version}}.sh" 2>/dev/null || _idf_fail
         elif [ -f "$HOME/esp/esp-idf/export.sh" ]; then
-            source "$HOME/esp/esp-idf/export.sh"
+            source "$HOME/esp/esp-idf/export.sh" || _idf_fail
         else
             echo "error: cannot find ESP-IDF activation script" >&2
             echo "  tried: ~/.espressif/tools/activate_idf_{{idf_version}}.sh" >&2
             echo "  tried: ~/esp/esp-idf/export.sh" >&2
             exit 1
         fi
+        command -v idf.py >/dev/null 2>&1 || _idf_fail
         idf.py -C firmware -DBOARD="${_BOARD}" set-target "${_IDF_TARGET}"
         idf.py -C firmware -DBOARD="${_BOARD}" reconfigure
     '
