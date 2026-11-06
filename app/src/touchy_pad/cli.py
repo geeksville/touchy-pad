@@ -1060,7 +1060,7 @@ def _do_write_trackpad(pad, background_image: str) -> None:
     logger.info("sent F:host/uscr/trackpad.pb (background=%s)", background_image)
 
 
-def _do_screen_init(pad) -> None:
+def _do_screen_init(pad) -> bool:
     """Write the default chrome screen + baseline trackpad page.
 
     Uploads ``F:host/s/default.pb`` (the persistent prev/next chrome with
@@ -1071,6 +1071,11 @@ def _do_screen_init(pad) -> None:
     Touch-less boards (display-less LED matrices, ``board_info.is_touchable``
     false) can't use a trackpad, so they instead get the self-contained
     animated setup screen from :func:`build_setup_screen_touchless`.
+
+    Returns ``True`` when the touch-less setup screen was written (i.e. the
+    screen has **no** ``widget_ref(id="page")``, so page-switching actions
+    such as :meth:`Touchy.show_user_screen` cannot target it), ``False`` for
+    the normal chrome path.
     """
     from .paths import DEFAULT_SCREEN_PATH
 
@@ -1086,6 +1091,7 @@ def _do_screen_init(pad) -> None:
         logger.info("sent %s (touch-less)", DEFAULT_SCREEN_PATH)
         pad.screen_load(DEFAULT_SCREEN_PATH)
         logger.info("loaded %s", DEFAULT_SCREEN_PATH)
+        return True
     else:
         from .api.images import make_touchy_png
         from .api.screens import build_default_screen
@@ -1101,6 +1107,7 @@ def _do_screen_init(pad) -> None:
 
         pad.screen_load(DEFAULT_SCREEN_PATH)
         logger.info("loaded %s", DEFAULT_SCREEN_PATH)
+        return False
 
 
 @screen.command("demo")
@@ -1121,6 +1128,11 @@ def screens_demo(ctx: click.Context, as_json: bool) -> None:
     The default chrome's persistent ``[< Prev | Next >]`` row pages its
     body ``widget_ref`` through ``F:host/uscr/``; flip to the ``test``
     page on-device with ``Next >``.
+
+    Touch-less boards (LED matrices) get the self-contained animated setup
+    screen instead, which has no page ``widget_ref`` and no navigation
+    chrome: the demo page is still uploaded but left unshown, so nothing
+    tries to page a screen that can't be paged.
 
     Pass the top-level ``--listen`` flag to stream host events after
     uploading: ``touchy --listen screen demo``.
@@ -1158,7 +1170,7 @@ def screens_demo(ctx: click.Context, as_json: bool) -> None:
                 str(info.protocol_version),
             )
         # Baseline: default chrome + trackpad page (and load default).
-        _do_screen_init(pad)
+        touchless = _do_screen_init(pad)
 
         # Demo extras: the smiley asset and the showcase `test` page.
         pad.file_save("F:host/images/smiley.png", smiley)
@@ -1167,8 +1179,18 @@ def screens_demo(ctx: click.Context, as_json: bool) -> None:
         logger.info("sent F:host/uscr/test.pb")
         pad.screen_load(DEFAULT_SCREEN_PATH)
         logger.info("loaded %s", DEFAULT_SCREEN_PATH)
-        pad.show_user_screen("test")
-        logger.info("showing F:host/uscr/test.pb")
+        if touchless:
+            # `_do_screen_init` installed the self-contained touch-less setup
+            # screen, which has no `widget_ref(id="page")` (and no navigation
+            # chrome at all). Paging it would fail on the device
+            # ("change_widget_ref failed"), so just leave the setup screen up.
+            logger.info(
+                "touch-less board: F:host/uscr/test.pb uploaded but not shown "
+                "(the setup screen has no page widget_ref)"
+            )
+        else:
+            pad.show_user_screen("test")
+            logger.info("showing F:host/uscr/test.pb")
 
 
 @cli.command("reboot-bootloader")

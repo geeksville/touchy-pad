@@ -32,7 +32,7 @@ touchy screen <subcommand> [args…]
 |-----------|-------------|
 | `touchy screen wake` | Force the backlight on (cancels any pending auto-sleep). |
 | `touchy screen load PATH` | Switch the currently displayed screen to PATH (drive-prefixed, e.g. `F:host/s/home.pb`). |
-| `touchy screen demo [--listen] [--json]` | Upload and optionally run the built-in demo screen. |
+| `touchy screen demo [--listen] [--json]` | Upload and optionally run the built-in demo screen. On a touch-less board (LED matrix) the animated setup screen has no page `widget_ref`, so the demo page is uploaded but not shown. |
 
 Uploading your own screens is a Python-API job — `pad.screen_save(screen)` (host
 DSL `Screen`, raw `protobuf.Screen`, JSON dict or `.json` path) followed by

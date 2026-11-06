@@ -534,6 +534,12 @@ class Touchy:
         Mirrors the Rust ``Touchy::show_user_screen``: it issues a
         single :class:`ActionChangeWidgetRef` (``BY_PATH``) targeting the
         chrome's ``"page"`` ref via :meth:`TouchyClient.run_actions`.
+
+        The action runs *asynchronously* on the device, so a screen with no
+        ``widget_ref(id="page")`` (e.g. the touch-less setup screen written by
+        ``touchy init`` on an LED-matrix board) does not raise here — the
+        device logs ``change_widget_ref failed`` instead. Check that the
+        chrome is the loaded screen before calling.
         """
         from ..paths import user_screen_path
         from .screens import change_widget_ref_action

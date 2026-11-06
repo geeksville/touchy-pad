@@ -40,6 +40,21 @@ the USB enumeration fix ("a running app never sees a re-plugged pad").
 * Drive-by: fixed the dead `touchy screens push` / `touchy screen init`
   references (design.md, companion-app.md, why-not-xml.md, `screens.py`
   docstrings) and `AGENTS.md`'s stale `Widget.Version.CURRENT == 28` line.
+* **Separate bug found while testing on the `esp32_s3_matrix` LED board**
+  (pre-existing, *not* caused by lb19 — the two pieces came from `1b91bdf` and
+  `8d5459e`): `touchy screen demo` unconditionally ended with
+  `pad.show_user_screen("test")`, which fires `ActionChangeWidgetRef` at the
+  chrome's `widget_ref(id="page")` — but on a touch-less board
+  `_do_screen_init` installs the *animated setup screen*, which has no refs at
+  all, so the firmware logged
+  `change_widget_ref failed (target_id='page' path='F:host/uscr/test.pb')`
+  (tunnelled to the host as `ERROR:touchy_pad.device:…`). Fix: `_do_screen_init`
+  now returns whether it wrote the touch-less setup screen, and `screen demo`
+  uploads the demo page without trying to page it there (plus an INFO line and a
+  `show_user_screen` docstring caveat). Covered by two new CLI tests (fake pad,
+  touch-less vs touch-capable) and verified against a real in-process sim with
+  `is_touchable=False` (setup screen: `swatch_red/green/blue` + `welcome`, zero
+  `widget_ref`s) and `True` (chrome: `page` ref present).
 
 ### This session (2026-11-04, later): googly-vr + voicebot submodules removed
 

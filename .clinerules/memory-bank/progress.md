@@ -75,6 +75,27 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   `just firmware-build` green for `jc4827w543`, `just rust-test` green; an
   in-process sim smoke test round-tripped a screen carrying each field and
   confirmed unset fields stay absent from the wire.
+
+### Fix — `touchy screen demo` no longer pages a touch-less board (2026-11-06)
+
+* **Symptom** (reported on `esp32_s3_matrix`, firmware 0.3.5.dev525, protocol
+  14): `just app-run screen demo` ended with
+  `ERROR:touchy_pad.device:change_widget_ref failed (target_id='page'
+  path='F:host/uscr/test.pb')`.
+* **Not an lb19 regression.** The two halves predate it: the touch-less branch
+  of `_do_screen_init` (`1b91bdf`) installs the *animated setup screen*, which
+  has no `widget_ref`, while `screens_demo` unconditionally finished with
+  `pad.show_user_screen("test")` (`8d5459e`) — an `ActionChangeWidgetRef` that
+  can only work on the chrome screen.
+* **Fix:** `_do_screen_init()` now returns `True` when it wrote the touch-less
+  setup screen, and `screen demo` uploads the demo page **without** paging it in
+  that case (INFO instead of the device-side ERROR). `Touchy.show_user_screen`'s
+  docstring now spells out that the failure is asynchronous and needs the chrome
+  screen; `docs/companion-app.md` notes the touch-less behaviour.
+* **Tests:** two new `tests/test_cli.py` cases (fake pad, touch-less vs
+  touch-capable) — suite now **285 passed, 2 skipped**; plus a real-sim check
+  (`is_touchable` False → setup screen, no refs; True → chrome with a `page`
+  ref).
 * Drive-by: fixed the long-dead `touchy screens push` / `touchy screen init`
   references in `docs/design.md`, `docs/companion-app.md`, `docs/why-not-xml.md`
   and the `screens.py` docstrings (real surface: `touchy init` +
