@@ -626,6 +626,34 @@ message Label {
     // so one string can carry several colours. Default false keeps the
     // old behaviour (the markup is rendered literally).
     bool recolor = 5;
+    // Stage LB19 — scrolling SPEED, two interchangeable spellings. Only
+    // meaningful with `long_mode = SCROLL` / `SCROLL_CIRCULAR`, and only
+    // when the text actually overflows a fixed box; ignored otherwise.
+    // Both are implemented with LVGL's `anim_duration` style property.
+    //
+    // `scroll_duration_ms` is the exact LVGL-native knob: the time in ms
+    // for ONE traversal (a "lap"). Smaller = faster. It is applied
+    // verbatim (LVGL does not clamp a plain duration).
+    //
+    // `scroll_speed_px_s` expresses the same thing as a speed in pixels
+    // per second (the unit LVGL's own default is stated in): the firmware
+    // hands LVGL a speed-encoded duration, so the device resolves the
+    // lap time from the label's *actual* text length — which means a
+    // runtime `text` override keeps a constant px/s for free. Valid
+    // range 10..10000 px/s (LVGL encodes speed in 10 px/s steps, and 0
+    // would divide by zero inside lv_anim_resolve_speed); the lap time is
+    // clamped to 300 ms..10 s exactly like LVGL's default.
+    //
+    // Unset (or 0) = LVGL's built-in default: 40 px/s, i.e.
+    // `lv_anim_speed_clamped(40, 300, 10000)` (LV_LABEL_DEF_SCROLL_SPEED)
+    // => lap time = clamp(1000 * distance_px / 40, 300 ms, 10 000 ms).
+    // SCROLL (bounce) additionally pauses LV_LABEL_SCROLL_DELAY (300 ms)
+    // at each end, while SCROLL_CIRCULAR loops with a 3-space-glyph gap.
+    //
+    // If both fields are set, `scroll_duration_ms` wins (the host DSL
+    // rejects that combination outright).
+    optional uint32 scroll_duration_ms = 6;
+    optional uint32 scroll_speed_px_s  = 7;
 }
 
 message Slider {
@@ -995,7 +1023,8 @@ message Widget {
         VERSION_UNKNOWN = 0;   // proto3 default / nested child widgets
         // LB11: AnimTrack start/end_inverted.
         // LB17: Label.recolor (inline recolour markup).
-        CURRENT         = 29;
+        // LB19: Label.scroll_duration_ms / scroll_speed_px_s.
+        CURRENT         = 30;
     }
     Version version = 6;
 

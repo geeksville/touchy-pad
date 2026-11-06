@@ -29,6 +29,18 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
 
 ## Existing plans
 
+* `docs/plans/label-scroll-speed.md` — **custom label scrolling speed**
+  (**done — Stage lb19**): `Label.scroll_duration_ms = 6` (ms/lap, applied
+  verbatim) **and** `Label.scroll_speed_px_s = 7` (px/s 10…10000, resolved by
+  LVGL against the real text length) → `lv_obj_set_style_anim_duration()` in
+  `build_label`; `Widget.Version` 29→30. Host: `label(...,
+  scroll_duration_ms=)` / `label(..., scroll_speed_px_s=)` +
+  `SCROLL_SPEED_MIN/MAX_PX_S`, and `touchy property set … --int` so the runtime
+  override path can retime a live label (`anim_duration`). LVGL's default
+  (**40 px/s**, lap clamped to 300 ms…10 s, 300 ms bounce pause at each end) is
+  now documented in `docs/python-api.md` → "Scrolling speed". No `rust/` or
+  simulator change. Full notes in §9 of the plan.
+
 * `docs/plans/host-driven-repaint-latency.md` — LVGL refresh wake-ups: **Stage
   lb16** — phase 1 (property batches repaint immediately) + phase 2 (the general
   fix: `lv_timer_handler_set_resume_cb()` registered at display bring-up, so

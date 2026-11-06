@@ -79,6 +79,77 @@ Off by default (the markup then renders literally). Note `#` is the command
 delimiter: this LVGL version's `##` escape is dead code, so a literal `#` in the
 text is swallowed rather than shown — strip it host-side if it matters.
 
+### Scrolling speed (stage LB19)
+
+A label that scrolls — `long_mode=LongMode.LONG_MODE_SCROLL` (bounce) or
+`LONG_MODE_SCROLL_CIRCULAR` (continuous marquee) — scrolls at **40 px/s** by
+default. Two mutually exclusive kwargs set the speed:
+
+```python
+s += label("ticker", text="#00FF00 live# " * 3, recolor=True,
+           long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
+           scroll_speed_px_s=120,      # or: scroll_duration_ms=4000
+           rect=rect(x=0, y=0, w=480, h=24))
+```
+
+| | Meaning | When to use it |
+|---|---|---|
+| `scroll_duration_ms=MS` | Exact LVGL-native knob: milliseconds for **one traversal** (a "lap"), honoured verbatim. Smaller = faster. | You know the lap time you want, or you want a `SCROLL` *bounce* that always takes the same time end-to-end. |
+| `scroll_speed_px_s=PX` | Speed in pixels per second, `SCROLL_SPEED_MIN_PX_S`…`SCROLL_SPEED_MAX_PX_S` (10…10000; LVGL rounds to 10 px/s steps and clamps the lap to 300 ms…10 s). | You want the text to *look* like it moves at a constant speed — including after a runtime `text` override changes the text length. |
+
+The two differ only in what stays constant when the text changes underneath: a
+*duration* keeps the lap time (longer text therefore scrolls faster), a
+*speed* keeps px/s (longer text therefore takes longer per lap). Pass one or the
+other — passing both raises `ValueError`.
+
+**Neither field does anything unless the text overflows a fixed box**: the
+scroll modes only animate when the label's width is set (via `rect` or a sizing
+parent such as flex grow / grid stretch) and is narrower than the text.
+
+#### What "the default" actually is
+
+Everything above is LVGL's long-mode engine, so the defaults are LVGL's:
+
+| Long mode | Behaviour | Default speed |
+|---|---|---|
+| `WRAP` / `DOTS` / `CLIP` | no animation | — |
+| `SCROLL` (bounce) | slides out and back, pausing **300 ms** at each end | **40 px/s** → lap = `clamp(1000 × distance_px / 40, 300 ms, 10 000 ms)` |
+| `SCROLL_CIRCULAR` | continuous loop, **3 space-glyphs** of gap between laps | same **40 px/s**, same 300 ms…10 s clamp |
+
+Concretely (LVGL 9.5): `LV_LABEL_DEF_SCROLL_SPEED = lv_anim_speed_clamped(40,
+300, 10000)` (`lv_label.c`), `LV_LABEL_SCROLL_DELAY = 300` ms and
+`LV_LABEL_WAIT_CHAR_COUNT = 3`. The distance one lap covers is
+`text_width + 3 × space_width` for `SCROLL_CIRCULAR`, or
+`text_width − visible_width` for one leg of `SCROLL`. Since the lap time is a
+function of both the speed *and* the text length, the equivalent conversion for
+a host that measures its own text is:
+
+```
+duration_ms ≈ 1000 × distance_px / speed_px_s
+```
+
+At the default 40 px/s a 480 px-wide lap takes about 12 s — set
+`scroll_duration_ms` / `scroll_speed_px_s` if you want it brisker.
+
+#### Re-timing a live label (no re-upload)
+
+The knob is LVGL's `anim_duration` **style property**, so the stage-lb14/lb12
+runtime property path can retime a marquee in place — no screen re-upload, and
+it survives screen reloads for the session:
+
+```python
+from touchy_pad.api import build_property_override
+
+pad.set_properties([build_property_override("ticker", "anim_duration", 1000)])  # ms/lap
+```
+
+An `int` value is required: LVGL style properties are numbers, so send the
+duration (a *speed* is an internal encoding meant for authoring time). From the
+shell the same thing is
+`touchy property set ticker anim_duration 1000 --int` — the `--int` flag is the
+only way for the CLI to reach a style property, because a plain VALUE is sent as
+a string.
+
 ## Raw protobuf
 
 When you'd rather hand-build the message:

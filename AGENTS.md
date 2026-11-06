@@ -138,8 +138,8 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
-`lb` line (lb5–lb14) are **done**. Latest active wire-format:
-`Widget.Version.CURRENT == 28`,
+`lb` line (lb5–lb19) are **done**. Latest active wire-format:
+`Widget.Version.CURRENT == 30`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
 `PreferencesFile.Version.CURRENT == 9`.
 
@@ -809,6 +809,26 @@ Highlights worth remembering:
   wire change** (reuses `backlight_level`) — no `PreferencesFile.Version` /
   `ProtocolVersion` bump, no `app/` / `rust/` / sim change. Plan:
   `docs/plans/led-brightness.md`.
+
+- **Stage lb19 (custom label scroll speed).** A scrolling `Label`
+  (`long_mode = SCROLL` / `SCROLL_CIRCULAR`) can be told how fast to scroll:
+  two additive fields, `optional uint32 scroll_duration_ms = 6` (ms per lap,
+  applied verbatim) and `optional uint32 scroll_speed_px_s = 7` (px/s, 10…10000;
+  duration wins if both are set). Both land on LVGL's **`anim_duration` style
+  property** in `build_label`
+  (`lv_obj_set_style_anim_duration`) — the duration as-is, the speed through
+  `lv_anim_speed_clamped(px_s, 300, 10000)`, the *encoded* form LVGL re-resolves
+  against the real travel distance, which keeps px/s constant across runtime
+  `text` overrides (no text measuring, no re-apply hook). Host:
+  `label(..., scroll_duration_ms=)` / `label(..., scroll_speed_px_s=)` plus
+  `SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S`; live retiming uses the
+  stage-lb14 property override `build_property_override(wid, "anim_duration", ms)`.
+  Same stage: `touchy property set … --int`, because the CLI previously only
+  sent strings and could not reach style props at all. LVGL's default is now
+  documented (**40 px/s**, lap clamped to 300 ms…10 s, `SCROLL` adds a 300 ms
+  pause at each end) in `docs/python-api.md` → "Scrolling speed".
+  **`Widget.Version` 29→30**; no `ProtocolVersion` / prefs change, no sim or
+  `rust/` code change. Plan: `docs/plans/label-scroll-speed.md`.
 
 
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host

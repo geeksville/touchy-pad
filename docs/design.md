@@ -112,9 +112,11 @@ directly via its C API — no XML, no `lv_xml`, no `lui-xml` port required.
   (`Screen`, `button(...)`, `label(...)`, `slider(...)`, `toggle(...)`,
   `image(...)`, `arc(...)`, `spacer(...)`, layout helpers
   `absolute()` / `row()` / `col()` / `grid(cols, gap)`).
-* CLI: `touchy screen push SCRIPT [--load NAME]` runs the Python file,
-  collects every `Screen` instance created, uploads them, and optionally
-  switches to one.
+* CLI: `touchy init` provisions the stock chrome screen plus the baseline
+  trackpad page, and `touchy screen {wake,load,demo}` drives the display.
+  Uploading a *custom* `Screen` is done from Python
+  (`pad.screen_save(s)` + `pad.screen_load(path)`); the `touchy screen
+  push SCRIPT` subcommand this section used to describe was later removed.
 * Firmware: [`firmware/main/screens.cpp`](../firmware/main/screens.cpp).
 
 ## Stage 16: Button behaviors — DONE
@@ -2159,8 +2161,8 @@ Per the stage request, flip on for this board only (user will revert):
   framing change (any hardcoded `_pack` byte expectations get updated
   to the new layout).
 * **Manual hardware check** (documented, not CI): `touchy --port
-  /dev/ttyACM0 screens push ...` against a jc4827w543 flashed with the
-  test config.
+  /dev/ttyACM0 init` against a jc4827w543 flashed with the test config
+  (it uploads the stock chrome + trackpad page over that transport).
 
 #### 6a. Docs to update
 
@@ -2371,8 +2373,8 @@ target, which ESP-IDF already exposes as `CONFIG_SOC_USB_OTG_SUPPORTED`
   makes the sim trackpad refuse multi-point input.
 * **Manual hardware (documented, not CI):** flash over UART
   (`/dev/ttyUSB0`), confirm the built-in default screen renders and
-  single-touch works, then `touchy --port /dev/ttyUSB0 screens push ...`
-  round-trips over the UART transport.
+  single-touch works, then `touchy --port /dev/ttyUSB0 init` (or a
+  `pad.screen_save(...)` upload) round-trips over the UART transport.
 
 #### 8. Docs to update
 
@@ -2538,7 +2540,7 @@ holding a content-sized prev/next chrome row plus a flex-growing body
 and drove the growing body. (Stage 72 later replaced this with
 `Widget.grow_x` / `grow_y`; see that stage.) User page bodies live under `host/uscr/` and are uploaded
 with `Touchy.user_screen_save(name, widget)`; `build_user_pages()` returns
-the `trackpad` + `test` bodies. The `touchy screen init` CLI provisions the
+the `trackpad` + `test` bodies. The `touchy init` CLI provisions the
 chrome + a trackpad page; `screen demo` reuses `_do_screen_init` then adds
 the smiley asset + `test` page. The firmware's built-in fallback is now
 generated from the same DSL: `proto/gen_default_screen.py` →
@@ -5967,6 +5969,79 @@ reached it. Additive; no LVGL opacity pass — one integer multiply per channel.
 **Wire:** no change — reuses the existing `backlight_level` field. No
 `PreferencesFile.Version` / `ProtocolVersion` bump, and no `app/` / `rust/` /
 simulator change. Plan: `docs/plans/led-brightness.md`.
+
+
+## Stage lb19: custom label scroll speed — DONE
+
+**Status: implemented.** A scrolling `Label` (`long_mode = SCROLL` /
+`SCROLL_CIRCULAR`) can now be told how fast to scroll, and LVGL's default speed
+is documented instead of folklore. Two additive fields on `Label` spell the same
+knob two ways:
+
+* `optional uint32 scroll_duration_ms = 6` — the LVGL-native quantity: ms for
+  one traversal ("lap"), applied verbatim.
+* `optional uint32 scroll_speed_px_s = 7` — px/s (10…10000, LVGL's 10 px/s
+  encoding steps), which the device resolves against the label's *actual* text
+  length.
+
+If both are set the duration wins; the host DSL refuses the combination.
+
+**Mechanism — one style property.** Both map onto LVGL's `anim_duration` style
+prop (`lv_label.c` reads it, and `LV_LABEL_DEF_SCROLL_SPEED` kicks in when it is
+0). `build_label` (`firmware/main/widgets/widget_builders.cpp`) calls
+`lv_obj_set_style_anim_duration(lbl, …)`:
+
+* duration → the value, unchanged (LVGL does not clamp a plain duration);
+* speed → `lv_anim_speed_clamped(px_s, 300, 10000)` — the *encoded* form LVGL
+  itself uses for its default. That encoding is what makes a speed constant
+  across runtime `text` overrides: `lv_anim_resolve_speed()` divides by the real
+  travel distance each time `lv_label_refr_text()` re-creates the scroll
+  animation. It also round-trips through the style cleanly (the generated setter
+  stores `.num = (int32_t)value`, the getter returns `(uint32_t)v.num`, and the
+  resolver masks bit 31), so no text measurement code was needed — and no
+  "re-apply on text change" hook either. Speeds below 10 px/s are clamped in the
+  firmware and rejected by the DSL, because `(speed + 5) / 10` would encode them
+  as 0 and the resolver would divide by zero.
+
+**The documented default** (LVGL 9.5, now written down in `docs/python-api.md`
+→ "Scrolling speed"):
+
+| Long mode | Behaviour | Default speed |
+|---|---|---|
+| `WRAP` / `DOTS` / `CLIP` | no animation | — |
+| `SCROLL` (bounce) | slides out and back, 300 ms pause each end | **40 px/s** → lap = `clamp(1000 × distance_px / 40, 300 ms, 10 000 ms)` |
+| `SCROLL_CIRCULAR` | continuous loop, 3 space-glyphs of gap | same 40 px/s / 300 ms…10 s |
+
+i.e. `LV_LABEL_DEF_SCROLL_SPEED = lv_anim_speed_clamped(40, 300, 10000)`,
+`LV_LABEL_SCROLL_DELAY = 300`, `LV_LABEL_WAIT_CHAR_COUNT = 3`. The fields only
+matter when the text overflows a fixed box, which the docs also spell out.
+
+**Host surface.** `label(..., scroll_duration_ms=…)` / `label(...,
+scroll_speed_px_s=…)` (validation: negative → `ValueError`; both → `ValueError`;
+speed outside `SCROLL_SPEED_MIN_PX_S`…`SCROLL_SPEED_MAX_PX_S` → `ValueError`),
+`SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S` exported from
+`touchy_pad.api`. Re-timing a live marquee needs no new API — it is the
+stage-lb12/14 runtime property path with the style property name
+`anim_duration` (ms), e.g.
+`pad.set_properties([build_property_override("ticker", "anim_duration", 1000)])`.
+**Stage lb19 also closed that path's CLI gap:** `touchy property set WIDGET PROP
+VALUE` always sent a *string*, which LVGL would treat as a pointer for a style
+prop; it gained `--int` (`touchy property set ticker anim_duration 4000 --int`),
+the only way to reach style properties from the shell.
+
+**Wire:** `Widget.Version` 29 → 30 (two additive `Label` fields). No
+`ProtocolVersion` / `PreferencesFile.Version` change. No simulator change — Qt
+has no marquee and the sim already renders `SCROLL*` as a clipped single line
+(that gap is documented, and a `QTimer` marquee remains a possible follow-up).
+No `rust/` change beyond the regenerated prost types.
+
+**Docs:** `docs/python-api.md` (new "Scrolling speed" section incl. the default
+table), this page, `AGENTS.md`, and a drive-by correction of the long-dead
+`touchy screen push` / `touchy screen init` references in `docs/design.md`,
+`docs/companion-app.md`, `docs/why-not-xml.md` and the `screens.py` docstrings
+(the real surface is `touchy init` + `pad.screen_save()`).
+
+Plan: `docs/plans/label-scroll-speed.md`.
 
 
 # Old/Existing projects

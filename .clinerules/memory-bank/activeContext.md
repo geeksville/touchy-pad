@@ -1,13 +1,45 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-04 (**`tools/googly-vr` + `tools/voicebot` submodules
-removed** — both apps are now developed in another container, so they are no
-longer checked in here; see the session bullet below. Before that: **Stage lb18**
-— LED-matrix boards now default to 10 % brightness when `backlight_level` is
-unset; voicebot Stage 4a — "audio in": mic → VAD → STT → reply, logged;
-voicebot Stage 1+2 — the remote-Ollama responder CLI; and 2026-09-29 —
-googly-vr stage 5 + Stage lb15 + Stage lb16 + the USB enumeration fix, "a
-running app never sees a re-plugged pad").
+**Last updated:** 2026-11-06 (**Stage lb19** — custom label scroll speed:
+`Label.scroll_duration_ms` / `Label.scroll_speed_px_s`, `Widget.Version` 29→30,
+plus `touchy property set … --int`, and LVGL's 40 px/s default finally written
+down). Before that: **`tools/googly-vr` + `tools/voicebot` submodules removed**
+— both apps are now developed in another container, so they are no longer
+checked in here; **Stage lb18** — LED-matrix boards now default to 10 %
+brightness when `backlight_level` is unset; voicebot Stage 4a — "audio in":
+mic → VAD → STT → reply, logged; voicebot Stage 1+2 — the remote-Ollama
+responder CLI; and 2026-09-29 — googly-vr stage 5 + Stage lb15 + Stage lb16 +
+the USB enumeration fix ("a running app never sees a re-plugged pad").
+
+### This session (2026-11-06): Stage lb19 — label scroll speed (+ documented default)
+
+* Implemented the whole `docs/plans/label-scroll-speed.md` plan (all 3 phases);
+  §9 of that file is the authoritative write-up.
+* **Wire:** `Label.scroll_duration_ms = 6` (ms per lap, applied verbatim) and
+  `Label.scroll_speed_px_s = 7` (px/s 10…10000); `Widget.Version` **29 → 30**.
+  Both land on LVGL's `anim_duration` style property in
+  `firmware/main/widgets/widget_builders.cpp::build_label`; the speed goes
+  through `lv_anim_speed_clamped(px_s, 300, 10000)`.
+* **The insight worth remembering:** LVGL *encodes* a speed inside
+  `anim_duration` (bit-31 marker) and resolves it per animation start against the
+  real travel distance (`lv_anim_resolve_speed()`), so a px/s value keeps its
+  meaning across runtime `text` overrides — no text measurement, no re-apply
+  hook, no per-label bookkeeping. That is exactly how LVGL's own 40 px/s default
+  works. Values <5 px/s would encode as 0 and divide by zero, so both the DSL and
+  the firmware clamp to ≥10 px/s.
+* **Host:** `label(..., scroll_duration_ms=)` / `label(..., scroll_speed_px_s=)`
+  (`SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S` exported); the DSL rejects
+  both-set / negative / out-of-range. `touchy property set … --int` closes the
+  CLI gap so `anim_duration` can be re-timed live (the retiming path itself is
+  the lb12/lb14 property override — no new API).
+* **No** simulator change (Qt has no marquee; the sim's "clipped single line"
+  behaviour is documented) and **no** `rust/` code change.
+* Validated: `just build-proto`, `just app-test` **283 passed / 2 skipped**,
+  `just app-lint` clean, `just firmware-build` green (`jc4827w543`), plus an
+  in-process sim round-trip proving each field and "unset stays absent".
+* Drive-by: fixed the dead `touchy screens push` / `touchy screen init`
+  references (design.md, companion-app.md, why-not-xml.md, `screens.py`
+  docstrings) and `AGENTS.md`'s stale `Widget.Version.CURRENT == 28` line.
 
 ### This session (2026-11-04, later): googly-vr + voicebot submodules removed
 
@@ -339,11 +371,18 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
    Also re-check that `AGENTS.md`/`CLAUDE.md`, `firmware/README.md` and the
    board tables in `docs/hardware.md` still match reality — they were the
    sources of the drift fixed this session.
+7. ~~Label scroll speed — plan drafted~~ **DONE (Stage lb19, 2026-11-06)** — the
+   plan's three phases all landed (`Label.scroll_duration_ms` / `scroll_speed_px_s`,
+   `Widget.Version` 30, `touchy property set --int`, the documented 40 px/s
+   default). Follow-ups deliberately left open: a simulator marquee (`QTimer`
+   honouring the same duration — the sim currently shows scrolling labels as a
+   clipped line) and, if anyone ever wants per-state scroll speeds, exposing
+   `anim_duration` through the `Style` message.
 
 ## Active decisions & considerations
 
 * Wire-format versions must stay in sync across three schemas —
-  `Widget` 28, `ProtocolVersion` 14, `PreferencesFile` 9. Adding an enum value
+  `Widget` 30, `ProtocolVersion` 14, `PreferencesFile` 9. Adding an enum value
   to an existing action payload does **not** need a `ProtocolVersion` bump;
   adding a command does — and since lb14, *replacing* a command (the
   `set_properties` wire break) bumps it too, per the googly-vr owner's

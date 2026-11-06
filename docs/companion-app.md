@@ -19,6 +19,7 @@ touchy [--version] [--help] <command> [args…]
 | `touchy file-reset` | Delete every file the host has uploaded to the device. |
 | `touchy file-save PATH FILE` | Upload FILE to the device at virtual path PATH. |
 | `touchy writefiles SRCDIR` | Mirror a local directory tree onto the device. |
+| `touchy init` | Write the stock chrome screen (`F:host/s/default.pb`) plus the baseline trackpad page, then load it — the "provision a fresh device" step. |
 | `touchy reboot-bootloader` | Reboot the device into its USB DFU bootloader. |
 
 ### `touchy screen` — backlight, layout, and screen authoring
@@ -30,9 +31,13 @@ touchy screen <subcommand> [args…]
 | Subcommand | Description |
 |-----------|-------------|
 | `touchy screen wake` | Force the backlight on (cancels any pending auto-sleep). |
-| `touchy screen load NAME` | Switch the currently displayed screen to NAME. |
-| `touchy screen push SCRIPT [--load NAME] [--dry-run]` | Compile a Python screen-definition script and upload every `Screen` it defines. Optionally activate one of them immediately with `--load`. |
+| `touchy screen load PATH` | Switch the currently displayed screen to PATH (drive-prefixed, e.g. `F:host/s/home.pb`). |
 | `touchy screen demo [--listen] [--json]` | Upload and optionally run the built-in demo screen. |
+
+Uploading your own screens is a Python-API job — `pad.screen_save(screen)` (host
+DSL `Screen`, raw `protobuf.Screen`, JSON dict or `.json` path) followed by
+`pad.screen_load(path)`; the old `touchy screen push SCRIPT` subcommand was
+removed. See `docs/python-api.md`.
 
 ### `touchy pref` — persistent device preferences
 

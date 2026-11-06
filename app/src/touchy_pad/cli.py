@@ -976,20 +976,44 @@ def property_group() -> None:
 @click.argument("widget_id")
 @click.argument("prop")
 @click.argument("value", nargs=-1, required=True)
-def property_set(widget_id: str, prop: str, value: tuple[str, ...]) -> None:
-    """Set widget WIDGET_ID's property PROP to VALUE (a string).
+@click.option(
+    "--int",
+    "as_int",
+    is_flag=True,
+    help="Send VALUE as an integer property instead of a string "
+    "(e.g. `anim_duration 4000`, a label scroll-speed in ms).",
+)
+def property_set(widget_id: str, prop: str, value: tuple[str, ...], as_int: bool) -> None:
+    """Set widget WIDGET_ID's property PROP to VALUE.
 
     PROP is an LVGL property name (e.g. ``text``). VALUE is sent as a
     string — multi-word values do not need quoting:
     ``touchy property set welcome text Hello world``.
+
+    Pass ``--int`` for a numeric property. That is the only way to reach
+    LVGL's *style* properties from the CLI, e.g. the stage-lb19 scroll-speed
+    knob on a scrolling label (``anim_duration`` is the ms duration of one
+    lap; see ``docs/python-api.md`` → "Scrolling speed"):
+    ``touchy property set ticker anim_duration 4000 --int``.
+    Decimal, ``0x`` hex and ``0b`` binary literals are accepted.
+
     The override is session-scoped and sticky: it survives screen reloads
     and applies whenever the widget next appears. (Sent as a one-entry
     stage-lb14 ``SetPropertiesCmd`` batch.)
     """
     from .api.props import build_property_override
 
+    raw = " ".join(value)
+    payload: str | int = raw
+    if as_int:
+        try:
+            payload = int(raw, 0)
+        except ValueError as exc:
+            raise click.BadParameter(
+                f"VALUE must be an integer when --int is used, got {raw!r}"
+            ) from exc
     with _client() as c:
-        c.set_properties([build_property_override(widget_id, prop, " ".join(value))])
+        c.set_properties([build_property_override(widget_id, prop, payload)])
 
 
 # ---------------------------------------------------------------------------

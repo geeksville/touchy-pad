@@ -40,6 +40,47 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   change. `just firmware-build` green for `esp32_s3_matrix`; `just app-test`
   **268 passed, 2 skipped**. Plan: `docs/plans/led-brightness.md`.
 
+### Stage lb19 — label scroll speed + documented default (2026-11-06)
+
+* Every one of the plan's three phases landed (the whole story is §9 of
+  `docs/plans/label-scroll-speed.md`):
+  * **Phase 0 (docs):** `docs/python-api.md` → "Scrolling speed (stage LB19)"
+    with the default-speed table (`WRAP`/`DOTS`/`CLIP` static; `SCROLL` and
+    `SCROLL_CIRCULAR` default to **40 px/s**, lap clamped to 300 ms…10 s;
+    `SCROLL` pauses 300 ms at each end; `SCROLL_CIRCULAR` leaves 3 space-glyphs
+    of gap), the `duration_ms ≈ 1000 × distance_px / speed_px_s` conversion, the
+    "only animates when the text overflows a fixed box" caveat, and the runtime
+    `anim_duration` re-timing recipe.
+  * **Phase 1 (wire):** `optional uint32 scroll_duration_ms = 6` on `Label`
+    (`Widget.Version` **29 → 30**), mapped in `build_label` to
+    `lv_obj_set_style_anim_duration()`; DSL `label(..., scroll_duration_ms=)`.
+  * **Phase 2 (CLI):** `touchy property set … --int` — before it the CLI could
+    only send *strings*, so LVGL style properties (`anim_duration`, the actual
+    scroll knob) were unreachable from the shell.
+  * **Phase 3 (px/s):** `optional uint32 scroll_speed_px_s = 7` (10…10000),
+    mapped to **`lv_anim_speed_clamped(px_s, 300, 10000)`**. The key find: LVGL
+    *already* encodes a speed inside `anim_duration` and re-resolves it via
+    `lv_anim_resolve_speed()` against the real travel distance on every
+    `lv_label_refr_text()`, so px/s stays constant across runtime `text`
+    overrides with **no** text measurement and **no** re-apply hook (the plan's
+    original Phase-3 sketch was unnecessary). Values that would encode as 0
+    (<5 px/s) would divide by zero in the resolver, so both the DSL and the
+    firmware clamp to ≥10 px/s.
+* Wire: `Widget.Version` 29→30 (additive), no `ProtocolVersion` /
+  `PreferencesFile.Version` change; **no** simulator change (Qt has no marquee,
+  the sim's existing "clipped single line" behaviour is documented) and no
+  `rust/` code change.
+* Validated: `just build-proto`, `just app-test` **283 passed, 2 skipped**
+  (12 new label cases + 3 new CLI cases), `just app-lint` clean,
+  `just firmware-build` green for `jc4827w543`, `just rust-test` green; an
+  in-process sim smoke test round-tripped a screen carrying each field and
+  confirmed unset fields stay absent from the wire.
+* Drive-by: fixed the long-dead `touchy screens push` / `touchy screen init`
+  references in `docs/design.md`, `docs/companion-app.md`, `docs/why-not-xml.md`
+  and the `screens.py` docstrings (real surface: `touchy init` +
+  `pad.screen_save()`), and corrected `AGENTS.md`'s stale
+  `Widget.Version.CURRENT == 28` line (it had missed lb17's bump to 29).
+
 
 ### Tool project: `tools/voicebot` Stage 4a — audio in (2026-11-04)
 
@@ -103,7 +144,7 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
 
 ## Wire-format versions in force
 
-`Widget.Version.CURRENT == 28` · `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`
+`Widget.Version.CURRENT == 30` · `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`
 · `PreferencesFile.Version.CURRENT == 9` · (no `Screen.Version` exists — the
 version rides the root `Widget`).
 

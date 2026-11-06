@@ -1038,6 +1038,87 @@ def test_label_recolor_defaults_off():
     assert w.label.recolor is False
 
 
+def test_label_scroll_duration_round_trips():
+    """Stage LB19 — Label.scroll_duration_ms survives serialise → parse."""
+    s = Screen("sc", layout=col())
+    s += label(
+        "ticker",
+        text="long text",
+        long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
+        scroll_duration_ms=4000,
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert w.WhichOneof("kind") == "label"
+    assert w.label.scroll_duration_ms == 4000
+    # The two spellings are mutually exclusive, so the speed stays unset.
+    assert not w.label.HasField("scroll_speed_px_s")
+
+
+def test_label_scroll_speed_round_trips():
+    """Stage LB19 — Label.scroll_speed_px_s survives serialise → parse."""
+    s = Screen("sp", layout=col())
+    s += label(
+        "ticker",
+        text="long text",
+        long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR,
+        scroll_speed_px_s=120,
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert w.label.scroll_speed_px_s == 120
+    assert not w.label.HasField("scroll_duration_ms")
+
+
+def test_label_scroll_defaults_to_lvgl():
+    """No speed fields → both stay absent, so LVGL's 40 px/s default applies.
+
+    Presence matters: the firmware checks `has_*`, and an unset field keeps
+    the serialised widget byte-identical to the pre-lb19 shape.
+    """
+    s = Screen("sd", layout=col())
+    s += label("plain", text="hello", long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR)
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert not w.label.HasField("scroll_duration_ms")
+    assert not w.label.HasField("scroll_speed_px_s")
+
+
+@pytest.mark.parametrize("kwargs", [{"scroll_duration_ms": -1}, {"scroll_speed_px_s": -1}])
+def test_label_scroll_rejects_negative(kwargs):
+    """uint32 fields, so negatives are rejected with a clear message."""
+    with pytest.raises(ValueError, match="must be >= 0"):
+        label("bad", text="x", **kwargs)
+
+
+def test_label_scroll_rejects_both_forms():
+    """Passing both spellings is ambiguous — the DSL refuses it."""
+    with pytest.raises(ValueError, match="not both"):
+        label("bad", text="x", scroll_duration_ms=4000, scroll_speed_px_s=120)
+
+
+@pytest.mark.parametrize("speed", [5, 9, 10001])
+def test_label_scroll_speed_rejects_out_of_range(speed):
+    """LVGL encodes speed in 10 px/s steps; <5 would encode as 0 (div-by-0)."""
+    with pytest.raises(ValueError, match="scroll_speed_px_s must be"):
+        label("bad", text="x", scroll_speed_px_s=speed)
+
+
+@pytest.mark.parametrize("speed", [10, 10000])
+def test_label_scroll_speed_accepts_range_endpoints(speed):
+    s = Screen("sp", layout=col())
+    s += label("ticker", text="x", scroll_speed_px_s=speed)
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    assert _children(decoded.active)[0].label.scroll_speed_px_s == speed
+
+
+def test_label_scroll_speed_bounds_match_firmware():
+    """The published bounds match LABEL_SCROLL_MIN/MAX_PX_S in the firmware."""
+    from touchy_pad.api import SCROLL_SPEED_MAX_PX_S, SCROLL_SPEED_MIN_PX_S
+
+    assert (SCROLL_SPEED_MIN_PX_S, SCROLL_SPEED_MAX_PX_S) == (10, 10000)
+
+
 def test_build_setup_screen_touchless_has_scrolling_welcome():
     """The touch-less default screen overlays a SCROLL_CIRCULAR welcome."""
     screen = build_setup_screen_touchless()

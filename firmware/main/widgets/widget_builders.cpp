@@ -169,6 +169,20 @@ const touchy_Widget *resolve_widget_ref(const touchy_Widget &w)
 
 namespace {
 
+// Stage LB19 — bounds for `Label.scroll_speed_px_s`.
+//
+// LVGL packs a speed into an `anim_duration` value as `(speed + 5) / 10`
+// (`lv_anim.c: lv_anim_speed_clamped`), so 10 px/s is the slowest speed it can
+// express and anything below 5 would encode as 0 — which lv_anim_resolve_speed()
+// would then divide by. 10000 px/s is LVGL's documented ceiling (above it the
+// helper warns and truncates). The lap clamps mirror LVGL's own default
+// (`LV_LABEL_DEF_SCROLL_SPEED = lv_anim_speed_clamped(40, 300, 10000)`): a lap
+// takes at least 300 ms and at most 10 s however long the text is.
+constexpr uint32_t LABEL_SCROLL_MIN_PX_S   = 10;
+constexpr uint32_t LABEL_SCROLL_MAX_PX_S   = 10000;
+constexpr uint32_t LABEL_SCROLL_MIN_LAP_MS = 300;
+constexpr uint32_t LABEL_SCROLL_MAX_LAP_MS = 10000;
+
 lv_obj_t *build_button(lv_obj_t *parent, const touchy_Widget &w)
 {
     lv_obj_t *btn = lv_button_create(parent);
@@ -234,10 +248,46 @@ lv_obj_t *build_label(lv_obj_t *parent, const touchy_Widget &w)
     if (w.kind.label.recolor) {
         lv_label_set_recolor(lbl, true);
     }
-    ESP_LOGI(TAG, "build_label id='%s' text='%.40s' text_align=%d long_mode=%d recolor=%d",
+    // Stage LB19 — scrolling speed. LVGL drives a scrolling label with the
+    // `anim_duration` style property, and re-reads it every time the label's
+    // text / size / style changes (lv_label_event → LV_EVENT_STYLE_CHANGED /
+    // SIZE_CHANGED → lv_label_refr_text), so a runtime `text` override keeps
+    // whatever we set here without any extra bookkeeping.
+    //
+    // Two spellings (proto comment has the full story):
+    //   * scroll_duration_ms — a plain ms lap time, applied verbatim. An
+    //     exact duration also set from the `"anim_duration"` runtime
+    //     property override, so this one is just the authoring-time form.
+    //   * scroll_speed_px_s — a speed, which LVGL stores *encoded*
+    //     (lv_anim_speed_clamped + LV_ANIM_SPEED_MASK) and re-resolves
+    //     against the real travel distance on every refresh — that is what
+    //     keeps px/s constant when the host changes the text at runtime.
+    //     The min/max lap clamps match LVGL's own default (300 ms..10 s).
+    //
+    // The encoded value round-trips through the style perfectly: the
+    // generated setter stores `.num = (int32_t)value` and the getter returns
+    // `(uint32_t)v.num`, and lv_anim_resolve_speed() masks the top bit.
+    if (w.kind.label.has_scroll_duration_ms && w.kind.label.scroll_duration_ms > 0) {
+        lv_obj_set_style_anim_duration(lbl, w.kind.label.scroll_duration_ms, 0);
+    } else if (w.kind.label.has_scroll_speed_px_s && w.kind.label.scroll_speed_px_s > 0) {
+        // Speed is encoded in 10 px/s steps and lv_anim_resolve_speed()
+        // divides by it, so anything that would round to 0 (< 5) has to be
+        // clamped away. 10 px/s is also the slowest expressible speed.
+        uint32_t px_s = w.kind.label.scroll_speed_px_s;
+        if (px_s < LABEL_SCROLL_MIN_PX_S) px_s = LABEL_SCROLL_MIN_PX_S;
+        if (px_s > LABEL_SCROLL_MAX_PX_S) px_s = LABEL_SCROLL_MAX_PX_S;
+        lv_obj_set_style_anim_duration(
+            lbl, lv_anim_speed_clamped(px_s, LABEL_SCROLL_MIN_LAP_MS,
+                                       LABEL_SCROLL_MAX_LAP_MS), 0);
+    }
+    ESP_LOGI(TAG,
+             "build_label id='%s' text='%.40s' text_align=%d long_mode=%d recolor=%d "
+             "scroll_duration_ms=%u scroll_speed_px_s=%u",
              w.id, w.kind.label.text,
              (int)w.kind.label.text_align, (int)w.kind.label.long_mode,
-             (int)w.kind.label.recolor);
+             (int)w.kind.label.recolor,
+             (unsigned)w.kind.label.scroll_duration_ms,
+             (unsigned)w.kind.label.scroll_speed_px_s);
     // font_size now lives on Style (applied via lv_style_set_text_font in
     // widget_styles.cpp) — nothing font-related to do here.
     return lbl;

@@ -16,8 +16,8 @@ Typical usage::
 
 Each ``Screen`` instance serialises to a single ``touchy.Screen`` protobuf
 message; the firmware loads it via :class:`TouchyClient.file_save` followed
-by :class:`TouchyClient.screen_load`. The :command:`touchy screens push`
-CLI does both steps for a whole script at once.
+by :class:`TouchyClient.screen_load`. The host API wraps both steps:
+``pad.screen_save(screen)`` + ``pad.screen_load(path)``.
 
 Every helper returns a plain ``touchy.Widget`` (or ``Layout`` / ``Style`` /
 ``Rect``) protobuf message — there is no extra wrapping class. Callers can
@@ -47,6 +47,15 @@ logger = logging.getLogger(__name__)
 # Sentinel distinguishing "argument not supplied" (→ use the standard
 # default action) from an explicit empty list (→ disable the gesture).
 _USE_DEFAULT = object()
+
+# Stage LB19 — bounds for ``label(scroll_speed_px_s=...)``, mirroring the
+# firmware's LABEL_SCROLL_MIN/MAX_PX_S (firmware/main/widgets/widget_builders.cpp).
+# LVGL packs a scroll speed into an `anim_duration` value as `(speed + 5) / 10`,
+# so 10 px/s is the slowest expressible speed and anything under 5 encodes as 0 —
+# which `lv_anim_resolve_speed()` would then divide by. 10000 px/s is LVGL's
+# documented ceiling.
+SCROLL_SPEED_MIN_PX_S = 10
+SCROLL_SPEED_MAX_PX_S = 10000
 
 __all__ = [
     "Screen",
@@ -97,6 +106,9 @@ __all__ = [
     "StyleProp",
     "TextAlign",
     "LongMode",
+    # Stage LB19 — valid range for ``label(scroll_speed_px_s=...)``.
+    "SCROLL_SPEED_MIN_PX_S",
+    "SCROLL_SPEED_MAX_PX_S",
 ]
 
 
@@ -755,6 +767,8 @@ def label(
     text_align: int = TextAlign.AUTO,
     long_mode: int = LongMode.LONG_MODE_WRAP,
     recolor: bool = False,
+    scroll_duration_ms: int = 0,
+    scroll_speed_px_s: int = 0,
     rect: _proto.Rect | None = None,
     style: _proto.Style | Iterable[_proto.Style] | None = None,
     animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
@@ -785,7 +799,42 @@ def label(
     ``style=style(text_color=...)``). It is what lets one string carry
     several colours. Only meaningful on a firmware that knows the field;
     off by default.
+
+    ``scroll_duration_ms`` / ``scroll_speed_px_s`` (stage LB19) set the
+    scrolling *speed* of the ``SCROLL`` / ``SCROLL_CIRCULAR`` modes — pass
+    one or the other, not both. Left unset, LVGL's default applies: **40
+    px/s**, clamped to a 300 ms…10 s lap. See the "Scrolling speed" section
+    of ``docs/python-api.md`` for the default-speed table.
+
+    * ``scroll_duration_ms`` is the exact LVGL-native knob: milliseconds
+      for one traversal ("lap"). Smaller = faster, and the value is
+      honoured verbatim. A runtime ``text`` override keeps the same lap
+      *time*, so longer text scrolls proportionally faster.
+    * ``scroll_speed_px_s`` is a speed in pixels per second (10…10000,
+      rounded to LVGL's 10 px/s steps; the lap time is clamped to
+      300 ms…10 s). The device resolves it against the label's *actual*
+      text length, so a runtime ``text`` override keeps a constant speed.
+
+    Neither field has any effect unless the text overflows a fixed box.
     """
+    if scroll_duration_ms and scroll_speed_px_s:
+        raise ValueError(
+            "label(): pass scroll_duration_ms or scroll_speed_px_s, not both "
+            "(scroll_duration_ms is the exact LVGL-native form)"
+        )
+    if scroll_duration_ms < 0:
+        raise ValueError("label(): scroll_duration_ms must be >= 0 (0 = LVGL default)")
+    if scroll_speed_px_s < 0:
+        raise ValueError("label(): scroll_speed_px_s must be >= 0 (0 = LVGL default)")
+    if scroll_speed_px_s and not (
+        SCROLL_SPEED_MIN_PX_S <= scroll_speed_px_s <= SCROLL_SPEED_MAX_PX_S
+    ):
+        raise ValueError(
+            f"label(): scroll_speed_px_s must be 0 or "
+            f"{SCROLL_SPEED_MIN_PX_S}..{SCROLL_SPEED_MAX_PX_S} px/s — LVGL encodes "
+            "speed in 10 px/s steps and anything below 5 would encode as 0 "
+            "(a division by zero on the device)"
+        )
     styles = _normalise_styles(style)
     if font_size:
         # Fold font_size into an extra default-state style (LVGL treats
@@ -799,6 +848,10 @@ def label(
     w.label.text_align = text_align
     w.label.long_mode = long_mode
     w.label.recolor = recolor
+    if scroll_duration_ms:
+        w.label.scroll_duration_ms = int(scroll_duration_ms)
+    if scroll_speed_px_s:
+        w.label.scroll_speed_px_s = int(scroll_speed_px_s)
     return w
 
 
@@ -1436,9 +1489,9 @@ class Layer:
 class Screen:
     """A single LVGL screen, identified by a unique ``name``.
 
-    Instances are also auto-registered into a module-level list so the
-    ``touchy screens push`` CLI can discover every screen a script defines
-    without requiring the script to return them explicitly.
+    Instances are also auto-registered into a module-level list
+    (:attr:`Screen._registry`) so a script that builds several screens can
+    enumerate them without returning them explicitly.
 
     Stage 24.1 — ``Screen`` now exposes four LVGL layers
     (`<https://lvgl.io/docs/open/main-modules/display/screen_layers>`_):
@@ -1787,12 +1840,12 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
     """Build the demo user-screen page bodies for ``F:host/uscr/``.
 
     Returns a list of ``(name, Widget)`` pairs the caller uploads via
-    :meth:`Touchy.user_screen_save` (CLI: ``touchy screen init`` /
+    :meth:`Touchy.user_screen_save` (CLI: ``touchy init`` /
     ``touchy screen demo``). Lexicographic order in that directory is
     ``test`` then ``trackpad``, so the chrome's Next/Prev wrap predictably.
 
     * ``"trackpad"`` — full-bleed multitouch trackpad (USB HID mouse).
-      Written by ``screen init`` so the device has a usable page out of
+      Written by ``touchy init`` so the device has a usable page out of
       the box.  See :mod:`touchy_pad.api.pages.trackpad`.
     * ``"test"`` — Stage 16 / 18 / 20 widget showcase (hello / ping /
       force / fps / slider / checkbox / smiley image-button / log line),

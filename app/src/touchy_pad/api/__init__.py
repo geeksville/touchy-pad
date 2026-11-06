@@ -74,6 +74,8 @@ from .macros import (
 )
 from .props import Color, Point, build_property_override
 from .screens import (
+    SCROLL_SPEED_MAX_PX_S,
+    SCROLL_SPEED_MIN_PX_S,
     AnimPath,
     ImageSource,
     Layer,
@@ -191,6 +193,9 @@ __all__ = [
     "build_setup_screen",
     "build_setup_screen_touchless",
     "build_user_pages",
+    # Stage LB19 — scroll-speed bounds for label(scroll_speed_px_s=...).
+    "SCROLL_SPEED_MIN_PX_S",
+    "SCROLL_SPEED_MAX_PX_S",
     # On-device filesystem paths (Stage 68).
     "SCREENS_DIR",
     "USER_SCREENS_DIR",
