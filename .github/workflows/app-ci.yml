@@ -19,6 +19,12 @@ on:
       - "Justfile"
       - ".github/**"
 
+# Least privilege: every job only checks out the repo, builds/tests, and moves
+# artifacts around *within this run* — nothing needs to write to the repo or
+# use OIDC. Job-level `permissions:` blocks replace (not merge with) this one.
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------------------
   # setup: read shared metadata (firmware version) and expose it as job outputs

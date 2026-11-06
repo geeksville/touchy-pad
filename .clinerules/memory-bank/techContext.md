@@ -11,7 +11,7 @@
 | Rust | Rust **1.85+**, edition **2024**, cargo workspace: `prost`, `nusb` (+tokio), `tokio`, `thiserror`, `anyhow`, `log`/`env_logger`, `image`, `clap`, `futures`, `async-trait` |
 | Simulator | Tkinter/PySide6 (`PySide6` extra), in-process or TCP (`--sim-remote`), plaintext HTTP server on port **8083** |
 | Build/run glue | **`just`** (766-line `Justfile`) — the only sanctioned entry point |
-| CI | `.github/workflows/app-ci.yml` — `build-app` on ubuntu / windows / macos |
+| CI | `.github/workflows/app-ci.yml` — `build-app` on ubuntu / windows / macos. Every workflow declares a least-privilege top-level `permissions: contents: read`; only `release.yml`'s `publish-pypi` (`id-token` + `attestations: write`) and `upload-release-assets` (`contents: write`) widen it at job level |
 | Dev environment | VS Code devcontainer (`.devcontainer/`) pre-installing ESP-IDF, nanopb, protoc, Poetry, just |
 
 Firmware managed components (added under `firmware/main/idf_component.yml` and

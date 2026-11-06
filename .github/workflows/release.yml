@@ -7,6 +7,12 @@ on:
   release:
     types: [published]
 
+# Least privilege: read-only by default. Only `publish-pypi` (OIDC trusted
+# publishing + attestations) and `upload-release-assets` (release assets)
+# widen it, via job-level `permissions:` blocks that replace this one.
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------------------
   # test-app: lint + test + build the Python package.
@@ -68,7 +74,10 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/p/touchy-pad
+    # `contents: read` is required by actions/attest-build-provenance,
+    # `id-token: write` by both it and pypa/gh-action-pypi-publish.
     permissions:
+      contents: read
       id-token: write
       attestations: write
     steps:

@@ -25,6 +25,8 @@ on:
         type: string
         default: opendeck-touchypad-plugin
 
+# Least privilege: only reads the repo (plus the Actions cache) and uploads
+# artifacts within the calling run.
 permissions:
   contents: read
 

@@ -130,6 +130,17 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Workflow rules
 - **Never auto-commit or push.** Make changes; let the user commit.
+- **Every workflow declares `permissions:`.** Each file in
+  `.github/workflows/` starts from a least-privilege top-level
+  `permissions: contents: read` (GitHub's CodeQL `missing-workflow-permissions`
+  check warns without it); widen only in the specific job that needs it, and
+  remember a job-level block **replaces** — it does not merge with — the
+  top-level one. Today only `release.yml` widens: `publish-pypi` needs
+  `contents: read` + `id-token: write` + `attestations: write` (attestation +
+  PyPI trusted publishing), `upload-release-assets` needs `contents: write`;
+  `testpypi.yml`'s publish job needs `id-token: write`. Everything else
+  (checkout, `actions/cache`, `upload-artifact`/`download-artifact` within the
+  same run) works with `contents: read` alone.
 - `docs/design.md` is the source of truth for "what stage are we on" —
   update it when you finish a stage.
 - The git submodule at `tools/StreamController` tracks branch

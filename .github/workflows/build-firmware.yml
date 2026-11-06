@@ -16,6 +16,11 @@ on:
         description: "ESP-IDF version used to build firmware."
         value: ${{ jobs.install-esp-idf.outputs.idf-version }}
 
+# Least privilege: this workflow only reads the repo (plus the Actions cache)
+# and uploads artifacts within the calling run.
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------------------
   # install-esp-idf: clone + install the ESP-IDF toolchain once and save it to

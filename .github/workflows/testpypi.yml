@@ -5,6 +5,12 @@ name: Publish to TestPyPI (dry run)
 on:
   workflow_dispatch:
 
+# Least privilege: build only reads the repo; the publish job widens to
+# `id-token: write` for PyPI trusted publishing (job-level blocks replace,
+# not merge with, this one).
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build distribution
