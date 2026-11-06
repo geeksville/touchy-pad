@@ -636,13 +636,14 @@ message Label {
     // verbatim (LVGL does not clamp a plain duration).
     //
     // `scroll_speed_px_s` expresses the same thing as a speed in pixels
-    // per second (the unit LVGL's own default is stated in): the firmware
-    // hands LVGL a speed-encoded duration, so the device resolves the
-    // lap time from the label's *actual* text length — which means a
-    // runtime `text` override keeps a constant px/s for free. Valid
-    // range 10..10000 px/s (LVGL encodes speed in 10 px/s steps, and 0
-    // would divide by zero inside lv_anim_resolve_speed); the lap time is
-    // clamped to 300 ms..10 s exactly like LVGL's default.
+    // per second (the unit LVGL's own default is stated in). The firmware
+    // computes the exact lap duration from the label's *actual* text width
+    // once it is laid out, and recomputes it on size / text changes, so a
+    // runtime `text` override keeps a constant px/s. (It does NOT use
+    // LVGL's speed-encoded `anim_duration`: that packs the lap into a
+    // 10-bit field and silently caps it at ~10.23 s, which makes a long
+    // label on a small display scroll far faster than requested.) Valid
+    // range 10..10000 px/s; there is no upper lap-time clamp.
     //
     // Unset (or 0) = LVGL's built-in default: 40 px/s, i.e.
     // `lv_anim_speed_clamped(40, 300, 10000)` (LV_LABEL_DEF_SCROLL_SPEED)

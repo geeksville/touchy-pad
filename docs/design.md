@@ -5993,9 +5993,8 @@ knob two ways:
 
 * `optional uint32 scroll_duration_ms = 6` — the LVGL-native quantity: ms for
   one traversal ("lap"), applied verbatim.
-* `optional uint32 scroll_speed_px_s = 7` — px/s (10…10000, LVGL's 10 px/s
-  encoding steps), which the device resolves against the label's *actual* text
-  length.
+* `optional uint32 scroll_speed_px_s = 7` — px/s (10…10000), which the device
+  resolves against the label's *actual* text width.
 
 If both are set the duration wins; the host DSL refuses the combination.
 
@@ -6005,16 +6004,21 @@ prop (`lv_label.c` reads it, and `LV_LABEL_DEF_SCROLL_SPEED` kicks in when it is
 `lv_obj_set_style_anim_duration(lbl, …)`:
 
 * duration → the value, unchanged (LVGL does not clamp a plain duration);
-* speed → `lv_anim_speed_clamped(px_s, 300, 10000)` — the *encoded* form LVGL
-  itself uses for its default. That encoding is what makes a speed constant
-  across runtime `text` overrides: `lv_anim_resolve_speed()` divides by the real
-  travel distance each time `lv_label_refr_text()` re-creates the scroll
-  animation. It also round-trips through the style cleanly (the generated setter
-  stores `.num = (int32_t)value`, the getter returns `(uint32_t)v.num`, and the
-  resolver masks bit 31), so no text measurement code was needed — and no
-  "re-apply on text change" hook either. Speeds below 10 px/s are clamped in the
-  firmware and rejected by the DSL, because `(speed + 5) / 10` would encode them
-  as 0 and the resolver would divide by zero.
+* speed → the **exact lap duration**, computed by the firmware from the label's
+  real text width (`label_scroll_speed_apply()`), *not* LVGL's speed encoding.
+  The duration is recomputed on `LV_EVENT_SIZE_CHANGED` (box sized / resized,
+  before the label's deferred `lv_label_refr_text()`) and on the display's
+  `LV_EVENT_UPDATE_LAYOUT_COMPLETED` (every layout pass, which a runtime `text`
+  override triggers), so px/s stays constant across text changes. Speeds below
+  10 px/s are clamped in the firmware and rejected by the DSL.
+
+> **Fix (post-lb19):** the first cut used `lv_anim_speed_clamped(px_s, 300,
+> 10000)` — LVGL's own encoded form. That packs the lap into a 10-bit field and
+> silently caps it at ~10.23 s, so a long label on a small display scrolled far
+> faster than requested (200 chars on an 8×8 LED matrix ≈ 1000 px → 10 px/s
+> wanted a ~100 s lap, got 10 s → ~100 px/s). Computing the duration ourselves
+> removes the cap; the two event hooks replace the "free" auto-resolve the
+> encoding used to provide.
 
 **The documented default** (LVGL 9.5, now written down in `docs/python-api.md`
 → "Scrolling speed"):

@@ -1,9 +1,12 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-06 (**Stage lb19** — custom label scroll speed:
-`Label.scroll_duration_ms` / `Label.scroll_speed_px_s`, `Widget.Version` 29→30,
-plus `touchy property set … --int`, and LVGL's 40 px/s default finally written
-down). Before that: **`tools/googly-vr` + `tools/voicebot` submodules removed**
+**Last updated:** 2026-11-06 (**lb19 follow-up fix** — `scroll_speed_px_s` was
+capped at a ~10 s lap by LVGL's speed encoding, so long labels on small displays
+scrolled far too fast; the firmware now computes the exact lap duration itself.
+See `docs/plans/label-scroll-speed.md` §10). Before that: **Stage lb19** — custom
+label scroll speed: `Label.scroll_duration_ms` / `Label.scroll_speed_px_s`,
+`Widget.Version` 29→30, plus `touchy property set … --int`, and LVGL's 40 px/s
+default finally written down. Before that: **`tools/googly-vr` + `tools/voicebot` submodules removed**
 — both apps are now developed in another container, so they are no longer
 checked in here; **Stage lb18** — LED-matrix boards now default to 10 %
 brightness when `backlight_level` is unset; voicebot Stage 4a — "audio in":
@@ -20,13 +23,19 @@ the USB enumeration fix ("a running app never sees a re-plugged pad").
   Both land on LVGL's `anim_duration` style property in
   `firmware/main/widgets/widget_builders.cpp::build_label`; the speed goes
   through `lv_anim_speed_clamped(px_s, 300, 10000)`.
-* **The insight worth remembering:** LVGL *encodes* a speed inside
+* **The insight worth remembering (and its trap):** LVGL *encodes* a speed inside
   `anim_duration` (bit-31 marker) and resolves it per animation start against the
   real travel distance (`lv_anim_resolve_speed()`), so a px/s value keeps its
   meaning across runtime `text` overrides — no text measurement, no re-apply
-  hook, no per-label bookkeeping. That is exactly how LVGL's own 40 px/s default
-  works. Values <5 px/s would encode as 0 and divide by zero, so both the DSL and
-  the firmware clamp to ≥10 px/s.
+  hook. **But** the lap time is packed into a 10-bit field, so it can never
+  exceed `max_time * 10` ≈ **10.23 s** — a long label on a small display (200
+  chars on an 8×8 LED ≈ 1000 px at 10 px/s wants a ~100 s lap) silently clamps
+  and scrolls ~10× too fast. **Fix:** `scroll_speed_px_s` no longer uses the
+  encoding; `label_scroll_speed_apply()` computes `dur = dist*1000/px_s` from
+  `lv_obj_get_self_width()` / `lv_obj_get_content_width()` and re-applies it on
+  `LV_EVENT_SIZE_CHANGED` (label) + `LV_EVENT_UPDATE_LAYOUT_COMPLETED` (display),
+  with a `LV_EVENT_DELETE` cleanup. Values <5 px/s would encode as 0 and divide
+  by zero, so both the DSL and the firmware clamp to ≥10 px/s.
 * **Host:** `label(..., scroll_duration_ms=)` / `label(..., scroll_speed_px_s=)`
   (`SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S` exported); the DSL rejects
   both-set / negative / out-of-range. `touchy property set … --int` closes the

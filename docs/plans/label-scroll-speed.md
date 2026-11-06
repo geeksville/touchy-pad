@@ -470,3 +470,48 @@ the generated setter stores `.num = (int32_t)value` and the getter returns
 existing "clipped single line" behaviour is documented), any `rust/` code change
 (prost regen only), and clamping of absurdly small *durations* (passed through
 verbatim, documented).
+
+---
+
+## 10. Post-ship fix — `scroll_speed_px_s` was capped at a 10 s lap
+
+**Bug (reported on an 8×8 LED matrix):** short labels scrolled at the requested
+px/s, but a long label (≈200 chars) scrolled far faster. Root cause: Phase 3
+used LVGL's *speed-encoded* `anim_duration` (`lv_anim_speed_clamped(px_s, 300,
+10000)`). That packs the lap time into a 10-bit field, so
+`lv_anim_resolve_speed()` can never return a lap longer than `max_time * 10` =
+**~10.23 s**. At 10 px/s any text wider than 100 px is clamped to a 10 s lap, so
+a ~1000 px label scrolls at ~100 px/s instead of 10. (Verified numerically:
+`dist=200px → 20 px/s`, `dist=1000px → 100 px/s`.)
+
+**Fix:** stop using the encoding for `scroll_speed_px_s`; compute the exact lap
+duration ourselves and set a plain `anim_duration`:
+
+```
+dur_ms = distance_px * 1000 / px_s        (min 1 ms, no upper clamp)
+distance = text_w - content_w             (SCROLL)
+         = text_w + 3 * space_w           (SCROLL_CIRCULAR)
+```
+
+`text_w` comes from `lv_obj_get_self_width()` (the label's `GET_SELF_SIZE`
+handler, which measures the unwrapped text with the applied font); `content_w`
+from `lv_obj_get_content_width()`. Both are only known after layout, so the
+duration is (re)computed from two hooks in `widget_builders.cpp`:
+
+* `LV_EVENT_SIZE_CHANGED` on the label — fires when the box is sized
+  (`apply_rect` / flex / grid) and on resize, *before* the label's deferred
+  `lv_label_refr_text()`, so the first scroll animation is already correct.
+* `LV_EVENT_UPDATE_LAYOUT_COMPLETED` on the display — fires on every layout
+  pass, which a runtime `text` override triggers; keeps px/s constant when the
+  text length changes. (Mirrors LVGL's own label code, which registers/removes
+  the same display callback.)
+
+The per-label `px_s` + display pointer live in a small heap struct in the
+label's `user_data`; a `LV_EVENT_DELETE` callback removes the display callback
+and frees it. `scroll_duration_ms` is unchanged (already a plain duration).
+
+**No wire change** — same two `Label` fields, same `Widget.Version` 30. Docs
+(`docs/python-api.md`, the `label()` docstring, the `widgets.proto` comment) now
+say the explicit speed has **no upper lap-time clamp**; the 300 ms…10 s clamp
+only applies to LVGL's *default* (unset) speed. `just firmware-build` clean,
+`just app-test` 285 passed / 2 skipped.

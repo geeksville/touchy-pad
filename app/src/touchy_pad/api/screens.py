@@ -810,10 +810,12 @@ def label(
       for one traversal ("lap"). Smaller = faster, and the value is
       honoured verbatim. A runtime ``text`` override keeps the same lap
       *time*, so longer text scrolls proportionally faster.
-    * ``scroll_speed_px_s`` is a speed in pixels per second (10…10000,
-      rounded to LVGL's 10 px/s steps; the lap time is clamped to
-      300 ms…10 s). The device resolves it against the label's *actual*
-      text length, so a runtime ``text`` override keeps a constant speed.
+    * ``scroll_speed_px_s`` is a speed in pixels per second (10…10000).
+      The device computes the exact lap duration from the label's *actual*
+      text width once it is laid out (and recomputes it on size / text
+      changes), so a runtime ``text`` override keeps a constant speed and
+      there is no upper lap-time clamp — a long label on a small display
+      still scrolls at the requested px/s.
 
     Neither field has any effect unless the text overflows a fixed box.
     """

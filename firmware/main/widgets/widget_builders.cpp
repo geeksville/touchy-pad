@@ -169,19 +169,96 @@ const touchy_Widget *resolve_widget_ref(const touchy_Widget &w)
 
 namespace {
 
-// Stage LB19 — bounds for `Label.scroll_speed_px_s`.
+// Stage LB19 — exact px/s scrolling.
 //
-// LVGL packs a speed into an `anim_duration` value as `(speed + 5) / 10`
-// (`lv_anim.c: lv_anim_speed_clamped`), so 10 px/s is the slowest speed it can
-// express and anything below 5 would encode as 0 — which lv_anim_resolve_speed()
-// would then divide by. 10000 px/s is LVGL's documented ceiling (above it the
-// helper warns and truncates). The lap clamps mirror LVGL's own default
-// (`LV_LABEL_DEF_SCROLL_SPEED = lv_anim_speed_clamped(40, 300, 10000)`): a lap
-// takes at least 300 ms and at most 10 s however long the text is.
-constexpr uint32_t LABEL_SCROLL_MIN_PX_S   = 10;
-constexpr uint32_t LABEL_SCROLL_MAX_PX_S   = 10000;
-constexpr uint32_t LABEL_SCROLL_MIN_LAP_MS = 300;
-constexpr uint32_t LABEL_SCROLL_MAX_LAP_MS = 10000;
+// LVGL's speed-encoded `anim_duration` (`lv_anim_speed_clamped`) packs the lap
+// time into a 10-bit field, so it can never express a lap longer than ~10.23 s
+// (`lv_anim.c: lv_anim_resolve_speed` clamps to `max_time * 10`). A long label
+// on a small display — e.g. 200 chars on an 8x8 LED matrix, ~1000 px of text —
+// needs a lap of ~100 s at 10 px/s, so the encoded form silently clamps to
+// 10 s and the text scrolls ~10x faster than requested. We therefore compute
+// the lap duration ourselves from the label's real text width and set a plain
+// `anim_duration`.
+//
+// The duration depends on the text width and the box width, which are only
+// known after layout, so it is (re)computed from two hooks:
+//   * LV_EVENT_SIZE_CHANGED on the label — fires when the box is sized
+//     (apply_rect / flex / grid) and whenever the size changes, *before* the
+//     label's own deferred lv_label_refr_text() runs, so the first scroll
+//     animation already uses the right duration.
+//   * LV_EVENT_UPDATE_LAYOUT_COMPLETED on the display — fires on every layout
+//     pass, which is what a runtime `text` override triggers; it keeps px/s
+//     constant when the text length changes. (Mirrors LVGL's own label code,
+//     which registers/removes the same display callback.)
+//
+// `scroll_speed_px_s` is clamped to the same 10..10000 range the host DSL
+// enforces, so a hand-built proto can't divide by zero.
+constexpr uint32_t LABEL_SCROLL_MIN_PX_S = 10;
+constexpr uint32_t LABEL_SCROLL_MAX_PX_S = 10000;
+
+struct LabelScrollSpeed {
+    uint32_t      px_s;
+    lv_display_t *disp;  // display the layout callback is registered on
+};
+
+void label_scroll_speed_apply(lv_obj_t *lbl)
+{
+    auto *ctx = static_cast<LabelScrollSpeed *>(lv_obj_get_user_data(lbl));
+    if (!ctx || ctx->px_s == 0) return;
+
+    const lv_label_long_mode_t mode = lv_label_get_long_mode(lbl);
+    if (mode != LV_LABEL_LONG_MODE_SCROLL &&
+        mode != LV_LABEL_LONG_MODE_SCROLL_CIRCULAR) {
+        return;
+    }
+
+    // Text width: lv_obj_get_self_width() runs the label's GET_SELF_SIZE
+    // handler, which measures the (unwrapped) text with the applied font.
+    const int32_t text_w    = lv_obj_get_self_width(lbl);
+    const int32_t content_w = lv_obj_get_content_width(lbl);
+
+    int32_t dist;
+    if (mode == LV_LABEL_LONG_MODE_SCROLL) {
+        // Bounce: one traversal covers text_w - content_w.
+        dist = text_w - content_w;
+    } else {
+        // Circular: text_w plus the 3-space gap LVGL inserts between laps.
+        const lv_font_t *font = lv_obj_get_style_text_font(lbl, LV_PART_MAIN);
+        const int32_t space_w = lv_font_get_glyph_width(font, ' ', ' ');
+        dist = text_w + space_w * LV_LABEL_WAIT_CHAR_COUNT;
+    }
+    if (dist <= 0) return;  // nothing to scroll
+
+    uint32_t dur = (uint32_t)(((int64_t)dist * 1000) / ctx->px_s);
+    if (dur < 1) dur = 1;
+    if (lv_obj_get_style_anim_duration(lbl, LV_PART_MAIN) != dur) {
+        lv_obj_set_style_anim_duration(lbl, dur, 0);
+    }
+}
+
+void label_scroll_speed_size_cb(lv_event_t *e)
+{
+    label_scroll_speed_apply(static_cast<lv_obj_t *>(lv_event_get_target(e)));
+}
+
+void label_scroll_speed_layout_cb(lv_event_t *e)
+{
+    label_scroll_speed_apply(static_cast<lv_obj_t *>(lv_event_get_user_data(e)));
+}
+
+void label_scroll_speed_delete_cb(lv_event_t *e)
+{
+    lv_obj_t *lbl = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    auto *ctx = static_cast<LabelScrollSpeed *>(lv_obj_get_user_data(lbl));
+    if (ctx) {
+        if (ctx->disp) {
+            lv_display_remove_event_cb_with_user_data(
+                ctx->disp, label_scroll_speed_layout_cb, lbl);
+        }
+        delete ctx;
+    }
+    lv_obj_set_user_data(lbl, nullptr);
+}
 
 lv_obj_t *build_button(lv_obj_t *parent, const touchy_Widget &w)
 {
@@ -249,36 +326,37 @@ lv_obj_t *build_label(lv_obj_t *parent, const touchy_Widget &w)
         lv_label_set_recolor(lbl, true);
     }
     // Stage LB19 — scrolling speed. LVGL drives a scrolling label with the
-    // `anim_duration` style property, and re-reads it every time the label's
-    // text / size / style changes (lv_label_event → LV_EVENT_STYLE_CHANGED /
-    // SIZE_CHANGED → lv_label_refr_text), so a runtime `text` override keeps
-    // whatever we set here without any extra bookkeeping.
+    // `anim_duration` style property, re-read on every text / size / style
+    // change (lv_label_event → LV_EVENT_STYLE_CHANGED / SIZE_CHANGED →
+    // lv_label_refr_text).
     //
     // Two spellings (proto comment has the full story):
     //   * scroll_duration_ms — a plain ms lap time, applied verbatim. An
     //     exact duration also set from the `"anim_duration"` runtime
     //     property override, so this one is just the authoring-time form.
-    //   * scroll_speed_px_s — a speed, which LVGL stores *encoded*
-    //     (lv_anim_speed_clamped + LV_ANIM_SPEED_MASK) and re-resolves
-    //     against the real travel distance on every refresh — that is what
-    //     keeps px/s constant when the host changes the text at runtime.
-    //     The min/max lap clamps match LVGL's own default (300 ms..10 s).
-    //
-    // The encoded value round-trips through the style perfectly: the
-    // generated setter stores `.num = (int32_t)value` and the getter returns
-    // `(uint32_t)v.num`, and lv_anim_resolve_speed() masks the top bit.
+    //   * scroll_speed_px_s — a speed. LVGL's own speed encoding caps a lap
+    //     at ~10.23 s, which is far too short for a long label on a small
+    //     display, so we compute the exact lap duration from the label's real
+    //     text width once it is laid out (label_scroll_speed_apply()) and
+    //     keep it in sync on size / text changes.
     if (w.kind.label.has_scroll_duration_ms && w.kind.label.scroll_duration_ms > 0) {
         lv_obj_set_style_anim_duration(lbl, w.kind.label.scroll_duration_ms, 0);
     } else if (w.kind.label.has_scroll_speed_px_s && w.kind.label.scroll_speed_px_s > 0) {
-        // Speed is encoded in 10 px/s steps and lv_anim_resolve_speed()
-        // divides by it, so anything that would round to 0 (< 5) has to be
-        // clamped away. 10 px/s is also the slowest expressible speed.
         uint32_t px_s = w.kind.label.scroll_speed_px_s;
         if (px_s < LABEL_SCROLL_MIN_PX_S) px_s = LABEL_SCROLL_MIN_PX_S;
         if (px_s > LABEL_SCROLL_MAX_PX_S) px_s = LABEL_SCROLL_MAX_PX_S;
-        lv_obj_set_style_anim_duration(
-            lbl, lv_anim_speed_clamped(px_s, LABEL_SCROLL_MIN_LAP_MS,
-                                       LABEL_SCROLL_MAX_LAP_MS), 0);
+        auto *ctx = new (std::nothrow) LabelScrollSpeed{px_s, lv_obj_get_display(lbl)};
+        if (ctx) {
+            lv_obj_set_user_data(lbl, ctx);
+            lv_obj_add_event_cb(lbl, label_scroll_speed_size_cb,
+                                LV_EVENT_SIZE_CHANGED, nullptr);
+            lv_obj_add_event_cb(lbl, label_scroll_speed_delete_cb,
+                                LV_EVENT_DELETE, nullptr);
+            if (ctx->disp) {
+                lv_display_add_event_cb(ctx->disp, label_scroll_speed_layout_cb,
+                                        LV_EVENT_UPDATE_LAYOUT_COMPLETED, lbl);
+            }
+        }
     }
     ESP_LOGI(TAG,
              "build_label id='%s' text='%.40s' text_align=%d long_mode=%d recolor=%d "

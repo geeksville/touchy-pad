@@ -95,7 +95,7 @@ s += label("ticker", text="#00FF00 live# " * 3, recolor=True,
 | | Meaning | When to use it |
 |---|---|---|
 | `scroll_duration_ms=MS` | Exact LVGL-native knob: milliseconds for **one traversal** (a "lap"), honoured verbatim. Smaller = faster. | You know the lap time you want, or you want a `SCROLL` *bounce* that always takes the same time end-to-end. |
-| `scroll_speed_px_s=PX` | Speed in pixels per second, `SCROLL_SPEED_MIN_PX_S`…`SCROLL_SPEED_MAX_PX_S` (10…10000; LVGL rounds to 10 px/s steps and clamps the lap to 300 ms…10 s). | You want the text to *look* like it moves at a constant speed — including after a runtime `text` override changes the text length. |
+| `scroll_speed_px_s=PX` | Speed in pixels per second, `SCROLL_SPEED_MIN_PX_S`…`SCROLL_SPEED_MAX_PX_S` (10…10000). The device computes the exact lap duration from the label's real text width (no upper lap-time clamp), so a long label on a small display still moves at the requested px/s. | You want the text to *look* like it moves at a constant speed — including after a runtime `text` override changes the text length. |
 
 The two differ only in what stays constant when the text changes underneath: a
 *duration* keeps the lap time (longer text therefore scrolls faster), a
@@ -130,6 +130,14 @@ duration_ms ≈ 1000 × distance_px / speed_px_s
 
 At the default 40 px/s a 480 px-wide lap takes about 12 s — set
 `scroll_duration_ms` / `scroll_speed_px_s` if you want it brisker.
+
+> **Note:** the 300 ms…10 s clamp above is LVGL's *default* (unset) behaviour.
+> An explicit `scroll_speed_px_s` does **not** use LVGL's speed encoding — the
+> firmware computes the exact lap duration from the label's real text width, so
+> there is no upper clamp. This matters on small displays: LVGL's encoding packs
+> the lap into a 10-bit field and caps it at ~10.23 s, so a long label (e.g. 200
+> chars on an 8×8 LED matrix, ~1000 px) at 10 px/s would otherwise scroll ~10×
+> too fast.
 
 #### Re-timing a live label (no re-upload)
 
