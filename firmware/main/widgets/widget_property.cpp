@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,34 @@ lv_obj_t *find_active(const char *id)
         if (e.id == id) return e.obj;
     }
     return nullptr;
+}
+
+// Stage lb21 (fork-review fix) — drop a widget from the registry when LVGL
+// destroys it.
+//
+// `widget_refs_change()` tears an in-place WidgetRef subtree down and rebuilds
+// it, so `s_active` used to keep `lv_obj_t*` pointers to objects that no longer
+// existed: a later set_property could write through freed memory, and the ids
+// of the rebuilt widgets never left `s_pending`.
+// `lv_obj_tree.c::obj_delete_core()` sends LV_EVENT_DELETE to the object and
+// then recurses into every child, so hooking this keeps the registry truthful
+// for *every* teardown path — full screen reload, in-place ref swap, plain
+// widget delete — without having to replicate the Stage-85 descendant walk in
+// a second place.
+//
+// Match by pointer, not by id: a rebuild normally creates a widget carrying the
+// same `Widget.id` as the one being deleted, and the fresh object must survive.
+void delete_cb(lv_event_t *e)
+{
+    lv_obj_t *obj = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    if (!obj) return;
+    auto drop = [obj](std::vector<IdObj> &v) {
+        v.erase(std::remove_if(v.begin(), v.end(),
+                               [obj](const IdObj &entry) { return entry.obj == obj; }),
+                v.end());
+    };
+    drop(s_active);
+    drop(s_pending);
 }
 
 #if LV_USE_OBJ_PROPERTY
@@ -233,6 +262,12 @@ void widget_property_register(const char *id, lv_obj_t *obj)
 {
     if (!id || id[0] == '\0' || !obj) return;
     s_pending.push_back(IdObj{ std::string(id), obj });
+    // Stage lb21 (fork-review fix) — track this object's destruction so the
+    // registry can never hand a freed pointer back to set_property(). One
+    // callback per identified widget; registering the same object twice (a
+    // build path that both expands a ref and registers its inner widget) only
+    // adds a redundant callback that finds nothing to erase.
+    lv_obj_add_event_cb(obj, delete_cb, LV_EVENT_DELETE, nullptr);
     // Re-apply any sticky overrides that target this widget.
     for (auto &ov : s_overrides) {
         if (ov.widget_id == id) apply_to_obj(obj, ov.cmd);
@@ -242,5 +277,30 @@ void widget_property_register(const char *id, lv_obj_t *obj)
 void widget_property_build_commit()
 {
     s_active = std::move(s_pending);
+    s_pending.clear();
+}
+
+void widget_property_build_merge()
+{
+    // Stage lb21 (fork-review fix) — promote the ids registered by a *partial*
+    // rebuild (an in-place WidgetRef swap) without disturbing the widgets that
+    // rebuild did not touch. `widget_property_build_commit()` cannot be used
+    // here: it replaces the whole map with just the swapped subtree, which
+    // would strand every override target outside it (the chrome's prev/next
+    // buttons, sibling refs, ...).
+    //
+    // Same id ⇒ newer object: the swap deleted the previous object, so its
+    // entry is stale even if the LV_EVENT_DELETE hook somehow did not run.
+    // Last registration wins, matching "the widget the host can see now".
+    for (auto &pending : s_pending) {
+        for (size_t i = 0; i < s_active.size();) {
+            if (s_active[i].id == pending.id) {
+                s_active.erase(s_active.begin() + i);
+            } else {
+                i++;
+            }
+        }
+        s_active.push_back(std::move(pending));
+    }
     s_pending.clear();
 }

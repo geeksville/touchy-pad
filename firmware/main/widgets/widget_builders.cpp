@@ -1480,6 +1480,12 @@ bool widget_refs_change(const char *target_id, const char *new_path)
                 apply_rect(obj, *outer, absolute_layout, parent_layout);
             }
             if (w->centered) lv_obj_center(obj);
+            // Stage lb21 (fork-review fix) — mirror widget_build_children: the
+            // resolved root of the swapped page is a property target too. The
+            // rebuild used to register only *nested* widgets (widget_build()
+            // recurses into a layout's children), so a page whose body is a
+            // single leaf — e.g. one `label` — never became addressable at all.
+            widget_property_register(w->id, obj);
             if (g_pending_refs.size() > pre) {
                 ActiveRef &back = g_pending_refs.back();
                 back.parent          = parent;
@@ -1502,6 +1508,12 @@ bool widget_refs_change(const char *target_id, const char *new_path)
     }
     g_pending_refs.clear();
     g_ref_expansion.clear();
+    // Stage lb21 (fork-review fix) — the same splice for the property
+    // registry: *merge* (never replace) the ids this rebuild registered into
+    // the live map, so a set_property arriving after the swap finds the new
+    // objects, the widgets we did not touch keep their entries, and the old
+    // objects' entries were already dropped by the LV_EVENT_DELETE hook.
+    widget_property_build_merge();
     return true;
 }
 

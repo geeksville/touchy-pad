@@ -1,10 +1,14 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-15 (**Stage lb20** — FS write-transaction recovery: a
-`FileCloseCmd` with the wrong handle used to wedge every later `F:` write with
-`IO_ERROR` until reset; `Fs::abortWrite()` now aborts on mismatch and self-heals
-at open. Firmware only, no wire change; the on-hardware repro still needs a
-run). Before that: 2026-11-06 (**lb19 follow-up fix** — `scroll_speed_px_s` was
+**Last updated:** 2026-11-15 (**Stages lb20 + lb21** — the two firmware bugs from
+the fork review. lb20: a `FileCloseCmd` with the wrong handle used to wedge every
+later `F:` write with `IO_ERROR` until reset; `Fs::abortWrite()` now aborts on
+mismatch and self-heals at open. lb21: property overrides now survive an
+in-place `WidgetRef` swap — an `LV_EVENT_DELETE` hook keeps the registry free of
+dangling pointers and `widget_property_build_merge()` promotes the rebuilt ids,
+plus the swapped page's resolved root is registered. Both firmware-only, no wire
+change; only the on-hardware runs remain). Before that: 2026-11-06 (**lb19
+follow-up fix** — `scroll_speed_px_s` was
 capped at a ~10 s lap by LVGL's speed encoding, so long labels on small displays
 scrolled far too fast; the firmware now computes the exact lap duration itself.
 See `docs/plans/label-scroll-speed.md` §10). Before that: **Stage lb19** — custom
@@ -379,7 +383,9 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
 
 0. **Fork-review follow-ups (@jellydn's four proposed PRs, 2026-11-15).** Two of
    the four are **confirmed firmware bugs** — decided: **we fix those upstream
-   ourselves**, and ask the reporter only for the two host/just PRs. Plans:
+   ourselves**, and ask the reporter only for the two host/just PRs. **Both
+   firmware fixes are now done (lb20 + lb21); only the on-hardware runs are
+   outstanding.** Plans:
    * `docs/plans/fs-write-transaction-recovery.md` — a `FileCloseCmd` with a
      wrong handle clears `fs.cpp`'s global registry but leaves `FlashFs`'s
      `g_txn` set → every later `F:` write `IO_ERROR`s until reset.
@@ -389,7 +395,11 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
    * `docs/plans/widget-ref-property-overrides.md` —
      `widget_refs_change()` never promotes the `widget_property` registry, so
      `set_properties` misses pages shown by `show_user_screen()` and `s_active`
-     holds dangling pointers to deleted LVGL objects. **Ours.**
+     holds dangling pointers to deleted LVGL objects.
+     **DONE — Stage lb21** (`LV_EVENT_DELETE` hook + `widget_property_build_merge()`
+     called from `widget_refs_change()`, plus registering the swapped page's
+     resolved root; `just firmware-build` green for `jc4827w543`; on-hardware
+     check still to run).
    * **PR wanted from the reporter (1):** a portable `just flash` — the recipe
      hard-codes the devcontainer's
      `~/.espressif/tools/activate_idf_v6.1.sh` and `/host/dev/tty{ACM,USB}*`

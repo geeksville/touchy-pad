@@ -52,12 +52,15 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   boards default to **10 %** when the pref is unset. **Done — Stage lb18** (the
   LED default landed; `platform_is_led_matrix()` + `Prefs` explicit-flag).
 
-* `docs/plans/widget-ref-property-overrides.md` — **open (fork review)**:
-  `widget_refs_change()` never promotes the property registry after an in-place
-  `WidgetRef` swap, so `set_properties` misses pages shown by
-  `show_user_screen()` and `s_active` keeps dangling pointers to deleted LVGL
-  objects. Fix: `LV_EVENT_DELETE` hook + a *merge* (not replace) promote call at
-  the end of `widget_refs_change()`. Firmware-only.
+* `docs/plans/widget-ref-property-overrides.md` — **done — Stage lb21**:
+  `widget_refs_change()` never promoted the property registry after an in-place
+  `WidgetRef` swap, so `set_properties` missed pages shown by
+  `show_user_screen()` and `s_active` kept dangling pointers to deleted LVGL
+  objects. Fix: an `LV_EVENT_DELETE` hook per identified widget (LVGL recurses
+  into children) + `widget_property_build_merge()` (merge, never replace) called
+  from `widget_refs_change()`, plus registering the swapped page's resolved root
+  (a leaf-root page was never addressable). Firmware-only, no wire change;
+  on-hardware check still to run.
 * `docs/plans/fs-write-transaction-recovery.md` — **done — Stage lb20**: a
   `FileCloseCmd` with the wrong handle cleared the global write registry but left
   `FlashFs`'s `g_txn` set, so every later `F:` write failed with `IO_ERROR`

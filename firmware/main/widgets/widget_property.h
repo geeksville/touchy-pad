@@ -44,9 +44,17 @@ bool widget_property_set_batch(const touchy_SetPropertiesCmd &cmds);
 // Screen-build hooks (called under the LVGL lock by the screen loader):
 //   * widget_property_build_reset()   — start a fresh pending id→obj map.
 //   * widget_property_register(id,obj) — record a built widget and apply
-//     any matching sticky override to it right away.
+//     any matching sticky override to it right away. Also arms an
+//     LV_EVENT_DELETE hook, so the registry drops the object the moment LVGL
+//     destroys it and never keeps a dangling pointer.
 //   * widget_property_build_commit()  — promote the pending map to active
-//     once the new screen has replaced the old.
+//     once a *whole* new screen has replaced the old. Replaces the map.
+//   * widget_property_build_merge()   — promote the pending map into the
+//     active one, keeping the entries the rebuild did not touch. This is the
+//     one an in-place WidgetRef swap (`widget_refs_change()`) must use:
+//     `build_commit()` there would drop every widget outside the swapped
+//     subtree (the chrome's prev/next, sibling refs, ...).
 void widget_property_build_reset();
 void widget_property_register(const char *id, lv_obj_t *obj);
 void widget_property_build_commit();
+void widget_property_build_merge();

@@ -149,7 +149,7 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
-`lb` line (lb5–lb20) are **done**. Latest active wire-format:
+`lb` line (lb5–lb21) are **done**. Latest active wire-format:
 `Widget.Version.CURRENT == 30`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
 `PreferencesFile.Version.CURRENT == 9`.
@@ -858,6 +858,29 @@ Highlights worth remembering:
   nothing is in flight, any FS-level transaction is garbage and must be aborted,
   never committed. Firmware-only, no wire change. Plan:
   `docs/plans/fs-write-transaction-recovery.md`.
+
+- **Stage lb21 (property overrides survive in-place WidgetRef swaps).**
+  `show_user_screen()` sends an `ActionChangeWidgetRef` →
+  `widget_refs_change()` (`widget_builders.cpp`), the Stage-57 in-place rebind.
+  That path tore the subtree down and rebuilt it but never reached
+  `widget_property_build_commit()` (only the full-screen `widget_refs_commit()`
+  calls it), so the rebuilt ids stayed in `s_pending` (a post-swap
+  `set_property` silently did nothing) and `s_active` kept `lv_obj_t*` pointers
+  to the deleted objects (a possible **use-after-free** via `find_active()`).
+  Rewriting the `.pb` "worked" only because `widget_property_register()`
+  re-applies stored overrides at build time. Fix: (a) `widget_property_register()`
+  arms an `LV_EVENT_DELETE` hook (`delete_cb`) so an object drops itself from
+  `s_active`/`s_pending` the moment LVGL destroys it — `obj_delete_core()`
+  recurses into every child, so this covers *all* teardown paths, and matching is
+  by pointer so a rebuilt widget reusing the same `Widget.id` survives; (b) new
+  `widget_property_build_merge()` promotes pending ids **into** the live map
+  (same id ⇒ newer object wins) — `build_commit()` would replace the whole map
+  and drop the chrome/sibling refs, so it must not be used there; (c)
+  `widget_refs_change()` calls the merge after splicing `g_pending_refs`, and now
+  also registers the swapped page's *resolved root* to mirror
+  `widget_build_children()` (a page body that is a single leaf was never
+  addressable at all). Firmware-only, no wire change. Plan:
+  `docs/plans/widget-ref-property-overrides.md`.
 
 
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host

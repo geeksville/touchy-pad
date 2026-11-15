@@ -1,8 +1,8 @@
 # Property overrides break after an in-place WidgetRef swap
 
-**Status:** open — found during a fork-review (jellydn), reproduced by reading the
-code. Firmware-only fix, **being implemented upstream by the maintainer** (no PR
-requested from the reporter).
+**Status: DONE — Stage lb21.** Implemented upstream by the maintainer (no PR
+requested from the reporter). `just firmware-build` green; the on-hardware check
+below is still to run. See `docs/design.md` → "Stage lb21".
 
 ## Goal / summary
 
@@ -116,3 +116,34 @@ Firmware has no unit tests, so:
   object being deleted? Verify against the vendored LVGL v9 before relying on
   the hook alone (if children do not fire it, keep collect-before-delete as a
   belt and braces).
+
+## Outcome (Stage lb21 — implemented)
+
+Shipped as phased above, with two findings from the implementation:
+
+* **Resolved open question:** `lv_obj_tree.c::obj_delete_core()` sends
+  `LV_EVENT_DELETE` to the object and *then* recurses into every child (and
+  `lv_obj_clean()` calls `obj_delete_core()` per direct child), so **every**
+  descendant gets its own event. The hook alone is therefore sufficient and the
+  collect-before-delete walk was not added. Matching is by `lv_obj_t*`, not by
+  id, so the rebuilt widget that reuses the old `Widget.id` is unaffected.
+* **Second, independent gap found while implementing:** `widget_refs_change()`'s
+  non-layer branch built the resolved root with `widget_build()` but never
+  registered it, while `widget_build_layer()` *does* register a non-layout root
+  and `widget_build_children()` registers every child. A page body that is a
+  single leaf (exactly the reporter's "my clock is one label" case) was
+  therefore invisible to `set_property` even with the merge in place. Added
+  `widget_property_register(w->id, obj)` there.
+
+Files touched (3): `firmware/main/widgets/widget_property.{h,cpp}`,
+`firmware/main/widgets/widget_builders.cpp`. No wire/proto/host change.
+
+**Validated:** `just firmware-build` (default board `jc4827w543`) green with
+zero warnings.
+
+**Still open (needs hardware):** the repro in *Testing strategy* — live
+`set_properties(text)` on a `show_user_screen()` page without rewriting the
+`.pb`, plus ~500 page-swap churn while setting properties (proves the dangling
+pointer is gone) and a chrome-widget override surviving a swap (proves the merge
+kept the untouched entries). No pytest is possible: the simulator keeps its own
+proto-level override table and never runs this C++.

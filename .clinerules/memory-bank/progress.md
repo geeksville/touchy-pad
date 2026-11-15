@@ -36,6 +36,35 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   again must succeed); there is no pytest for it — the simulator has no
   handle/`IO_ERROR` model. Plan: `docs/plans/fs-write-transaction-recovery.md`
   (its §"Outcome" has the script).
+
+### Stage lb21 — property overrides survive in-place WidgetRef swaps (2026-11-15)
+
+* **Bug (same fork review, @jellydn):** on a page shown with
+  `show_user_screen()`, `set_properties` did nothing to a label — the only way to
+  repaint was to rewrite the page's `.pb`. `widget_refs_change()` (the Stage-57
+  in-place rebind behind `ActionChangeWidgetRef` and the Stage-85
+  `widget_refs_rebuild_by_path()` fast path) rebuilt the subtree but never
+  promoted the property registry: the new ids stayed in `s_pending`, and
+  `s_active` kept `lv_obj_t*` pointers to the objects the swap had just deleted
+  (use-after-free via `find_active()`). Rewriting the `.pb` only "worked"
+  because `widget_property_register()` re-applies stored overrides at build time.
+* **Fix (3 files):** (a) `delete_cb` — an `LV_EVENT_DELETE` hook armed by
+  `widget_property_register()`; verified in the vendored LVGL that
+  `obj_delete_core()` recurses, so every descendant fires it, and matching is by
+  pointer so the rebuilt widget that reuses the old `Widget.id` survives;
+  (b) `widget_property_build_merge()` — splice pending ids into the live map,
+  same id ⇒ newer object wins (`build_commit()` would *replace* the map and drop
+  chrome/sibling entries, so it must not be used on this path);
+  (c) `widget_refs_change()` calls the merge after the `g_pending_refs` splice and
+  now registers the swapped page's *resolved root* to mirror
+  `widget_build_children()` — a page body that is a single leaf (the reporter's
+  one-label clock) was never registered at all.
+* No wire change (versions untouched), no host/`rust/`/sim change, no client
+  workaround needed. `just firmware-build` green for `jc4827w543`, zero warnings.
+  **On-hardware check still to run** (live `set_properties(text)` after
+  `show_user_screen()`, ~500-swap churn, chrome override surviving a swap) — no
+  pytest is possible, the simulator has its own proto-level override table.
+  Plan: `docs/plans/widget-ref-property-overrides.md`.
 ### Repo housekeeping — googly-vr + voicebot submodules removed (2026-11-04)
 
 * Both apps are now developed in a different container/repo, so their submodules

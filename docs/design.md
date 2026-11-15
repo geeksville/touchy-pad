@@ -6122,6 +6122,89 @@ with touchy_open() as pad:
 
 Plan: `docs/plans/fs-write-transaction-recovery.md`.
 
+## Stage lb21: property overrides survive in-place WidgetRef swaps — DONE
+
+**Status: implemented (firmware only; no wire change, no version bump).**
+
+Reported from the same fork review (@jellydn): on a page shown with
+`show_user_screen()`, `set_property`/`set_properties` did not change a label —
+the only way to repaint it was to rewrite the page's `.pb`. The reporter's
+diagnosis (no `widget_property_build_commit()` after the rebuild, plus dangling
+`s_active` pointers) was correct.
+
+**Root cause.** `show_user_screen()` sends an `ActionChangeWidgetRef`, which
+runs `widget_refs_change()` (`firmware/main/widgets/widget_builders.cpp`) — the
+Stage-57 in-place rebind that tears a `WidgetRef`'s subtree down and rebuilds it
+from the new file. That path called `widget_refs_reset_pending()` (which clears
+the property registry's pending map) and rebuilt, splices the new `ActiveRef`s
+into `g_active_refs`, and returned. It never reached
+`widget_property_build_commit()` — the only caller is the full-screen
+`widget_refs_commit()` — so:
+
+* the rebuilt widgets' ids stayed in `s_pending` and `find_active()` never saw
+  them, so a `set_property` issued *after* the swap silently did nothing; and
+* `s_active` kept `lv_obj_t*` pointers to the objects the swap had just
+  deleted, so `find_active()` could return a **dangling pointer** and
+  `lv_obj_set_property()`/`lv_obj_invalidate()` would touch freed memory.
+
+Why rewriting the `.pb` "worked": `widget_property_register()` re-applies the
+stored overrides at *build* time, so any rebuild picked them up — only the
+set-after-the-swap path was broken. The same bug applied to the Stage-85 fast
+path `widget_refs_rebuild_by_path()` (any `.pb`/image rewrite), i.e. OpenDeck
+keys too.
+
+**What changed.**
+
+* **`LV_EVENT_DELETE` hook** (`widget_property.cpp::delete_cb`, armed by
+  `widget_property_register()`): LVGL's `obj_delete_core()` sends the event to
+  the object *and* recurses into every child, so an object removes itself from
+  `s_active`/`s_pending` the moment it is destroyed. That kills the
+  dangling-pointer class of bug for **every** teardown path (full reload,
+  ref swap, widget delete) instead of just the swap, and removed the need to
+  replicate the Stage-85 descendant walk. Matching is by **pointer**, not by
+  id, so a rebuilt widget carrying the same `Widget.id` as the one being
+  deleted survives.
+* **`widget_property_build_merge()`**: promotes the pending ids into the live
+  map, *keeping* entries the rebuild did not touch (same id ⇒ newer object wins).
+  `widget_property_build_commit()` cannot be reused here — it does
+  `s_active = std::move(s_pending)`, which would drop every override target
+  outside the swapped subtree (the chrome's prev/next buttons, sibling refs).
+* **`widget_refs_change()`** now calls the merge after splicing
+  `g_pending_refs`, and registers the *resolved root* of the swapped page
+  (`widget_property_register(w->id, obj)`) to mirror `widget_build_children()`.
+  That last part was a second, independent gap found while implementing: a page
+  whose body is a single leaf (e.g. one `label`) was never registered at all on
+  the swap path, while the full-load `widget_build_layer()` does register a
+  non-layout root.
+
+No host-side change and no client workaround — the reporter's page rewrite loop
+is no longer needed.
+
+**Verification.** `just firmware-build` green for the default board
+(`jc4827w543`), no new warnings. On hardware:
+
+```python
+import time
+from touchy_pad import touchy_open
+from touchy_pad.api import build_property_override
+from touchy_pad.api.screens import label
+
+with touchy_open() as pad:
+    pad.user_screen_save("probe", label("clock", "boot"))   # leaf-root page
+    pad.show_user_screen("probe")
+    for i in range(10):                                    # no .pb rewrite!
+        pad.set_properties([build_property_override("clock", "text", f"tick {i}")])
+        time.sleep(0.2)
+```
+
+The label must count up live. Then churn `show_user_screen("probe")` /
+`show_user_screen("other")` a few hundred times while setting a property on
+each — no reboot or corruption (pre-fix this walks the dangling pointer), and
+an override on a chrome widget (e.g. the prev button) must still apply after a
+swap (proves the merge did not replace the registry).
+
+Plan: `docs/plans/widget-ref-property-overrides.md`.
+
 
 # Old/Existing projects
 
