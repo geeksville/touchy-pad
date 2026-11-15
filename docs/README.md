@@ -8,3 +8,5 @@
 * Firmware [build instructions and development hints](../firmware/README.md)
 * [Developer setup](development.md) — new-machine setup, just recipes, git hooks
 * [Rust client API](rust-api.md) — async `touchy-pad` crate + `touchy-demo`
+* [llms.txt](../llms.txt) — single-file orientation for AI agents writing host
+  code against the Python/Rust APIs (mental model, working snippets, gotchas)

@@ -510,3 +510,10 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
 * Documentation is dense and mostly accurate — prefer reading
   `docs/design.md` + `AGENTS.md` over re-deriving behaviour from code, but
   verify claims that look version-specific (see the two drifts above).
+* **`llms.txt` at the repo root (added 2026-11-15)** is the single-file
+  orientation for AI agents writing *host* code: mental model, Python + Rust
+  snippets, LCD/LED guidance, gotchas, and links to the deeper docs. It is linked
+  from `docs/README.md`. Keep it in sync when the host API or wire versions
+  change (it states `Widget.Version` 30 / `ProtocolVersion` 14 / prefs 9), and
+  re-verify its snippets by running them against the in-process simulator
+  (`create_sim_device()` + `touchy_open()`), not just by reading.

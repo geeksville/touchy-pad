@@ -1,0 +1,630 @@
+# Touchy-Pad
+
+> Touchy-Pad is an open-source firmware + host SDK that turns cheap ($15–30)
+> ESP32 boards into **host-driven displays**: multitouch LCD touchpads,
+> StreamDeck-style macro keypads, and LED-matrix art panels. The device is a
+> *dumb renderer* — your host program (Python or Rust) authors a protobuf widget
+> tree, uploads it over USB / UART / WiFi-HTTP, and the device renders it with
+> LVGL and reports touches back. Macros and gestures compile into on-device
+> `Action` lists, so a keypad keeps working with no host process attached.
+
+Read this file first, then follow the links in the last section for depth. It is
+written for an AI coding agent that wants to *make something* with Touchy-Pad:
+author screens, drive LCD or LED panels, stream live updates, bind gestures.
+
+## Facts you must know before writing code
+
+- **Two supported host APIs.** Python: the `touchy_pad.api` package (PyPI
+  `touchy-pad`). Rust: the async `touchy-pad` crate in `rust/touchy-pad/`.
+  Everything else (`touchy_pad._proto`, `sim/`, `cli.py`) is internal.
+- **One protocol, every transport.** Self-synchronising frames
+  `MAGIC(0xA5 0x5A) | LEN(u16 LE) | payload | CRC8` over USB vendor bulk,
+  USB-CDC-ACM, hardware UART, or TCP (the simulator). The *same* `Command` /
+  `Response` messages also ride a bare (unframed) protobuf **or JSON** HTTP(S)
+  endpoint, so `curl` can drive a panel too.
+- **Screens are protobuf, not XML/HTML.** Widgets are LVGL objects described by
+  `proto/widgets.proto`. The device is layout-agnostic: it materialises whatever
+  tree you send.
+- **Wire versions at HEAD:** `Widget.Version.CURRENT == 30`,
+  `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
+  `PreferencesFile.Version.CURRENT == 9`. The version lives on the **root
+  `Widget`** of every screen/widget file (there is no `Screen.Version`); the
+  host DSL stamps it for you — only hand-build it for raw protobuf.
+- **The firmware has no unit tests.** Host-side `pytest` (`just app-test`)
+  only. Every host feature is developed against the **simulator**, which speaks
+  the real wire protocol.
+- **You do not need hardware to develop.** `touchy --sim-headless`,
+  `touchy --sim-gui`, or a standalone `touchy simulator` + `TOUCHY_SIM_URL`.
+
+## The mental model
+
+```text
+your script (Python / Rust)                        $15 ESP32 board
+  screens DSL        -> Screen / Widget protobuf  ─USB/UART/HTTP─>  LVGL renders it
+  macros + actions   -> Action lists                                user touches it
+  ImageCache         -> hashed assets on T:       <───────────────  events + USB HID out
+```
+
+- **You author screens; the device stores them.** `pad.screen_save(screen)`
+  writes `F:host/s/<name>.pb` (persistent LittleFS). `pad.screen_load(...)`
+  activates one.
+- **The stock chrome + "user screens" is the usual path.** `F:host/s/default.pb`
+  is a prev/next bar plus a body `widget_ref(id="page")`.
+  `pad.user_screen_save("demo", widget)` writes `F:host/uscr/demo.pb` and
+  `pad.show_user_screen("demo")` points that ref at it — your UI without
+  replacing the chrome.
+- **Behaviour lives on the device.** `macro_action([...])` becomes a device-side
+  HID sequence (keyboard / mouse / consumer keys) that works with no host
+  running. `host_action(on_event=cb)` instead sends an event back to your
+  process. Both are just `Action` lists attached to a widget.
+- **The host can mutate a live screen** without re-uploading it:
+  `pad.set_properties([...])` applies sticky, session-scoped LVGL property
+  overrides (text, colour, geometry, `anim_duration`, …) in one RPC, and counts
+  as display activity (it wakes / keeps awake the backlight).
+- **Drive-prefixed paths everywhere:** `F:` persistent flash (LittleFS),
+  `R:` volatile PSRAM ramdisk, `T:` transient drive (PSRAM ramdisk, or flash
+  scratch on no-PSRAM boards). Screens `F:host/s/`, user pages `F:host/uscr/`,
+  standalone widgets `F:host/w/`, images wherever you like.
+
+## Install and connect (Python)
+
+```sh
+pip install touchy-pad          # host library + the `touchy` CLI
+pip install 'touchy-pad[sim]'   # + PySide6 simulator window
+touchy update                   # flash the right firmware onto a connected board
+touchy init                     # provision chrome + a trackpad page on a fresh device
+```
+
+```python
+from touchy_pad.api import touchy_open, touchy_get_pad_ids
+
+print("attached:", touchy_get_pad_ids())        # stable serials, e.g. ["t0a1b2c3d4e5f"]
+
+with touchy_open() as pad:                      # serial= to pick a specific device
+    info = pad.board_info                       # a SysBoardInfoResponse
+    print(info.board_name,                      # "jc4827w543", "esp32_s3_matrix", "sim", …
+          info.display_width, info.display_height,
+          "touch:", info.is_touchable, "multitouch:", info.is_multitouch,
+          "usb:", info.has_usb, "serial:", info.serial)
+```
+
+`touchy_open(serial=None, *, url=None)` resolution order: `url=` / `TOUCHY_URL`
+(HTTP(S) endpoint) → native USB → `uart:<path>` serial bridge → `TOUCHY_SIM_URL`
+simulator → in-process simulator. It raises `IncompatibleFirmwareError` when the
+device firmware is older than `MINIMUM_FIRMWARE_VERSION`. `Touchy` is a context
+manager: leaving the `with` stops the background event-poller thread and closes
+the transport.
+
+Useful `pad.board_info` fields: `board_name`, `display_width`, `display_height`,
+`is_touchable` (False on LED-matrix boards — hide touch-only UI),
+`is_multitouch`, `has_usb`, `serial`, `protocol_version`,
+`firmware_version_str`, `free_heap_bytes`, `free_psram_bytes`,
+`fs_total_bytes` / `fs_used_bytes` (LittleFS capacity/usage), `temp_is_flash`
+(advisory: `T:` is flash-backed on this board, so throttle high-rate writes).
+
+## Python quickstart — a complete, runnable program
+
+```python
+"""Upload a 2x2 page to the device, show it, and react to taps."""
+from touchy_pad.api import (
+    Layer, grid, cell, label, button,
+    style, host_action, macro_action, macros, hid_keys,
+    protobuf, touchy_open,
+)
+
+
+def build_page() -> protobuf.Widget:
+    """Build one user-screen page body (a single Widget)."""
+    page = Layer(layout=grid(cols=2, rows=2, gap=8))
+
+    page += cell(
+        label("title", text="Status panel", font_size=24,
+              style=style(text_color=0xFFFFFF)),
+        col=0, row=0, col_span=2, grow_x=1,
+    )
+    # Runs on the *device*: emits a real USB keyboard shortcut.
+    page += cell(
+        button("copy", text="Ctrl+C",
+               on_click=macro_action([macros.key_tap(hid_keys.KEY_C, hid_keys.CTRL)])),
+        col=0, row=1, grow_x=1,
+    )
+    # Runs in *this* process: the device sends the event back to us.
+    page += cell(
+        button("ping", text="Ping host",
+               on_click=host_action(on_event=lambda e: print("tapped", e.user_data))),
+        col=1, row=1, grow_x=1,
+    )
+
+    widget = protobuf.Widget()          # Layer -> Widget (the unit the API uploads)
+    page.copy_into(widget)
+    return widget
+
+
+with touchy_open() as pad:
+    pad.user_screen_save("panel", build_page())   # -> F:host/uscr/panel.pb
+    pad.show_user_screen("panel")                 # bring it to the front
+    print("Page is live — tap the device. Ctrl-C to quit.")
+    try:
+        import time
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+```
+
+Inline `host_action(on_event=...)` callbacks are auto-registered when the screen
+or page that references them is uploaded (`screen_save` / `user_screen_save` /
+`widget_save`), so no manual wiring is needed. Callbacks run on the poller
+thread: keep them short and lock any shared state. A fully commented version of
+this program is `app/examples/demo.py`.
+
+## Screen / widget DSL cheat sheet
+
+Almost everything authoring-related is re-exported from `touchy_pad.api` (the
+exception is the low-level animation builders — see the Animations row). The DSL
+builds protobuf messages; `pad.screen_save()` / `user_screen_save()` /
+`widget_save()` upload them.
+
+```python
+from touchy_pad.api import *          # every authoring name in the table below
+from touchy_pad.api import macros     # (macros is a submodule — import it explicitly)
+```
+
+| Area | Names |
+|---|---|
+| Layouts | `absolute()`, `flex(flow, gap)`, `row(gap)`, `col(gap)`, `grid(cols, rows=0, gap=0)`, `cell(w, col, row, col_span=1, row_span=1, *, grow_x, grow_y)`, `rect(x, y, w, h)`, `grow(w, x=, y=)` |
+| Widgets | `button(id, text, on_click, on_press, on_release, …)`, `label(id, text, font_size, text_align, long_mode, recolor, scroll_duration_ms, scroll_speed_px_s, …)`, `slider(id, min, max, value, on_change)`, `toggle(id, on, on_change)`, `checkbox(id, text, checked, on_change)`, `image(id, asset, scale, rotation)`, `image_button(id, asset, pressed_asset, on_click, …, scale, pressed_scale)`, `arc(id, min, max, value)`, `spacer(id)`, `widget_ref(path, *, id)`, `trackpad(id, …)`, `log_line(id)`, `fps(id)`, `force_render(id)` |
+| Styling | `style(bg_color, radius, border_w, pad, text_color, font_size, recolor, recolor_opa, transform_width, shadow_width, for_state, transition)` — colours are `0xRRGGBB` ints; `for_state` is an `LvState` bitmask (e.g. `STATE_PRESSED`). Stack several by passing a list. `transition(props, path, duration_ms, delay_ms)` animates a style change. |
+| Animations | `ripple_animation(...)` and `AnimPath` are re-exported; `animation(*anim_track(...), duration_ms, path, repeat_count, reverse, …)` and `anim_track(prop, start, end, *, start_inverted, end_inverted)` live in `touchy_pad.api.screens` (`prop` is a `StyleProp` member, e.g. `StyleProp.X`). Pass them via the widget factories' `animations=` argument. |
+| Actions | `action(...)`, `host_action(code=None, *, on_event=callable)`, `macro_action(steps)`, `device_action(...)`, `change_widget_ref_action(id, path)`, `next_widget_action(id, dir)` / `prev_widget_action(id, dir)`, `set_image_button_slot_action(id, pressed, path)` |
+| Enums / consts | `AnimPath`, `LongMode`, `LvState`, `StyleProp`, `TextAlign`, `SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S` |
+| Lifecycle | `touchy_open`, `touchy_get_pad_ids`, `Touchy`, `TouchyClient`, `TouchyError`, `IncompatibleFirmwareError`, `ImageCache`, `Color`, `Point`, `build_property_override`, `protobuf` (raw generated classes) |
+| Macros | `macros.key_tap/key_down/key_up/type_text`, `macros.mouse_click/mouse_move/scroll_move/zoom_move/mouse_button_down/mouse_button_up`, `macros.consumer_key(VOLUME_UP\|VOLUME_DOWN\|MUTE\|PLAY_PAUSE)`, `macros.set_delay/delay`, `hid_keys.*` (import `macros` explicitly — it is not part of `import *`) |
+| Upload helpers | `Screen(name, layout=, widgets=, *, top=, sys=, bottom=)`, `Layer(layout=, widgets=)` (use `Layer` when you want a `widget_ref`-style body without a whole screen), `build_default_screen()`, `build_demo_screen()`, `build_setup_screen_touchless()` |
+
+`Touchy` methods: `screen_save(screen, *, name=None) -> name`,
+`screen_load(path)`, `user_screen_save(name, widget, *, drive="F")`,
+`widget_save(name, widget, *, drive="F")`, `show_user_screen(name, *, drive="F")`,
+`file_save(path, data, *, max_width=None, max_height=None)`, `file_delete(path)`,
+`file_reset()`, `set_properties(entries)`, `set_image_button_slot(id, pressed, path)`,
+`on_host_event(code, cb)`, `board_info`, `client` (`TouchyClient`).
+`TouchyClient` (low level) adds `screen_wake()`, `run_actions(actions)`,
+`set_preferences(prefs)`, `get_preferences()`, `set_backlight_level(0..100)`,
+`screen_sleep_timeout(ms)`, `set_min_log_level(level)`, `sys_board_info_get()`,
+`event_consume()`, `stream_events()`.
+
+## Layout and sizing rules (get these right)
+
+The device sizes widgets exactly like LVGL, with one opt-in twist:
+
+- **Everything is content-sized by default.** A button shrinks to its text. There
+  is no implicit stretching — opt in with `grow_x` / `grow_y` (`grow(w, x=1)` or
+  `cell(..., grow_x=1)`).
+- **Flex main axis** (`x` in a `row`, `y` in a `col`) is an `lv_obj_set_flex_grow`
+  *factor* — proportional, so `2` grows twice as fast as `1`.
+- **Flex cross axis** (`y` in a `row`, `x` in a `col`) and **grid** (both axes)
+  treat any value `> 0` as "fill"; the magnitude is ignored.
+- **Grid cells centre by default** (`LV_GRID_ALIGN_CENTER`); use `grow_x`/`grow_y`
+  for `STRETCH`. A `grow_x=1` spacer between two buttons pushes them to opposite
+  edges.
+- **`rect(x, y, w, h)`** only applies under an `absolute()` layout (or as a fixed
+  size hint); `w`/`h` of `0` mean "size to content".
+- **Scrolling labels need a fixed, narrower width** — set it via `rect` or a
+  sizing parent (flex grow / grid stretch). Otherwise `long_mode` never animates.
+- Layering: use a `1x1` `grid` and put several widgets in the same `cell(...)` —
+  LVGL dispatches touch to the last-drawn (topmost) object. That is how the stock
+  trackpad page stacks background / hint / trackpad.
+- `Screen` also exposes LVGL's persistent layers: `add_top()` / `add_sys()` /
+  `add_bottom()` (widgets there survive screen switches until replaced).
+
+## Actions: on-device behaviour vs. host callbacks
+
+An `Action` list on a widget is what makes it *do* something. Two kinds matter:
+
+```python
+from touchy_pad.api import (button, host_action, macro_action, macros, hid_keys,
+                            protobuf, change_widget_ref_action)
+
+    # (1) DEVICE-SIDE: emitted as real USB HID by the device itself —
+    #     works with no host process attached.
+button("paste", text="Paste",
+       on_click=macro_action([macros.key_tap(hid_keys.KEY_V, hid_keys.CTRL)]))
+
+    # (2) HOST-SIDE: the device sends an LvEvent; your callable runs here.
+button("ping", text="Ping",
+       on_click=host_action(on_event=lambda e: print("widget", e.user_data, "fired")))
+```
+
+- `host_action(on_event=...)` allocates a unique code from a reserved range
+  (`>= 0x10000`) and registers the callable automatically on upload. With an
+  explicit code (`host_action(0x100)`, keep it **below** `0x10000`) you must
+  dispatch it yourself: `pad.on_host_event(0x100, cb)`.
+- `LvEvent` fields: `user_data` (the widget id), `value` (sliders),
+  `checked` (toggles/checkboxes), `host_code`, and `code` (`1`=PRESSED,
+  `8`=RELEASED, `7`=CLICKED).
+- **Any** action list can also be fired from the host right now:
+  `pad.client.run_actions([...])` executes it device-side as if a widget had
+  triggered it (this is what `show_user_screen()` uses).
+- Handy macros: `key_tap/key_down/key_up`, `type_text`, `mouse_click`,
+  `mouse_move` (bare call = the trackpad's live per-frame delta),
+  `scroll_move`, `zoom_move`, `mouse_button_down/up`, `set_delay`,
+  `consumer_key(VOLUME_UP | VOLUME_DOWN | MUTE | PLAY_PAUSE)`. Keys live in
+  `hid_keys` (`KEY_*`, `MOD_*`, `CTRL`/`SHIFT`/`ALT` aliases).
+
+## Live updates without re-uploading the screen
+
+```python
+from touchy_pad.api import Color, Point, build_property_override
+
+with touchy_open() as pad:
+    pad.set_properties([
+        build_property_override("welcome", "text", "New message"),   # label text
+        build_property_override("box", "bg_color", Color(0xFF8800)), # colour
+        build_property_override("box", "x", 12),                     # integer prop
+        build_property_override("ticker", "anim_duration", 1000),    # ms per scroll lap
+        build_property_override("welcome", "text", None),            # remove override
+    ])
+```
+
+- `prop` is an **LVGL property name** (`"text"`, `"bg_color"`, `"x"`, `"w"`,
+  `"opa"`, `"anim_duration"`, …) or a raw `lv_prop_id_t` int.
+- Value type selects the wire payload: `bool` → bool, `int` → int, `str` → text,
+  `Color(0xRRGGBB)` → colour, `Point(x, y)` → point, `None` → **remove**.
+  `Color`/`Point` wrappers are required — a bare `int` is always an integer prop.
+- Overrides are **session-scoped (RAM only) and sticky**: they re-apply whenever
+  the target widget is (re)built, and work even if it is not loaded yet. An
+  absent widget is not an error; a malformed entry fails the RPC without
+  aborting the rest.
+- A batch is **one atomic RPC**, repaints immediately, and counts as display
+  activity — it wakes / keeps awake the backlight, so animating at a few Hz
+  needs no explicit `pad.client.screen_wake()`.
+- The simulator honours the subset `x`/`y`/`w`/`h`, `bg_color`, `text`; anything
+  else logs a warning and is ignored.
+
+## Images
+
+```python
+from touchy_pad.api import ImageCache, ImageSource, image, image_button, touchy_open
+
+with touchy_open() as pad:
+    # Upload a PNG/JPEG/BMP/GIF/WebP — auto-converted to LVGL .bin.
+    # max_width/max_height downscale (aspect preserved) before conversion.
+    pad.file_save("F:host/images/logo.png", png_bytes, max_width=128, max_height=128)
+    # -> widget: image("logo", asset="F:host/images/logo.bin")
+
+    cache = ImageCache(pad, max_dim=72)        # one per device, not thread-safe
+    path = cache.set_cached_image(icon_png)    # uploads once, returns T:host/icache/<hash>.bin
+    again = cache.set_cached_image(icon_png)   # cache hit: no device I/O
+    assert path == again
+
+    # Repaint one slot of an on-screen ImageButton in place (no rebuild → the
+    # pressed key keeps its touch state and still emits a release).
+    pad.set_image_button_slot("key_0", pressed=False, path=path)
+```
+
+- **`ImageCache`** is content-addressed (xxh3-128): identical bytes upload once,
+  LRU-evicted after 128 entries, stored under `T:host/icache/`. Build a fresh
+  cache per attach (the first call wipes the cache root). This is the
+  StreamDeck-style repaint path.
+- **`ImageSource`** is a *live* asset bound to a stable `T:dyn/<n>.bin` path:
+  `src = ImageSource(frame_callable, every=0.2)`, put it in
+  `image("w", src)` / `image_button("k", src)`, then `src.update()` (or
+  `src.update(new=pil_image)`) re-renders and **rewrites the file, which is the
+  repaint** — no action, no screen reload. `start()`/`stop()` drive the `every=`
+  background thread. `image()`/`image_button()` also accept a bare
+  `PIL.Image` or `bytes` (auto-wrapped).
+- A `.gif` keeps its extension and stays animated (`lv_gif` decodes it
+  on-device); everything else becomes `.bin`.
+- Prefer `R:`/`T:` for assets rewritten often (icons, animation frames) to avoid
+  flash wear; `F:` for things that should survive reboot.
+
+## Driving an LED-matrix (touch-less) panel
+
+LED boards (`esp32_s3_matrix`, `esp32_s3_devkitc_1`; `jc_esp32p4_m3` is parked)
+have **no touch panel** and, until configured, **no panel at all** — a fresh
+board reports `display_width == 0` and renders nothing. Configure it once from
+the host:
+
+```sh
+touchy pref from-template led-32x8        # 32x8 WS2812B matrix on GPIO 4
+touchy pref from-template led-96x8-chain  # 3 x 32x8 daisy-chained, tiled 96x8
+touchy pref from-template led-32x32-chain
+touchy pref backlight-level 40            # LED boards default to 10 % brightness
+touchy board-info                         # now reports the real 32x8 / 96x8 size
+```
+
+Templates live in `app/src/touchy_pad/assets/templates/*.json`; they install a
+whole `PreferencesFile`, including `board_config` — a chain of up to **4**
+daisy-chained panels on one data GPIO, tiled into one logical surface
+(`tile_by_row=false` → horizontal). Each panel carries wiring flags
+(`rows_snaked` / `cols_snaked` — both default **true** — plus `row_major`,
+`cols_flipped`, `rows_flipped`); edit the JSON and `touchy pref json-set` it, or
+`touchy pref json-get` to read the live config back.
+
+```python
+from touchy_pad.api import absolute, rect, label, StyleProp, Screen, touchy_open
+from touchy_pad.api.screens import animation, anim_track   # not re-exported from .api
+
+with touchy_open() as pad:
+    info = pad.board_info
+    if not info.is_touchable:                       # an LED matrix, not an LCD
+        w, h = info.display_width, info.display_height
+        s = Screen("matrix", layout=absolute())
+        # resolution-independent bounce: end resolves to (axis_max - value),
+        # i.e. the right edge of whatever panel this runs on.
+        s += label("msg", text="HELLO", rect=rect(0, 0, 0, 0),
+                   animations=animation(
+                       anim_track(StyleProp.X, 0, 0, end_inverted=True),
+                       duration_ms=1500, reverse=True, repeat_count=0,
+                   ))
+        pad.screen_save(s)                          # F:host/s/matrix.pb
+        pad.screen_load("F:host/s/matrix.pb")
+```
+
+LED-matrix specifics that matter:
+
+- The **same widget tree renders** to the LED surface (LVGL → pixel strip), so
+  every DSL widget/layout works; only the panel geometry differs. Brightness
+  dims text, shapes **and images**.
+- **Layout pixel-exactly with `absolute()` + `rect(x, y, w, h)`**, or use
+  flex/grid with `grow_*`. Read `display_width` / `display_height` from
+  `pad.board_info` rather than hard-coding a panel size.
+- **Use `start_inverted` / `end_inverted` on `anim_track`** so an animation
+  spans "the whole panel" on any size instead of a baked-in pixel value.
+- `is_touchable == False`, so `touchy init` writes the touch-less animated setup
+  screen (`build_setup_screen_touchless()`), which has **no**
+  `widget_ref(id="page")` — `show_user_screen()` cannot target it. Upload and
+  `screen_load()` your own screen instead.
+- Diagnostics that shine on a matrix: `log_line()` (scrolls device logs on the
+  panel), `fps()`, `force_render()`.
+- `T:` is flash-backed on no-PSRAM boards (`info.temp_is_flash`) — throttle
+  high-rate image rewrites there.
+- The **simulator does not emulate a physical LED matrix**; it renders LVGL
+  screens, so it is fine for layout/logic, not for panel wiring.
+
+## Trackpad and gestures
+
+`trackpad(id, ...)` is the multitouch surface; touches become device-side USB HID
+via `Action` lists. Defaults are seeded so a bare `trackpad("pad")` behaves like
+a normal touchpad (1/2/3-finger clicks, drag, 2-finger scroll); pass `[]` to
+disable a gesture.
+
+```python
+from touchy_pad.api import trackpad, macro_action, mouse_move, mouse_button_down, \
+    mouse_button_up, key_tap, consumer_key, VOLUME_UP, VOLUME_DOWN, hid_keys
+
+trackpad(
+    "pad",
+    scroll_invert_y=True,                      # macOS-style natural scrolling
+    # 1-finger swipe — OFF unless swipe_initial_distance is set
+    swipe_initial_distance=60, swipe_initial_time=300,
+    swipe_consecutive_distance=40, swipe_consecutive_time=200, swipe_angle=30,
+    on_left_swipe=macro_action([key_tap(hid_keys.KEY_LBRACKET)]),
+    # 2-finger pinch-zoom — OFF unless zoom_initial_distance is set
+    zoom_initial_distance=50, zoom_consecutive_distance=25,
+    on_zoom_in=macro_action([key_tap(hid_keys.KEY_EQUAL, hid_keys.CTRL)]),
+    on_zoom_out=macro_action([key_tap(hid_keys.KEY_MINUS, hid_keys.CTRL)]),
+    # 2-finger twist — OFF unless twist_initial_angle is set
+    twist_initial_angle=15, twist_consecutive_angle=5,
+    on_cw_twist=macro_action([consumer_key(VOLUME_UP)]),
+    on_ccw_twist=macro_action([consumer_key(VOLUME_DOWN)]),
+    # press-and-hold (drag-and-drop) — OFF unless hold_time is set
+    tap_time=150, tap_distance=20, hold_time=300,
+    on_hold=macro_action([mouse_button_down()]),
+    on_move=macro_action([mouse_move()]),      # bare move() = live per-frame delta
+    on_hold_release=macro_action([mouse_button_up()]),
+)
+```
+
+Every gesture family is **opt-in via field presence** (the "master switch") and
+**additive** — enabling swipes does not stop drag/scroll. Put a `log_line()` on
+the page to see recognised gestures (`swipe left dx=…`, `zoom in d=…`,
+`twist cw deg=…`) scroll past while you tune thresholds. The stock example is
+`app/src/touchy_pad/pages/trackpad.py`.
+
+## Rust API (async, no libusb)
+
+The `touchy-pad` crate (`rust/touchy-pad/`, edition 2024, tokio) speaks the same
+protocol over a pure-Rust `nusb` USB transport, TCP (simulator), or an optional
+`serial` feature. There is **no screen DSL** in Rust: build
+`touchy_pad::proto::Widget` / `Screen` prost structs directly, or author the
+screen with the Python DSL and push the resulting `.pb` bytes with
+`file_write_raw`. `touchy_pad::proto` is generated from the same `proto/`.
+
+```rust
+use std::sync::Arc;
+use touchy_pad::{Touchy, ImageCache, discover};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Honours TOUCHY_SIM_URL (tcp://host:port); else USB, then UART bridge.
+    let pad = Touchy::open().await?;
+
+    let info = pad.client().sys_board_info_get().await?;
+    println!("{} {}x{} touch={} serial={}",
+             info.board_name, info.display_width, info.display_height,
+             info.is_touchable, info.serial);
+
+    // Images: PNG/JPG/GIF/WebP are auto-converted to LVGL .bin on the host.
+    let png = std::fs::read("key.png")?;
+    pad.file_save("R:host/images/key.png", &png).await?;
+
+    // Content-addressed cache: upload once, repaint by slot swap.
+    let pad = Arc::new(pad);
+    let cache = ImageCache::new(pad.clone());
+    let path = cache.set_cached_image(&png).await?;          // T:host/icache/<hash>.bin
+    pad.set_image_button_slot("key_0", false, &path).await?; // repaint in place
+
+    // Events: one consumer, a tokio mpsc stream of LvEvent.
+    let mut rx = pad.events().await.expect("events() is consumed once");
+    while let Some(evt) = rx.recv().await {
+        println!("{evt:?}");
+    }
+    Ok(())
+}
+```
+
+- `Touchy`: `open()`, `from_transport(Arc<dyn Transport>)`, `client()`,
+  `events()`, `file_save(path, &[u8]) -> path`, `file_write_raw`,
+  `screen_save(path, &Screen)`, `user_screen_save(name, &Widget)`,
+  `widget_save(path, &Widget)`, `show_user_screen(name)`, `screen_load(path)`,
+  `set_image_button_slot(id, pressed, path)`, `close()`.
+- `Client` (via `pad.client()`): `sys_board_info_get`, `screen_wake`,
+  `run_actions(Vec<Action>)`, `set_preferences`, `get_preferences`,
+  `set_backlight_level`, `screen_sleep_timeout`, `set_min_log_level`,
+  `file_open_write`/`file_write`/`file_close`, `event_consume`, `poll`.
+- `discover()` returns `Vec<DiscoveredDevice>` (USB **and** a sim entry when
+  `TOUCHY_SIM_URL` is set); `dev.describe()` / `dev.open()` → `Transport`.
+- `ImageCache::new(Arc<Touchy>)` / `with_max_dim(pad, Some(px))`; `images::to_lvgl_bin` +
+  `normalize_for_device` are the shared normaliser.
+- `TouchyError` variants: `DeviceNotFound`, `Usb`, `Framing`, `Device{code,name}`,
+  `Timeout`, `IncompatibleFirmware`. Note `Touchy::open()` requires the device's
+  `protocol_version` to **equal** the crate's, unlike Python's minimum check.
+- Path constants mirror Python: `touchy_pad::SCREENS_DIR`,
+  `DEFAULT_SCREEN_PATH`, `USER_SCREENS_DIR`, `TEMP_DRIVE`.
+- Build/test with `just rust-test`, `just rust-lint`, `just rust-doc`,
+  `just rust-run -- <demo|info|listen>`.
+
+## Developing without hardware (simulator)
+
+The Python package ships a device simulator that implements the **same wire
+protocol** (including framing) over TCP, so the exact same host code runs against
+it:
+
+```sh
+touchy --sim-headless board-info        # no Qt; script/CI friendly
+touchy --sim-gui screen demo            # in-process sim + Qt window
+touchy simulator --headless --port 8935 # long-lived server (also serves plaintext HTTP on 8083)
+touchy --sim-remote 127.0.0.1:8935      # talk to that server
+
+export TOUCHY_SIM_URL=tcp://127.0.0.1:8935   # any consumer (Python *and* Rust) picks it up
+```
+
+In-process, for tests and host apps:
+
+```python
+from touchy_pad.api import create_sim_device, destroy_sim_device, touchy_open
+
+create_sim_device()                 # registers a sim in this process
+with touchy_open() as pad:          # no hardware needed; real API, real framing
+    pad.screen_save(my_screen)
+    pad.screen_load("F:host/s/my_screen.pb")
+destroy_sim_device()
+```
+
+Simulator fidelity to keep in mind: it implements the documented
+`set_properties` subset (`x`/`y`/`w`/`h`/`bg_color`/`text`), has **no**
+backlight/auto-off, **no** LVGL refresh-latency model, and **no**
+filesystem-handle/`IO_ERROR` model. It does not emulate a physical LED matrix.
+
+## Drive a panel from any language (HTTP / HTTPS + JSON)
+
+A WiFi-provisioned pad accepts the same commands on one endpoint — no protobuf
+tooling required, because the body may be canonical protobuf-JSON:
+
+```sh
+touchy pref wifi-set-ssid MyNetwork && touchy pref wifi-set-psk hunter2
+touchy pref provision-mtls          # self-signed CA + device/client certs, over USB
+
+curl -s -H 'Content-Type: application/json' \
+  -d '{"setProperties":{"props":[{"widgetId":"welcome","propertyName":"text","stringValue":"hi"}]}}' \
+  http://192.168.1.42/touchy/api/v1/command
+bin/set-property.sh 192.168.1.42 welcome "You got an email"
+```
+
+- `POST /touchy/api/v1/command`; `Content-Type: application/protobuf` (default)
+  or `application/json`; the body is a **bare** message (HTTP delimits it — no
+  MAGIC/LEN/CRC8). The response mirrors the request encoding.
+- JSON supports `setProperties`, `sysBoardInfoGet`, `screenWake`,
+  `getPreferences`, `sysRebootBootloader`, `eventConsume`; `setPreferences` /
+  `runActions` are protobuf-only, and an unknown key returns HTTP 400.
+- Events are polled: POST `eventConsume` in a loop (same as over USB).
+- From Python, use the normal API: `touchy_open(url="http://host[:port]")`, or
+  set `TOUCHY_URL`. `https://` auto-loads the mTLS credentials saved by
+  `touchy pref provision-mtls` (client cert required — that *is* the auth).
+
+## CLI cheat sheet
+
+```sh
+touchy board-info                       # name, resolution, RAM/flash, touch?
+touchy init                             # provision chrome + trackpad page
+touchy update                           # install/upgrade firmware
+touchy screen load F:host/s/home.pb     # activate a screen
+touchy screen wake                      # backlight on (cancel auto-sleep)
+touchy screen demo                      # upload the demo page set
+touchy touchpad image URL | touchpad gif
+touchy file-save PATH FILE  |  file-delete PATH  |  file-reset
+touchy events                           # stream device events (Ctrl-C)
+touchy property set WIDGET_ID PROPERTY VALUE [--int]
+touchy pref backlight-level 0-100 | log-level | boot-delay | backlight-timeout
+touchy pref from-template NAME | json-get | json-set | wifi-set-ssid | wifi-set-psk | provision-mtls
+touchy simulator [--headless] [--port N]
+```
+
+## Gotchas that bite
+
+- **Paths are drive-prefixed.** `F:` flash, `R:` PSRAM ramdisk, `T:` transient.
+  A bare `host/...` is wrong. Screens `F:host/s/`, pages `F:host/uscr/`,
+  standalone widgets `F:host/w/`.
+- **Wire versions are validated on load, and a mismatch deletes the file.** After
+  a firmware update that bumps `Widget.Version`, re-upload your screens
+  (`pad.screen_save(...)` / `user_screen_save(...)`).
+- **The root `Widget` carries the version** (there is no `Screen.Version`). The
+  DSL stamps it; for raw protobuf set
+  `msg.active.version = protobuf.Widget.Version.CURRENT`.
+- **`#` is the LVGL recolor delimiter** and this LVGL's `##` escape is dead code:
+  with `recolor=True` a literal `#` in the text is swallowed — strip it host-side.
+- **Scrolling labels only animate when their box is fixed and narrower than the
+  text.** Default scroll speed is 40 px/s; set `scroll_speed_px_s` (10…10000) or
+  `scroll_duration_ms` (mutually exclusive), or re-time live with
+  `build_property_override(id, "anim_duration", ms)`.
+- **Content-size by default**: forgetting `grow_x`/`grow_y` is why a button looks
+  tiny. Grid children centre unless they grow.
+- **Keep event callbacks short** — they run on the poller thread and block
+  protocol polling; multiple callbacks per code run in registration order.
+- **Windows has no libusb**: USB discovery must degrade to a clear error
+  (`NoBackendError`), not a traceback. On Linux you need the udev rule
+  (`bin/install-rules.sh`, see `docs/udev.md`).
+- **A long-lived process may not see a re-plugged pad** (libusb caches its device
+  list per context). Re-open (`touchy_open()`) after re-plugging instead of
+  reusing a stale handle; `just usb-diag` diagnoses it.
+- **The device is a renderer.** It has no internet access and no knowledge of
+  your data — the host does the thinking, the device draws and reports touches.
+- **Generated code is generated**: `app/src/touchy_pad/_proto/*`,
+  `firmware/main/proto/*`, `proto/default_screen.json` — regenerate with
+  `just build-proto`, never hand-edit.
+- **Working inside this repo?** Drive everything through `just`
+  (`just app-test`, `just app-lint`, `just build-proto`, `just firmware-build`,
+  `just rust-test`) — never raw `idf.py`/`poetry`/`protoc`. Never commit or push;
+  hand the change to the human.
+
+## Typical app patterns
+
+| Want to build | Building blocks |
+|---|---|
+| **Status / info panel** | `Screen` + `grid`/`col` + `label`; refresh with `set_properties([...])` from a loop (`build_property_override`), which also keeps the backlight awake. |
+| **StreamDeck-style key grid** | `grid` + `image_button` per key (stable ids) + `ImageCache` + `pad.set_image_button_slot(id, pressed, path)`; `on_press`/`on_release` → `host_action` or `macro_action`. |
+| **Remote signage / ticker** | `label(long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR, recolor=True, scroll_speed_px_s=…)` plus a host loop pushing `text` overrides; or the HTTP/JSON endpoint from any language. |
+| **LED art / hanging column** | LED board + `touchy pref from-template led-96x8-chain`, `absolute()` + `rect`, `anim_track(..., end_inverted=True)` for size-independent motion, `ImageSource`/`set_properties` for frames. |
+| **Macro pad / touchpad** | `trackpad(...)` with gesture `Action` lists + `macros.*`; works with no host app attached. |
+| **StreamController / OpenDeck** | `touchy_pad.touchydeck.TouchyDeck` shim (call `install()` explicitly) or the `touchy-opendeck` plugin. |
+
+## Optional: deeper documentation
+
+Base URL for raw file fetches:
+`https://raw.githubusercontent.com/geeksville/touchy-pad/main/`
+
+- [README.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/README.md): what the project is, hardware, install.
+- [docs/python-api.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/python-api.md): full Python API guide (screen DSL, scroll speed, macros, events, property overrides).
+- [docs/rust-api.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/rust-api.md): the async Rust crate.
+- [docs/network-api.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/network-api.md): HTTP/HTTPS + JSON endpoint, mTLS, WiFi provisioning.
+- [docs/simulator.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/simulator.md): all simulator modes.
+- [docs/host-api.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/host-api.md): the wire protocol, framing, endpoints, filesystem paths.
+- [docs/ui.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/ui.md) and [docs/user-widgets.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/user-widgets.md): UI/layout design intent.
+- [docs/hardware.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/hardware.md) and [docs/installing.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/installing.md): which boards to buy, how to flash them.
+- [docs/opendeck.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/opendeck.md): the OpenDeck/StreamDeck path.
+- [app/examples/demo.py](https://raw.githubusercontent.com/geeksville/touchy-pad/main/app/examples/demo.py) and [app/src/touchy_pad/pages/trackpad.py](https://raw.githubusercontent.com/geeksville/touchy-pad/main/app/src/touchy_pad/pages/trackpad.py): worked examples.
+- [docs/design.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/docs/design.md): authoritative stage-by-stage history (why things are the way they are).
+- [AGENTS.md](https://raw.githubusercontent.com/geeksville/touchy-pad/main/AGENTS.md): contributor/agent guide — repo layout, build recipes, conventions, invariants.
+- [proto/](https://github.com/geeksville/touchy-pad/tree/main/proto): the wire schema (`touchy.proto`, `widgets.proto`, `preferences.proto`) — source of truth for every field.
+
