@@ -6205,6 +6205,63 @@ swap (proves the merge did not replace the registry).
 
 Plan: `docs/plans/widget-ref-property-overrides.md`.
 
+## Stage lb22: crates.io-ready Rust crate — DONE
+
+The `touchy-pad` crate was *packaged* (metadata, `cargo package`, even the
+`cargo publish --dry-run` wired into `just rust-build`) but never *distributed*:
+nothing was on crates.io, so `cargo add touchy-pad` failed, and both fallbacks
+were sharp-edged — a source build needed `protoc` (`prost-build`'s compiler),
+and a `git =` dependency died because cargo recursively initialises submodules
+and `tools/autopage`'s *nested* `autopage-recipes` submodule is pinned to
+`8196e80…`, a revision that no longer exists (upstream `geeksville/autopage@main`
+still pins it, so bumping our pointer alone could not have helped). Plan:
+`docs/plans/crates-io-publishing.md`.
+
+* **The prost bindings are checked in** at `rust/touchy-pad/src/proto/touchy.rs`
+  and `include!`d by `src/proto.rs`. `touchy-pad` therefore has no `build.rs`
+  and no `prost-build` build-dependency, so a consumer's dependency graph loses
+  `prost-build` *and* never needs `protoc`. Rationale: the Python package already
+  does exactly this (`app/pyproject.toml` gitignores `_proto/*_pb2.py` but
+  bundles them into the wheel), and cargo ships *source*, so committing the
+  output is the only way to hand a consumer pre-generated code. The regenerated
+  file is byte-identical to what `build.rs` produced.
+* **Generation moved to `rust/proto-gen`** (`publish = false`, depends on
+  `prost-build`, same `disable_comments(["."])` config). Splitting it into a
+  separate crate — rather than a self-skipping `build.rs` — is what actually
+  removes `prost-build` from consumer builds.
+* **`just rust-gen-proto`** runs it; `just build-proto` now also runs it, so one
+  recipe keeps Python, C, Rust and the embedded default screen in sync. CI
+  (`app-ci.yml` → `test-rust`) re-runs the generator and fails if the committed
+  file differs — the mandatory mitigation for checked-in generated code.
+* **Lints are muted for the generated module** (`#![allow(clippy::all)]` in
+  `src/proto.rs`, mirroring ruff's `extend-exclude` for the Python `_pb2`
+  modules). Side benefit: a newer clippy had started failing `just rust-lint` on
+  the generated `Layout::Trackpad` variant (`clippy::large_enum_variant`) — this
+  fixes that pre-existing failure.
+* **`tools/autopage` submodule removed** (`.gitmodules`, gitlink and
+  `.git/modules/tools/autopage`). The other four submodules stay — `just
+  streamcontroller-run` / `just opendeck-run` need them.
+* **Package contents**: `include` now ships `src/**`, `proto/*.proto` and
+  `tests/**` — 27 files instead of 21 — which also silences cargo's "ignoring
+  test …" warnings.
+* **No wire change.** `proto/*.proto` is untouched, so `Widget.Version` 30,
+  `ProtocolVersion` 14 and `PreferencesFile.Version` 9 are unchanged.
+
+**Verification.** `just rust-test` green (lib, framing/loopback/image-cache/
+pad-events, the Python-sim TCP test and the doctest); `just rust-lint` green;
+`cargo package` verify OK with `build = false` in the packaged manifest; a
+consumer build of the packaged crate succeeds with `PROTOC=/nonexistent/protoc`;
+a cargo `git =` dependency resolves `touchy-pad 0.3.9` from
+`rust/touchy-pad/Cargo.toml` (once the submodule removal is committed — cargo
+clones `HEAD`). No firmware source changed, so firmware builds are unaffected.
+
+`cargo publish` is wired into the release pipeline: `release.yml` gained a
+`publish-crates-io` job (depends on the shared reusable `test-rust.yml` gate,
+skips a version that is already on crates.io, and takes either the
+`CARGO_REGISTRY_TOKEN` secret or, when that secret is absent, a GitHub-OIDC
+trusted-publishing token). The first release must use the token secret, since a
+trusted publisher can only be configured on a crate that exists — setup steps for
+both paths are in the plan's "Publishing" section.
 
 # Old/Existing projects
 

@@ -248,7 +248,12 @@ by `just _rust-sync-version`.
 * `touchy-pad` — async client: `pad.rs` (`Touchy`), `client.rs`, `transport*.rs`
   (USB / net / serial behind the `serial` feature), `image_cache.rs`,
   `images.rs`, `discover.rs` (USB **and** UART autodiscovery), `error.rs`,
-  `proto.rs`, path constants in `lib.rs`.
+  `proto.rs`, path constants in `lib.rs`. Its prost bindings are **checked in**
+  (`src/proto/touchy.rs`) — no `build.rs`, no `prost-build`, no `protoc` and no
+  build script needed by consumers (Stage lb22).
+* `proto-gen` — `publish = false` build tooling that regenerates that file from
+  `proto/*.proto` (`just rust-gen-proto`, also pulled in by `just build-proto`);
+  `app-ci.yml` fails if the committed copy is stale.
 * `touchy-demo` — CLI demo app.
 * `touchy-opendeck` — OpenDeck plugin: one `ImageButton` per key
   (`opendeck_key_<k>`), blank-image seed, host code on press+release, tracks a

@@ -29,6 +29,19 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
 
 ## Existing plans
 
+* `docs/plans/crates-io-publishing.md` — **crates.io-ready Rust crate**
+  (**done — Stage lb22**): the prost bindings are **checked in**
+  (`rust/touchy-pad/src/proto/touchy.rs`, emitted by the new `publish = false`
+  `rust/proto-gen` member, wired into `just rust-gen-proto` / `just build-proto`
+  and drift-checked in `app-ci.yml`), so `touchy-pad`'s build script and its
+  `prost-build`/`protoc` requirements are **gone** (a consumer builds the
+  packaged crate with `PROTOC=/nonexistent`); `include` now ships `tests/**`; and
+  the browse-only `tools/autopage` submodule was removed — its nested
+  `autopage-recipes` pin was dead, which broke cargo `git =` deps and recursive
+  clones. No wire change (`proto/*.proto` untouched); `release.yml` now publishes
+  the crate on every GitHub release (token secret, or crates.io trusted
+  publishing when that secret is absent).
+
 * `docs/plans/label-scroll-speed.md` — **custom label scrolling speed**
   (**done — Stage lb19**): `Label.scroll_duration_ms = 6` (ms/lap, applied
   verbatim) **and** `Label.scroll_speed_px_s = 7` (px/s 10…10000, resolved by

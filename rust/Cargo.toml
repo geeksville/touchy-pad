@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["touchy-pad", "touchy-demo", "touchy-opendeck"]
+# `proto-gen` is build tooling (`publish = false`): it regenerates the
+# checked-in bindings in `touchy-pad/src/proto/touchy.rs`, which is what lets
+# `touchy-pad` itself ship with no build script and no `protoc` requirement.
+members = ["touchy-pad", "touchy-demo", "touchy-opendeck", "proto-gen"]
 
 [workspace.package]
 version = "0.3.9"

@@ -1,15 +1,18 @@
 name: Release
 
 # Triggered when a GitHub release is published via the UI.
-# Runs tests, builds firmware for all boards, publishes to PyPI,
-# and uploads firmware binaries as release assets.
+# Runs tests, builds firmware for all boards, publishes the Python package to
+# PyPI and the Rust crate to crates.io, and uploads firmware binaries as
+# release assets.
 on:
   release:
     types: [published]
 
-# Least privilege: read-only by default. Only `publish-pypi` (OIDC trusted
-# publishing + attestations) and `upload-release-assets` (release assets)
-# widen it, via job-level `permissions:` blocks that replace this one.
+# Least privilege: read-only by default. Only the publish jobs and the
+# release-asset upload widen it, via job-level `permissions:` blocks that
+# *replace* this one: `publish-pypi` (OIDC trusted publishing + attestations),
+# `publish-crates-io` (OIDC for crates.io trusted publishing) and
+# `upload-release-assets` (release assets).
 permissions:
   contents: read
 
@@ -46,6 +49,15 @@ jobs:
         with:
           name: python-package-distributions
           path: app/dist/
+
+  # ---------------------------------------------------------------------------
+  # test-rust: test the touchy-pad crate and prove the checked-in prost
+  # bindings are still fresh. Shared with app-ci.yml via the reusable workflow,
+  # so the gate guarding `publish-crates-io` below is the very same one that
+  # runs on every PR.
+  # ---------------------------------------------------------------------------
+  test-rust:
+    uses: ./.github/workflows/test-rust.yml
 
   # ---------------------------------------------------------------------------
   # build-firmware: cross-build firmware for every supported board and upload
@@ -96,6 +108,90 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           print-hash: true
+
+  # ---------------------------------------------------------------------------
+  # publish-crates-io: publish the `touchy-pad` crate to crates.io.
+  #
+  # `cargo publish` needs neither `protoc` nor a build script here — the prost
+  # bindings are checked in (Stage lb22).
+  #
+  # Auth, in order of preference:
+  #   1. the `CARGO_REGISTRY_TOKEN` repository secret — required for the *first*
+  #      release, because a crates.io trusted publisher can only be configured
+  #      on a crate that already exists;
+  #   2. crates.io **trusted publishing** (GitHub OIDC) — used automatically
+  #      when that secret is absent, so the long-lived credential can be
+  #      retired once the crate exists.
+  #
+  # Setup steps for both paths: docs/plans/crates-io-publishing.md.
+  # ---------------------------------------------------------------------------
+  publish-crates-io:
+    name: Publish to crates.io
+    needs: [test-rust]
+    runs-on: ubuntu-latest
+    environment: cratesio  # Optional: for enhanced security
+    permissions:
+      contents: read
+      id-token: write # crates.io trusted publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Read the crate version and check crates.io
+        id: version
+        run: |
+          set -euo pipefail
+          ver=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -1)
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          # crates.io 404s for a crate/version that is not published, which makes
+          # re-running a release (or publishing by hand first) harmless.
+          if curl -sf -A "touchy-pad release workflow (${GITHUB_REPOSITORY})" \
+               "https://crates.io/api/v1/crates/touchy-pad/${ver}" > /dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::touchy-pad ${ver} is already on crates.io — skipping publish"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "touchy-pad ${ver} is not on crates.io yet — it will be published"
+          fi
+
+      # `secrets` cannot be referenced in an `if:`, so the choice between the
+      # secret and OIDC is made here and consumed as a step output.
+      - name: Decide how to authenticate
+        id: auth-mode
+        env:
+          TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -n "${TOKEN}" ]; then
+            echo "oidc=false" >> "$GITHUB_OUTPUT"
+            echo "Using the CARGO_REGISTRY_TOKEN repository secret."
+          else
+            echo "oidc=true" >> "$GITHUB_OUTPUT"
+            echo "No CARGO_REGISTRY_TOKEN secret — falling back to crates.io trusted publishing (OIDC)."
+          fi
+
+      # Only runs when no token secret is configured. Exchanges a GitHub OIDC
+      # token for a short-lived crates.io token (the action revokes it in a post
+      # step); needs a trusted publisher on the crate's crates.io page.
+      - name: Authenticate with crates.io (trusted publishing)
+        id: crates-io-auth
+        if: steps.auth-mode.outputs.oidc == 'true' && steps.version.outputs.published == 'false'
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish touchy-pad
+        if: steps.version.outputs.published == 'false'
+        env:
+          # OIDC token when trusted publishing supplied one, otherwise the
+          # repository secret (empty if neither is configured — cargo then fails
+          # with an explicit "no token found" error).
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --manifest-path rust/touchy-pad/Cargo.toml
 
   # ---------------------------------------------------------------------------
   # upload-release-assets: attach all firmware .bin files to the GitHub release.

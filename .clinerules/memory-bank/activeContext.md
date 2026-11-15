@@ -1,6 +1,19 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-15 (**Stages lb20 + lb21** — the two firmware bugs from
+**Last updated:** 2026-11-15 (**Stage lb22** — the `touchy-pad` Rust crate is now
+crates.io-ready: the prost bindings are **checked in**
+(`rust/touchy-pad/src/proto/touchy.rs`, emitted by the new `publish = false`
+`rust/proto-gen` member) so the crate has no `build.rs` and its consumers need no
+`protoc`; `just rust-gen-proto` / `just build-proto` regenerate them and
+`app-ci.yml` fails on drift; the package now ships `tests/**`; and the
+browse-only `tools/autopage` submodule was removed — its dead *nested*
+`autopage-recipes` pin had broken cargo `git =` deps and recursive clones. No
+wire change; `cargo publish` now happens automatically from `release.yml`'s
+`publish-crates-io` job (same reusable `test-rust.yml` gate as the PR CI; needs
+either the first-publish `CARGO_REGISTRY_TOKEN` secret or a crates.io trusted
+publisher).
+Plan: `docs/plans/crates-io-publishing.md`. Before that:
+**Stages lb20 + lb21** — the two firmware bugs from
 the fork review. lb20: a `FileCloseCmd` with the wrong handle used to wedge every
 later `F:` write with `IO_ERROR` until reset; `Fs::abortWrite()` now aborts on
 mismatch and self-heals at open. lb21: property overrides now survive an
@@ -491,7 +504,10 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
   humans and agents, and it currently carries at least one stale claim.
 * Regenerate, never hand-edit: `app/src/touchy_pad/_proto/*`,
   `firmware/main/proto/*`, `firmware/main/default_screen_pb.h`,
-  `proto/default_screen.json`. `_proto/*` is not committed, so a fresh checkout
+  `proto/default_screen.json`, and **`rust/touchy-pad/src/proto/touchy.rs`** —
+  the one generated file that *is* committed, precisely so Rust consumers never
+  need `protoc` (CI fails if it is stale; regenerate with `just rust-gen-proto`
+  or `just build-proto`). `_proto/*` is not committed, so a fresh checkout
   needs `just build-proto` (every `app-*` recipe does it for you).
 * Test with `just app-test`: it builds the proto bindings first, so it catches
   schema/generator mismatches a bare `pytest` would miss.

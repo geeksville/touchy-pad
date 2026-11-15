@@ -102,28 +102,13 @@ jobs:
           path: app/dist/*
 
   # ---------------------------------------------------------------------------
-  # test-rust: run the touchy-pad Rust library test suite. The plugin binaries
-  # themselves are cross-built and packaged by the reusable build-opendeck
-  # workflow below.
+  # test-rust: the touchy-pad Rust gate — workspace test suite plus a check
+  # that the checked-in prost bindings still match the generator. Shared with
+  # release.yml via the reusable workflow, so the gate that guards crates.io
+  # publishing is the same one that runs here.
   # ---------------------------------------------------------------------------
   test-rust:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler
-
-      - name: Cache cargo build outputs
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust
-
-      - name: Run rust api libary tests
-        run: cd rust && cargo test --workspace
+    uses: ./.github/workflows/test-rust.yml
 
   # ---------------------------------------------------------------------------
   # build-opendeck: cross-build the OpenDeck plugin for every target in the

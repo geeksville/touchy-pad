@@ -13,6 +13,37 @@ feature adds a serial-port transport (via `tokio-serial`).
 * Edition: 2024
 * MSRV: stable
 
+## Adding it to your project
+
+```toml
+[dependencies]
+touchy-pad = "0.3"
+```
+
+Building the crate needs **no `protoc` and no build script**: the prost bindings
+are checked in at `rust/touchy-pad/src/proto/touchy.rs`, the same deal the Python
+package makes by shipping its generated `_pb2` modules inside the wheel.
+(`protoc` is only needed inside *this* repository, to regenerate them.)
+
+The crate is being prepared for crates.io (`docs/plans/crates-io-publishing.md`);
+until it is published you can consume the source tree instead:
+
+```toml
+touchy-pad = { git = "https://github.com/geeksville/touchy-pad" }
+```
+
+## Regenerating the bindings
+
+`proto/*.proto` is the wire-format source of truth. After editing it:
+
+```sh
+just build-proto     # Python + C + Rust bindings, plus the embedded default screen
+just rust-gen-proto  # Rust only (needs a `protoc` binary on PATH, or $PROTOC)
+```
+
+Never hand-edit the generated file — CI re-runs the generator and fails if the
+committed copy differs.
+
 ## Layout
 
 | Module | Purpose |

@@ -1,0 +1,49 @@
+name: Test Rust crate (reusable)
+
+# Reusable workflow (called via `uses:` from app-ci.yml and release.yml) that
+# runs the `touchy-pad` Rust gate: the checked-in prost bindings must still
+# match what the generator produces, and the workspace test suite must pass.
+#
+# Shared by both callers so the gate that guards crates.io publishing
+# (release.yml's `publish-crates-io`) can never drift from the one that runs
+# on every PR.
+
+on:
+  workflow_call:
+
+# Least privilege: only reads the repo (plus the Actions cache).
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust tests + binding freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler
+
+      - name: Cache cargo build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      # The prost bindings are checked in (so crate consumers need no protoc);
+      # re-running the generator here proves the committed copy is current.
+      - name: Check the checked-in proto bindings are fresh
+        run: |
+          cd rust && cargo run --quiet -p proto-gen
+          cd ..
+          if ! git diff --quiet -- rust/touchy-pad/src/proto/touchy.rs; then
+            echo "::error::rust/touchy-pad/src/proto/touchy.rs is stale — run 'just rust-gen-proto' and commit the result"
+            git --no-pager diff --stat -- rust/touchy-pad/src/proto/touchy.rs
+            exit 1
+          fi
+
+      - name: Run Rust API library tests
+        run: cd rust && cargo test --workspace

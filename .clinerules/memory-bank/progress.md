@@ -65,6 +65,48 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   `show_user_screen()`, ~500-swap churn, chrome override surviving a swap) — no
   pytest is possible, the simulator has its own proto-level override table.
   Plan: `docs/plans/widget-ref-property-overrides.md`.
+### Stage lb22 — crates.io-ready Rust crate (2026-11-15)
+
+* **Problem:** `touchy-pad` was *packaged* but never *distributed* — nothing on
+  crates.io, so `cargo add touchy-pad` failed; and both fallbacks were broken. A
+  source build needed `protoc` (`prost-build`'s compiler), and a
+  `touchy-pad = { git = … }` dependency died because cargo recursively
+  initialises submodules and `tools/autopage`'s *nested* `autopage-recipes`
+  submodule is pinned to `8196e80…`, a revision that no longer exists upstream
+  (and `geeksville/autopage@main` still pins it, so a pointer bump could not have
+  helped). `net.git-fetch-with-cli = true` fails identically — there is no cargo
+  knob to skip submodules.
+* **Fix:** the prost bindings are **checked in**
+  (`rust/touchy-pad/src/proto/touchy.rs`, 1768 lines — byte-identical to the old
+  `build.rs` output and deterministic), emitted by the new `publish = false`
+  workspace member `rust/proto-gen` (`just rust-gen-proto`, also part of
+  `just build-proto`). `touchy-pad`'s `build.rs` and its `prost-build`
+  build-dependency are **deleted**, so a consumer needs neither `protoc` nor a
+  build script — the same deal the Python wheel already offers by shipping
+  pre-generated `_pb2` modules. `app-ci.yml` re-runs the generator and fails on
+  drift. `include` gained `tests/**` (27 package files, up from 21).
+  `tools/autopage` submodule removed (`.gitmodules`, gitlink, `.git/modules`),
+  which unbreaks cargo git deps and `git clone --recurse-submodules`.
+* **Bonus fix:** `#![allow(clippy::all)]` on the generated module also clears a
+  **pre-existing** `just rust-lint` failure — a newer clippy flagged the generated
+  `Layout::Trackpad` enum (`clippy::large_enum_variant`); reproduced against the
+  old build-script crate too.
+* **No wire change** (`proto/*.proto` untouched: `Widget.Version` 30,
+  `ProtocolVersion` 14, prefs 9). `just rust-test` + `just rust-lint` green;
+  `cargo package` OK with `build = false` in the packaged manifest; a consumer
+  build of the packaged crate succeeds with `PROTOC=/nonexistent/protoc`; a cargo
+  `git =` dep resolves `touchy-pad 0.3.9` from `rust/touchy-pad/Cargo.toml` (once
+  the submodule removal is committed — cargo clones `HEAD`).
+* **CI publishing:** `release.yml` gained `publish-crates-io` (needs the new
+  reusable `test-rust.yml` gate, skips a version already on crates.io via
+  `curl -sf .../api/v1/crates/touchy-pad/<ver>`, and authenticates with the
+  `CARGO_REGISTRY_TOKEN` secret or — when that secret is absent — GitHub OIDC via
+  `rust-lang/crates-io-auth-action@v1`). `app-ci.yml`'s inline `test-rust` job was
+  replaced by the same reusable workflow. The first release must use the token
+  secret: a crates.io trusted publisher can only be configured on a crate that
+  already exists. Plan: `docs/plans/crates-io-publishing.md` (its "Publishing"
+  section has both setup paths); stage write-up in `docs/design.md` §lb22.
+
 ### Repo housekeeping — googly-vr + voicebot submodules removed (2026-11-04)
 
 * Both apps are now developed in a different container/repo, so their submodules

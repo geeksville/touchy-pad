@@ -36,13 +36,24 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 > below are **historical** — they point at the code that used to be checked in
 > here, not at anything in this tree.
 
+> **`tools/autopage` is no longer a submodule either** (removed in Stage lb22).
+> It was only ever reference material — no `just` recipe used it — and its *tree*
+> contained a nested `autopage-recipes` submodule pinned to `8196e80…`, a
+> revision that no longer exists upstream. Because cargo recursively initialises
+> submodules, that one dead pin broke `git clone --recurse-submodules` **and**
+> every `cargo` `git =` dependency on this repo. Re-clone it standalone if you
+> want to browse it: `git clone https://github.com/geeksville/autopage`.
+
 ## Build & test
 Everything goes through Just; never run raw `idf.py` / `poetry` /
 `protoc` unless a recipe is clearly missing:
 
 ```bash
 just init              # one-time devcontainer setup
-just build-proto       # regenerate Python + C nanopb bindings
+just build-proto       # regenerate Python + C + Rust bindings (+ default screen)
+just rust-gen-proto    # Rust bindings only (needs a `protoc` binary)
+just rust-test         # cargo test --workspace
+just rust-lint         # cargo fmt --check + cargo clippy -D warnings
 just app-test          # pytest (proto bindings auto-rebuilt)
 just app-lint          # ruff format + lint
 just app-run -- ...    # invoke the `touchy` CLI inside Poetry
@@ -63,6 +74,14 @@ just streamcontroller-run [--sim | --sim-headless]
 - Test: `poetry run pytest` (tests in `tests/`, isolated via `paths.set_test_directories`)
 - Run: `sb <command>` (via poetry venv)
 - Handy workflows live in `justfile` (e.g. `just process`, `just reinit`, `just select-*`).
+
+- **`protoc` is needed only to *regenerate* the protobuf bindings.** Python uses
+  the bundled `grpc_tools`, the firmware uses nanopb, but the Rust bindings come
+  from `prost-build`, which wants a `protoc` binary on `PATH` (or `$PROTOC`).
+  Crate *consumers* need neither: the prost output is checked in at
+  `rust/touchy-pad/src/proto/touchy.rs` (Stage lb22), so `touchy-pad` has no
+  build script. Regenerate with `just rust-gen-proto` / `just build-proto` — CI
+  fails if the committed copy is stale.
 
 **Never run `idf.py` directly** — a bare `idf.py` in the agent terminal
 fails because the ESP-IDF environment isn't sourced. `just firmware-build`
@@ -137,7 +156,9 @@ touches `usb.core.find()` must guard against `NoBackendError`
   remember a job-level block **replaces** — it does not merge with — the
   top-level one. Today only `release.yml` widens: `publish-pypi` needs
   `contents: read` + `id-token: write` + `attestations: write` (attestation +
-  PyPI trusted publishing), `upload-release-assets` needs `contents: write`;
+  PyPI trusted publishing), `publish-crates-io` needs `id-token: write`
+  (crates.io trusted publishing, with the `CARGO_REGISTRY_TOKEN` secret as the
+  fallback), `upload-release-assets` needs `contents: write`;
   `testpypi.yml`'s publish job needs `id-token: write`. Everything else
   (checkout, `actions/cache`, `upload-artifact`/`download-artifact` within the
   same run) works with `contents: read` alone.

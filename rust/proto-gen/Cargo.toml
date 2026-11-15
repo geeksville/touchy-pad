@@ -1,0 +1,16 @@
+[package]
+name = "proto-gen"
+description = "Regenerates the checked-in prost bindings for the touchy-pad crate from proto/."
+# Build tooling only — never published. Keeping it out of touchy-pad is what
+# lets the published crate drop `prost-build` and its `protoc` requirement
+# from every consumer's build.
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prost-build.workspace = true

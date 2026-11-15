@@ -96,8 +96,9 @@ c_touchy_out     := c_proto_dst  + "/touchy.pb.c"
 c_widgets_out    := c_proto_dst  + "/widgets.pb.c"
 c_prefs_out      := c_proto_dst  + "/preferences.pb.c"
 
-# Regenerate both Python and C protobuf bindings (if stale).
-build-proto: build-proto-py build-proto-c build-default-screen
+# Regenerate the Python, C and Rust protobuf bindings (if stale), plus the
+# embedded default screen.
+build-proto: build-proto-py build-proto-c build-default-screen rust-gen-proto
 
 # Regenerate Python bindings into the host package iff either .proto is
 # newer than its generated module (or the module doesn't exist yet).
@@ -295,6 +296,15 @@ app-backtrace *ARGS:
 # ---------------------------------------------------------------------------
 # Rust library + demo (rust/) — pure-Rust async client.
 # ---------------------------------------------------------------------------
+
+# Regenerate the checked-in Rust protobuf bindings
+# (rust/touchy-pad/src/proto/touchy.rs) from proto/*.proto. This is the *only*
+# step that needs a `protoc` binary (on PATH, or $PROTOC pointing at one) —
+# consumers of the published crate need neither protoc nor a build script.
+# Also runs as part of `just build-proto`, and CI fails if the committed
+# file does not match what this produces.
+rust-gen-proto:
+    cd rust && cargo run -p proto-gen
 
 # Sync the [workspace.package] version in rust/Cargo.toml from the top-level
 # VERSION file. All individual crates inherit it via `version.workspace = true`.

@@ -8,7 +8,7 @@
 | Serialisation | **nanopb** (device, C) + **protobuf** (`grpcio-tools` / `protoc`, host Python) + **prost** (Rust) — all generated from `proto/` |
 | Python host | Python **3.11–3.14**, Poetry, `click` (CLI), `rich`, `requests`, `pyusb`+libusb, `pyserial`, `Pillow`, `esptool`, `cryptography`, `streamcontroller-streamdeck`; optional `PySide6` (sim GUI) |
 | Python dev | `ruff` (format + lint), `pytest` (+`pytest-qt` for sim-window tests), `pre-commit` (ruff hooks on commit/push), `mkdocs` (`just build-docs`) |
-| Rust | Rust **1.85+**, edition **2024**, cargo workspace: `prost`, `nusb` (+tokio), `tokio`, `thiserror`, `anyhow`, `log`/`env_logger`, `image`, `clap`, `futures`, `async-trait` |
+| Rust | Rust **1.85+**, edition **2024**, cargo workspace: `prost`, `nusb` (+tokio), `tokio`, `thiserror`, `anyhow`, `log`/`env_logger`, `image`, `clap`, `futures`, `async-trait`; the prost bindings are **checked in** (Stage lb22), so consumers need no `protoc` and no build script |
 | Simulator | Tkinter/PySide6 (`PySide6` extra), in-process or TCP (`--sim-remote`), plaintext HTTP server on port **8083** |
 | Build/run glue | **`just`** (766-line `Justfile`) — the only sanctioned entry point |
 | CI | `.github/workflows/app-ci.yml` — `build-app` on ubuntu / windows / macos. Every workflow declares a least-privilege top-level `permissions: contents: read`; only `release.yml`'s `publish-pypi` (`id-token` + `attestations: write`) and `upload-release-assets` (`contents: write`) widen it at job level |
@@ -145,6 +145,14 @@ only reliable way. Same for `poetry`/`protoc` — use the `just` recipes.
 * Board components link `Display` from `main` via the IDF component group; every
   board × all three chips is expected to build.
 
+**Rust workspace**
+
+* The prost bindings are **checked in** (`rust/touchy-pad/src/proto/touchy.rs`),
+  so `touchy-pad` has no build script and crate consumers need no `protoc`;
+  regenerate with `just rust-gen-proto` / `just build-proto` (protoc *is* needed
+  for that). `rust/proto-gen` (`publish = false`) is the generator, and CI
+  drift-checks the committed file. `tools/autopage` is no longer a submodule.
+
 **Python host**
 
 * **Windows has no libusb.** Any path touching `usb.core.find()` must guard
@@ -178,7 +186,7 @@ only reliable way. Same for `poetry`/`protoc` — use the `just` recipes.
 | Anything host-side | `just app-test` / `just app-lint` / `just app-run -- <cmd>` |
 | Proto change | edit `proto/*.proto` (+ `*.options`), then `just build-proto` |
 | Firmware change | `just firmware-build` (default board `jc4827w543`); `just firmware-reconfigure <board>` to switch |
-| Rust change | `just rust-test`, `just rust-lint`, `just rust-fmt` |
+| Rust change | `just rust-test`, `just rust-lint`, `just rust-fmt`; `just rust-gen-proto` after any `proto/*.proto` edit (needs `protoc`) |
 | Try a screen without hardware | `just app-run -- --sim-gui ...` or `just app-run -- --sim-headless` |
 | Flash a board | `just flash` (UART) or end-user `touchy update` (merged image) |
 | Regenerate the built-in fallback screen | `just gen-default-screen` (it *imports* `touchy_pad.api.screens`) |
