@@ -373,6 +373,30 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
 
 ## Next steps (ordered by cost/benefit)
 
+0. **Fork-review follow-ups (@jellydn's four proposed PRs, 2026-11-15).** Two of
+   the four are **confirmed firmware bugs** — decided: **we fix those upstream
+   ourselves**, and ask the reporter only for the two host/just PRs. Plans:
+   * `docs/plans/fs-write-transaction-recovery.md` — a `FileCloseCmd` with a
+     wrong handle clears `fs.cpp`'s global registry but leaves `FlashFs`'s
+     `g_txn` set → every later `F:` write `IO_ERROR`s until reset. **Ours.**
+   * `docs/plans/widget-ref-property-overrides.md` —
+     `widget_refs_change()` never promotes the `widget_property` registry, so
+     `set_properties` misses pages shown by `show_user_screen()` and `s_active`
+     holds dangling pointers to deleted LVGL objects. **Ours.**
+   * **PR wanted from the reporter (1):** a portable `just flash` — the recipe
+     hard-codes the devcontainer's
+     `~/.espressif/tools/activate_idf_v6.1.sh` and `/host/dev/tty{ACM,USB}*`
+     (broken on plain Linux too, not just macOS), and
+     `update.py::_autodetect_serial_port()` only knows Linux names. Fix the
+     existing recipes; **decline the new `just up`**.
+   * **PR wanted from the reporter (2):** a public "did the event thread die?"
+     predicate on `Touchy` (`_event_loop` swallows the exception at
+     `device.py:625-631`, and `close()` nulls `_thread` so callers can't tell).
+   Point contributors at **Stage lb16** (`docs/design.md:5786`, commit
+   `fc3f303`) — they are 24 commits behind and its resume-callback fix also
+   removes the 500 ms throttle their `.pb`-rewrite workaround was suffering
+   from.
+
 1. **Review/commit the uncommitted work** (see "Where the project is right
    now"): this session's googly-vr stage 5 (`cli.py` + `tests/test_cli.py` +
    README/general.md in the submodule) and the parent-repo Stages lb15
