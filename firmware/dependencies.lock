@@ -19,6 +19,20 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.2.1
+  espressif/esp_lcd_touch_gt911:
+    component_hash: 737bdf29e0823eacf041381e81db2aaf5d378f3b5417df7f415f83319e3e790b
+    dependencies:
+    - name: espressif/esp_lcd_touch
+      registry_url: https://components.espressif.com
+      require: public
+      version: ^1.2.0
+    - name: idf
+      require: private
+      version: '>=5.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.2.1
   espressif/esp_lvgl_port:
     component_hash: cca194347416db5f7fbe53e3bf788266061032c6b094d0186e9c988d6e8ff218
     dependencies:
@@ -53,16 +67,6 @@ dependencies:
     - esp32h4
     - esp32s31
     version: 2.2.1
-  espressif/led_strip:
-    component_hash: 28621486f77229aaf81c71f5e15d6fbf36c2949cf11094e07090593e659e7639
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=5.0'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 3.0.3
   espressif/mdns:
     component_hash: e81ca7a7f53ea34e78274df054da692c272e1315572876b237b1748e267c013b
     dependencies:
@@ -120,14 +124,14 @@ dependencies:
 direct_dependencies:
 - espressif/cjson
 - espressif/esp_lcd_touch
+- espressif/esp_lcd_touch_gt911
 - espressif/esp_lvgl_port
 - espressif/esp_tinyusb
-- espressif/led_strip
 - espressif/mdns
 - idf
 - joltwallet/littlefs
 - livekit/nanopb
 - lvgl/lvgl
-manifest_hash: 5d920a73dc141dd534c15d651038ad1058d3223ab140631a6f2655542f6b06a2
+manifest_hash: cd23683d0d9ba0f70dcfb45bd6ebcafc966cf23d143422f750afabe81a6cf92f
 target: esp32s3
 version: 3.0.0
