@@ -335,3 +335,29 @@ bool FlashFs::closeWrite(uint32_t handle, bool commit)
     g_txn = {};
     return ok;
 }
+
+// Stage lb20 (fork-review fix) — unconditional teardown of a staged write.
+//
+// `closeWrite()` rejects an unknown handle *before* releasing anything, which
+// is exactly what a handle mismatch must not do: the registry wrapper has
+// already decided the transaction is dead, so leaving `g_txn` (and its open
+// FILE*) behind bricks every subsequent `F:` write until the device is reset.
+// Called from fs_close_write() on a mismatch and from fs_open_write() to shed
+// a transaction the registry no longer knows about.
+void FlashFs::abortWrite()
+{
+    if (g_txn.handle == 0) return;
+    // Discard, never commit: this is the recovery path, not a close.
+    if (g_txn.fp) {
+        fclose(g_txn.fp);
+        g_txn.fp = nullptr;
+    }
+    const std::string tmp_full = flash_full(g_txn.tmp_path);
+    if (unlink(tmp_full.c_str()) != 0) {
+        ESP_LOGW(TAG, "abortWrite: unlink(%s) failed: %s",
+                 tmp_full.c_str(), strerror(errno));
+    }
+    ESP_LOGW(TAG, "aborted stale transaction handle=%u path='%s'",
+             (unsigned)g_txn.handle, g_txn.final_path.c_str());
+    g_txn = {};
+}

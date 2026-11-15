@@ -128,6 +128,13 @@ uint32_t fs_open_write(const std::string &full_path)
         ESP_LOGE(TAG, "fs_open_write: bad path %s", full_path.c_str());
         return 0;
     }
+    // Stage lb20 (fork-review fix) — self-heal a transaction the registry does
+    // not know about. The registry is the authority for "is a write in
+    // flight" (any stale one was aborted above), so a leftover strategy-level
+    // transaction here is necessarily abandoned — e.g. left by an older build
+    // whose handle mismatch cleared the registry without tearing its txn down.
+    // Without this, openWrite() refuses every future write until a reset.
+    fs->abortWrite();
     uint32_t h = fs->openWrite(rest);
     if (h) {
         g_active_write_fs     = fs;
@@ -159,9 +166,26 @@ bool fs_close_write(uint32_t handle, bool commit)
         return false;
     }
     if (handle != g_active_write_handle) {
-        ESP_LOGW(TAG, "fs_close_write: handle mismatch (got=%u active=%u path='%s')",
+        // Stage lb20 (fork-review fix) — the host sent a handle we do not
+        // recognise (typically stale or replayed after a failed open). Do NOT
+        // pass the bogus handle to closeWrite(): every Fs rejects a handle it
+        // does not own *before* releasing its own state, so FlashFs would keep
+        // g_txn (and its open FILE*, and its `<path>.tmp.<handle>` file) while
+        // we clear the registry below. The next fs_open_write() would then see
+        // no active transaction (so it would not abort the leftover) and
+        // FlashFs::openWrite() would refuse every later write with IO_ERROR
+        // until the device was reset. Abort the transaction the FS actually
+        // has in flight, and still report failure — the caller's handle was
+        // unusable, so the staged bytes are deliberately discarded.
+        ESP_LOGW(TAG, "fs_close_write: handle mismatch (got=%u active=%u path='%s'); "
+                      "aborting the active transaction",
                  (unsigned)handle, (unsigned)g_active_write_handle,
                  g_active_write_path.c_str());
+        g_active_write_fs->abortWrite();
+        g_active_write_fs     = nullptr;
+        g_active_write_handle = 0;
+        g_active_write_path.clear();
+        return false;
     }
     bool ok = g_active_write_fs->closeWrite(handle, commit);
     g_active_write_fs     = nullptr;
@@ -172,8 +196,11 @@ bool fs_close_write(uint32_t handle, bool commit)
 
 void fs_abort_open_transaction()
 {
-    if (!g_active_write_fs || !g_active_write_handle) return;
-    g_active_write_fs->closeWrite(g_active_write_handle, false);
+    if (!g_active_write_fs) return;
+    // Stage lb20 — use abortWrite() rather than closeWrite(active, false) so
+    // this also recovers when the registry and the strategy disagree about
+    // which transaction is live.
+    g_active_write_fs->abortWrite();
     g_active_write_fs     = nullptr;
     g_active_write_handle = 0;
     g_active_write_path.clear();

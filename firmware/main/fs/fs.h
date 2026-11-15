@@ -24,7 +24,11 @@
 // Streaming writes follow an open / append* / close protocol so the
 // host can transfer files larger than a single USB bulk frame. Only
 // one in-flight transaction is supported at a time across both drives;
-// the registry-level `fs_open_write` enforces that.
+// the registry-level `fs_open_write` enforces that. If a host closes
+// with a handle the registry does not recognise (or opens a new write
+// while one is still staged), the transaction is aborted via
+// `Fs::abortWrite()` rather than left dangling — otherwise the
+// strategy-level state would wedge every later write with IO_ERROR.
 
 #pragma once
 
@@ -103,6 +107,25 @@ public:
     virtual uint32_t openWrite(const std::string &path)             = 0;
     virtual bool     appendWrite(uint32_t handle, const uint8_t *data, size_t len) = 0;
     virtual bool     closeWrite(uint32_t handle, bool commit)       = 0;
+
+    // Unconditionally tear down any in-flight write transaction, whatever
+    // handle it was opened under, discarding (never committing) the staged
+    // bytes. Idempotent; safe when no transaction is open.
+    //
+    // Why this is not just `closeWrite(handle, false)`: every implementation
+    // rejects a handle it does not own *before* touching its own bookkeeping
+    // (FlashFs::closeWrite returns before `fclose`/`g_txn = {}`, RamFs
+    // likewise). So a handle mismatch — a host closing with a stale or
+    // replayed handle — would leave the strategy-level transaction (and, for
+    // flash, an open FILE* plus its `<path>.tmp.<handle>` file) allocated
+    // while `fs_close_write()` clears the registry. `fs_open_write()` would
+    // then no longer recognise a stale transaction to abort, and
+    // `openWrite()` would refuse every later `F:` write with IO_ERROR until
+    // the device was reset. Both the mismatch path and the open path call
+    // this instead, so the device recovers on its own.
+    //
+    // Default is a no-op, for FS sources that keep no transaction state.
+    virtual void abortWrite() {}
 
     // ---- Convenience helpers ----------------------------------------
     //

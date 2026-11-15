@@ -1,8 +1,8 @@
 # Flash write transaction wedged after a handle mismatch
 
-**Status:** open — found during a fork-review (jellydn), reproduced by reading the
-code. Firmware-only fix, **being implemented upstream by the maintainer** (no PR
-requested from the reporter).
+**Status: DONE — Stage lb20.** Implemented upstream by the maintainer (no PR
+requested from the reporter). `just firmware-build` green; the on-hardware
+repro below still needs a run on a board. See `docs/design.md` → "Stage lb20".
 
 ## Goal / summary
 
@@ -93,3 +93,31 @@ No firmware unit tests. Verification:
   intend. Abort is the safer semantics.
 * The boot-time `.tmp.*` sweep should still be verified to clean up a tmp file
   left by a power loss mid-write.
+
+## Outcome (Stage lb20 — implemented)
+
+Shipped exactly as phased above; the diff is 6 files / ~91 lines, firmware only
+(`firmware/main/fs/{fs,flash_fs,ram_fs}.{h,cpp}`).
+
+* `Fs::abortWrite()` — virtual, default no-op, overridden by `FlashFs` (closes
+  `g_txn.fp`, unlinks `<path>.tmp.<handle>`, clears `g_txn`) and `RamFs` (drops
+  the staging vector).
+* `fs_close_write()` — on a handle mismatch, aborts the FS-level transaction
+  instead of delegating the bogus handle; still returns `false` and leaves the
+  registry clear.
+* `fs_open_write()` — `abortWrite()`s before `openWrite()`, so a board wedged
+  by an older build self-heals on the next write.
+* `fs_abort_open_transaction()` — now uses `abortWrite()`, so it also recovers
+  when the registry and the strategy disagree (and no longer early-returns when
+  the recorded handle is 0).
+
+**Validated:** `just firmware-build` (default board `jc4827w543`) green, no new
+warnings; `FlashFs`/`RamFs` are compiled into every board target, and the
+change contains no board- or chip-specific code, so a second board build was
+not needed.
+
+**Still open (needs hardware):** the repro in *Testing strategy* above. Not
+covered by pytest — the simulator has no handle/`IO_ERROR` model at all, so a
+simulator test would assert nothing about this bug. Note that step 2 must use
+the *raw* client (`pad.client.file_close(...)`), because the high-level
+`Touchy.file_save()` always closes with the handle it just opened.

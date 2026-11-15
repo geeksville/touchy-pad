@@ -1,6 +1,10 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-06 (**lb19 follow-up fix** — `scroll_speed_px_s` was
+**Last updated:** 2026-11-15 (**Stage lb20** — FS write-transaction recovery: a
+`FileCloseCmd` with the wrong handle used to wedge every later `F:` write with
+`IO_ERROR` until reset; `Fs::abortWrite()` now aborts on mismatch and self-heals
+at open. Firmware only, no wire change; the on-hardware repro still needs a
+run). Before that: 2026-11-06 (**lb19 follow-up fix** — `scroll_speed_px_s` was
 capped at a ~10 s lap by LVGL's speed encoding, so long labels on small displays
 scrolled far too fast; the firmware now computes the exact lap duration itself.
 See `docs/plans/label-scroll-speed.md` §10). Before that: **Stage lb19** — custom
@@ -378,7 +382,10 @@ animation → live property overrides → JSON endpoint) plus board-support fixe
    ourselves**, and ask the reporter only for the two host/just PRs. Plans:
    * `docs/plans/fs-write-transaction-recovery.md` — a `FileCloseCmd` with a
      wrong handle clears `fs.cpp`'s global registry but leaves `FlashFs`'s
-     `g_txn` set → every later `F:` write `IO_ERROR`s until reset. **Ours.**
+     `g_txn` set → every later `F:` write `IO_ERROR`s until reset.
+     **DONE — Stage lb20** (`Fs::abortWrite()`, aborted on mismatch + at open,
+     `fs_abort_open_transaction()` switched to it; `just firmware-build` green
+     for `jc4827w543`; the on-hardware repro is still to run).
    * `docs/plans/widget-ref-property-overrides.md` —
      `widget_refs_change()` never promotes the `widget_property` registry, so
      `set_properties` misses pages shown by `show_user_screen()` and `s_active`

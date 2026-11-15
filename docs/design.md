@@ -6060,6 +6060,68 @@ table), this page, `AGENTS.md`, and a drive-by correction of the long-dead
 
 Plan: `docs/plans/label-scroll-speed.md`.
 
+## Stage lb20: FS write-transaction recovery — DONE
+
+**Status: implemented (firmware only; no wire change, no `ProtocolVersion` /
+`PreferencesVersion` / `Widget.Version` bump).**
+
+Reported from a fork review (@jellydn): after a `FileCloseCmd` that carried the
+wrong handle, every later `F:` write failed with `IO_ERROR` until the board was
+reset — the reporter worked around it by re-saving to `R:` and telling the user
+to tap RST. The diagnosis was correct and the device was worse than the
+workaround implied: the wedge also leaked the open `FILE*` and the
+`<path>.tmp.<handle>` staging file.
+
+**Root cause.** `fs_close_write()` (`firmware/main/fs/fs.cpp`) logged a handle
+mismatch and then still delegated `closeWrite(<caller's handle>, commit)`.
+Every `Fs` implementation rejects a handle it does not own *before* releasing
+its own state (`FlashFs::closeWrite()` returns before `fclose()` / `g_txn = {}`;
+`RamFs::closeWrite()` likewise), so the strategy-level transaction survived
+while `fs_close_write()` unconditionally cleared the global registry. Because
+`fs_open_write()` only aborts a stale transaction when that *registry* says one
+is live, it never fired — and `FlashFs::openWrite()` refuses while
+`g_txn.handle != 0`, so every subsequent open returned 0 (→ `IO_ERROR`) until
+reboot.
+
+**What changed.**
+
+* **`Fs::abortWrite()`** (`fs.h`, default no-op) — an unconditional teardown of
+  whatever transaction the FS has staged, ignoring its handle and discarding
+  (never committing) the bytes. Implemented in `FlashFs` (close the `FILE*`,
+  unlink the temp file, clear `g_txn`) and `RamFs` (drop the staging vector).
+* **`fs_close_write()`** now calls `abortWrite()` on a handle mismatch instead
+  of passing the bogus handle down, then clears the registry and still returns
+  `false` — the caller's handle was unusable, so the staged bytes are
+  deliberately thrown away.
+* **`fs_open_write()`** calls `abortWrite()` before `openWrite()`, so a device
+  wedged by an older build (or by any future path that clears the registry
+  without tearing its transaction down) self-heals on the next write instead of
+  needing a reset. The registry is the authority for "is a write in flight",
+  and any stale one is aborted just above — so a leftover here is necessarily
+  garbage.
+* **`fs_abort_open_transaction()`** uses `abortWrite()` too, so it also
+  recovers when the registry and the strategy disagree about which transaction
+  is live (it previously used `closeWrite(active, false)` and early-returned if
+  the recorded handle was 0).
+
+No host-side change: the client-side `R:` fallback is deliberately *not*
+upstreamed — a host workaround cannot repair a device that can no longer write
+flash. Nothing in `proto/`, `app/` or `rust/` changed.
+
+**Verification.** `just firmware-build` green for the default board
+(`jc4827w543`), no new warnings. Hardware repro (needs the raw client):
+
+```python
+from touchy_pad import touchy_open
+with touchy_open() as pad:
+    c = pad.client
+    h = c.file_open_write("F:host/probe.txt")
+    c.file_close(h + 1, True)        # wrong handle -> IO_ERROR (expected)
+    c.file_save("F:host/probe.txt", b"ok")   # must succeed; pre-fix: IO_ERROR
+```
+
+Plan: `docs/plans/fs-write-transaction-recovery.md`.
+
 
 # Old/Existing projects
 

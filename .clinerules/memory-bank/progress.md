@@ -10,6 +10,32 @@ property writes reset the display auto-off timer), **Stage lb16** (a host
 property batch repaints immediately — idle panels were waiting for
 esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
 (a running app never saw a re-plugged pad) — see the sections below.
+
+### Stage lb20 — FS write-transaction recovery (2026-11-15)
+
+* **Bug (found by a fork review, @jellydn):** a `FileCloseCmd` with the *wrong*
+  handle wedged the device — every later `F:` write returned `IO_ERROR` until a
+  reset. `fs_close_write()` logged the mismatch but still passed the bogus
+  handle to `closeWrite()`, which every `Fs` rejects *before* releasing its own
+  state, so `FlashFs`'s `g_txn` (plus its open `FILE*` and the
+  `<path>.tmp.<handle>` file) survived while the global registry was cleared —
+  and `fs_open_write()` only aborts a stale transaction when that registry says
+  one is live.
+* **Fix (firmware only, 6 files, ~91 lines):** new `Fs::abortWrite()` (virtual,
+  default no-op) — unconditional teardown that ignores the handle and discards
+  the staged bytes; overridden by `FlashFs` (fclose + unlink tmp + clear) and
+  `RamFs` (drop the staging vector). `fs_close_write()` now aborts on mismatch
+  instead of delegating (and still returns `false`); `fs_open_write()` aborts
+  before opening, so an already-wedged board self-heals on the next write;
+  `fs_abort_open_transaction()` uses the same primitive.
+* No wire change (`ProtocolVersion` 14 / `Widget.Version` 30 /
+  `PreferencesFile.Version` 9 untouched), no `app/`/`rust/`/sim change. The
+  reporter's host-side `R:` fallback is deliberately not upstreamed.
+* `just firmware-build` green for `jc4827w543`, no new warnings. **The
+  on-hardware repro is still outstanding** (open → close with `h+1` → write
+  again must succeed); there is no pytest for it — the simulator has no
+  handle/`IO_ERROR` model. Plan: `docs/plans/fs-write-transaction-recovery.md`
+  (its §"Outcome" has the script).
 ### Repo housekeeping — googly-vr + voicebot submodules removed (2026-11-04)
 
 * Both apps are now developed in a different container/repo, so their submodules

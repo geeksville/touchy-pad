@@ -58,11 +58,13 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   `show_user_screen()` and `s_active` keeps dangling pointers to deleted LVGL
   objects. Fix: `LV_EVENT_DELETE` hook + a *merge* (not replace) promote call at
   the end of `widget_refs_change()`. Firmware-only.
-* `docs/plans/fs-write-transaction-recovery.md` — **open (fork review)**: a
-  `FileCloseCmd` with the wrong handle clears the global write registry but
-  leaves `FlashFs`'s `g_txn` set, so every later `F:` write fails with
-  `IO_ERROR` until reset. Fix: `Fs::abortWrite()` + abort on mismatch / at
-  open. Firmware-only; replaces the reporter's host-side `R:` fallback.
+* `docs/plans/fs-write-transaction-recovery.md` — **done — Stage lb20**: a
+  `FileCloseCmd` with the wrong handle cleared the global write registry but left
+  `FlashFs`'s `g_txn` set, so every later `F:` write failed with `IO_ERROR`
+  until reset. Fix: `Fs::abortWrite()` (+ overrides), called on a handle
+  mismatch, from `fs_abort_open_transaction()`, and before every `openWrite()`
+  so an already-wedged board self-heals. Firmware-only, no wire change; replaces
+  the reporter's host-side `R:` fallback. On-hardware repro still to run.
 
 Docs that are *not* plans but are easy to confuse with them:
 

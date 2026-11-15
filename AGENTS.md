@@ -149,7 +149,7 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
-`lb` line (lb5–lb19) are **done**. Latest active wire-format:
+`lb` line (lb5–lb20) are **done**. Latest active wire-format:
 `Widget.Version.CURRENT == 30`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
 `PreferencesFile.Version.CURRENT == 9`.
@@ -840,6 +840,24 @@ Highlights worth remembering:
   pause at each end) in `docs/python-api.md` → "Scrolling speed".
   **`Widget.Version` 29→30**; no `ProtocolVersion` / prefs change, no sim or
   `rust/` code change. Plan: `docs/plans/label-scroll-speed.md`.
+
+- **Stage lb20 (FS write-transaction recovery).** A `FileCloseCmd` carrying a
+  stale/wrong handle used to wedge the device: `fs_close_write()`
+  (`firmware/main/fs/fs.cpp`) logged the mismatch but still delegated
+  `closeWrite(<bogus handle>)`, which every `Fs` rejects *before* releasing its
+  own state — so `FlashFs`'s `g_txn` (and its open `FILE*` + `<path>.tmp.<handle>`)
+  survived while the global registry was cleared, and because `fs_open_write()`
+  only aborted a stale transaction that the registry knew about,
+  `FlashFs::openWrite()` then refused every `F:` write with `IO_ERROR` until
+  reset. New `Fs::abortWrite()` (virtual, default no-op; `FlashFs` fclose+unlink+
+  clear, `RamFs` drop the staging vector) is now called on a handle mismatch
+  (still returning `false`, staged bytes discarded), from
+  `fs_abort_open_transaction()`, and before every `openWrite()` so an
+  already-wedged board self-heals on the next write. **Invariant:** the
+  `fs.cpp` registry is the authority for "is a write in flight" — if it says
+  nothing is in flight, any FS-level transaction is garbage and must be aborted,
+  never committed. Firmware-only, no wire change. Plan:
+  `docs/plans/fs-write-transaction-recovery.md`.
 
 
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host

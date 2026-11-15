@@ -335,3 +335,14 @@ bool RamFs::closeWrite(uint32_t handle, bool commit)
     g_txn = {};
     return ok;
 }
+
+// Stage lb20 (fork-review fix) — see Fs::abortWrite(). RamFs never leaves an
+// open file behind, only the staged vector, so this is simply "drop it".
+void RamFs::abortWrite()
+{
+    if (g_txn.handle == 0) return;
+    ESP_LOGW(TAG, "aborted stale RAM txn handle=%u path='%s' (%u staged bytes)",
+             (unsigned)g_txn.handle, g_txn.path.c_str(),
+             (unsigned)g_txn.staging.size());
+    g_txn = {};  // frees the staging vector
+}

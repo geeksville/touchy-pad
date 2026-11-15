@@ -22,6 +22,7 @@ public:
     uint32_t openWrite(const std::string &path) override;
     bool     appendWrite(uint32_t handle, const uint8_t *data, size_t len) override;
     bool     closeWrite(uint32_t handle, bool commit) override;
+    void     abortWrite() override;
 
     // Stage 81 — report LittleFS capacity / usage in bytes. Returns true
     // on success; on error leaves *total / *used untouched and returns false.
