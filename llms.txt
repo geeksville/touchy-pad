@@ -14,9 +14,13 @@ author screens, drive LCD or LED panels, stream live updates, bind gestures.
 
 ## Facts you must know before writing code
 
-- **Two supported host APIs.** Python: the `touchy_pad.api` package (PyPI
-  `touchy-pad`). Rust: the async `touchy-pad` crate in `rust/touchy-pad/`.
-  Everything else (`touchy_pad._proto`, `sim/`, `cli.py`) is internal.
+- **Two supported host APIs — install them, don't clone the repo.** Python: the
+  `touchy_pad.api` package (`pip install touchy-pad`; PyPI `touchy-pad`). Rust:
+  the async `touchy-pad` crate (`cargo add touchy-pad`; crates.io, docs on
+  docs.rs, source in `rust/touchy-pad/`). Everything else
+  (`touchy_pad._proto`, `sim/`, `cli.py`) is internal. You only need a checkout
+  of this repo to change the firmware, the wire protocol, or the libraries
+  themselves.
 - **One protocol, every transport.** Self-synchronising frames
   `MAGIC(0xA5 0x5A) | LEN(u16 LE) | payload | CRC8` over USB vendor bulk,
   USB-CDC-ACM, hardware UART, or TCP (the simulator). The *same* `Command` /

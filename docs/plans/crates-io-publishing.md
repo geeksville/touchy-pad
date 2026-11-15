@@ -1,8 +1,10 @@
 # Publishing the Rust crate (`touchy-pad`) like Rust developers expect
 
-**Status:** implemented as **Stage lb22** — the code/packaging work is done;
-the actual `cargo publish` is a manual, one-time maintainer step (needs a
-crates.io token).
+**Status:** implemented as **Stage lb22** — and **shipped**: `touchy-pad` 0.3.9 is
+live on crates.io (first publish 2026-11-15). The crate reports `trustpub_only`,
+so publishing runs through GitHub OIDC; `release.yml` prefers the OIDC token and
+falls back to the `CARGO_REGISTRY_TOKEN` secret (the path used for that first
+release). See "Publishing" below.
 
 **Sides touched:** `rust/` (crate layout + new `proto-gen` member), `Justfile`
 (`rust-gen-proto`, `build-proto`), `.github/workflows/app-ci.yml` (freshness
@@ -183,15 +185,20 @@ checked in).
 
 Auth, in order of preference:
 
-1. **`CARGO_REGISTRY_TOKEN` repository secret** — the only option for the very
-   first release, because a crates.io *trusted publisher* can only be configured
-   on a crate that already exists.
-2. **crates.io trusted publishing (OIDC)** — used automatically when that secret
-   is absent (`if: env.CARGO_REGISTRY_TOKEN == ''`), via
-   `rust-lang/crates-io-auth-action@v1` and job-level `id-token: write`. No
-   long-lived credential to leak or rotate.
+1. **crates.io trusted publishing (OIDC)** — preferred, and effectively required
+   for this crate: crates.io reports `trustpub_only` for `touchy-pad`, so token
+   publishing is not accepted. The job mints a short-lived token with
+   `rust-lang/crates-io-auth-action@v1` (job-level `id-token: write`); if no
+   trusted publisher is configured, that step fails softly and the job falls back
+   to the secret below.
+2. **`CARGO_REGISTRY_TOKEN` repository secret** — the fallback, and the path that
+   published 0.3.9 (a trusted publisher can only be configured once the crate
+   exists, so the very first release had to use a token).
 
-### One-time setup — first release (token secret)
+### One-time setup — first release (token secret — done for 0.3.9)
+
+Kept as the documented fallback path. A trusted publisher can only be configured
+once the crate exists, so the first release went out with a token:
 
 1. Sign in at <https://crates.io> (GitHub OAuth).
 2. **Account Settings → API Tokens** (<https://crates.io/settings/tokens>) →
@@ -220,9 +227,9 @@ Auth, in order of preference:
    environment's name. Note the coupling: renaming `release.yml`, the repo, or
    adding an environment without updating crates.io breaks the OIDC exchange.
    Field labels/current wording: <https://crates.io/docs/trusted-publishing>.
-3. Optionally delete the `CARGO_REGISTRY_TOKEN` secret — with it gone the job
-   switches to OIDC automatically. (Keeping it is also fine: the workflow
-   prefers the secret when present, which makes it a working fallback.)
+3. Optionally delete the `CARGO_REGISTRY_TOKEN` secret — the workflow uses the
+   OIDC token whenever it can mint one, so the secret only matters as a fallback
+   for a crate without a trusted publisher. (Keeping it is harmless.)
 
 ### Manual fallback / local check
 

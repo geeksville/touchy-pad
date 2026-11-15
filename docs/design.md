@@ -6257,11 +6257,12 @@ clones `HEAD`). No firmware source changed, so firmware builds are unaffected.
 
 `cargo publish` is wired into the release pipeline: `release.yml` gained a
 `publish-crates-io` job (depends on the shared reusable `test-rust.yml` gate,
-skips a version that is already on crates.io, and takes either the
-`CARGO_REGISTRY_TOKEN` secret or, when that secret is absent, a GitHub-OIDC
-trusted-publishing token). The first release must use the token secret, since a
-trusted publisher can only be configured on a crate that exists — setup steps for
-both paths are in the plan's "Publishing" section.
+skips a version that is already on crates.io, and authenticates with a GitHub-OIDC
+trusted-publishing token, falling back to the `CARGO_REGISTRY_TOKEN` secret). The
+crate shipped as **0.3.9 on 2026-11-15** via the token path — a trusted publisher
+can only be configured once a crate exists — and crates.io now reports
+`trustpub_only` for it, so OIDC is the path in use. Setup steps for both are in
+the plan's "Publishing" section.
 
 ## Stage lb23: documentation aimed at AI consumers — DONE
 

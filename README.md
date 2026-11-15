@@ -3,6 +3,9 @@
 # Touchy-pad
 [![app CI](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml/badge.svg)](https://github.com/geeksville/touchy-pad/actions/workflows/app-ci.yml) 
 [![Subreddit subscribers](https://img.shields.io/reddit/subreddit-subscribers/touchypad)](https://www.reddit.com/r/touchypad/)
+[![PyPI](https://img.shields.io/pypi/v/touchy-pad)](https://pypi.org/project/touchy-pad/)
+[![crates.io](https://img.shields.io/crates/v/touchy-pad)](https://crates.io/crates/touchy-pad)
+[![docs.rs](https://img.shields.io/docsrs/touchy-pad)](https://docs.rs/touchy-pad)
 
 ![welcome](docs/images/welcome.gif)
 
@@ -40,7 +43,7 @@ Disclaimer: This project is young, but moving at a fast pace.  You can already u
 * Also works like a "StreamDeck" via the [OpenDeck](https://github.com/nekename/OpenDeck) application.  Many different plugins automatically supported, bind behaviors and displays to your touchy-deck with a polished GUI app.
 * (optional) Wifi access - so you can control your touchypads from across the room or the internet.  Fully encrypted mTLS based connection - no servers required.
 * Linux, macOS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
-* Includes full (easy) python and rust API libraries for making your own host side apps with cool graphical controls/displays on small/cheap USB devices.
+* Includes full (easy) [python](https://pypi.org/project/touchy-pad/) and [rust](https://crates.io/crates/touchy-pad) API libraries for making your own host side apps with cool graphical controls/displays on small/cheap USB devices — see ["you don't need to clone this repo"](#want-to-build-your-own-app-you-dont-need-to-clone-this-repo) above.
 
 ## [OpenDeck](https://github.com/nekename/OpenDeck) plugin
 This project includes a [plugin](rust/touchy-opendeck/) for OpenDeck.  It allows you to use a touchy-pad as a 'StreamDeck' like device (that costs only $15!).
@@ -84,10 +87,41 @@ Or click on this image to see a brief video:
 
 [![Watch the video](https://img.youtube.com/vi/8Iv6DbesAXM/maxresdefault.jpg)](https://youtu.be/8Iv6DbesAXM)
 
+## Want to build your own app? You don't need to clone this repo
+
+The host-side libraries are **already published** — install the one for your
+language and code against it. You probably don't need to even clone this repo.
+
+| You're writing… | Install | What you get |
+|---|---|---|
+| **Python** | `pip install touchy-pad` | the `touchy` CLI (incl. `touchy update`, which flashes firmware onto a board), the `touchy_pad.api` library, and the device [simulator](docs/simulator.md) |
+| **Rust** | `cargo add touchy-pad` | async client crate with screens, touch events, an [image cache](docs/rust-api.md) and USB / TCP / serial transports |
+
+* Guides: [Python API](docs/python-api.md) · [Rust API](docs/rust-api.md) — the Rust crate ships
+  runnable examples (`cargo run --example screen`), and both libs are documented at
+  [pypi.org/project/touchy-pad](https://pypi.org/project/touchy-pad/) /
+  [docs.rs/touchy-pad](https://docs.rs/touchy-pad).
+* **The device is a dumb renderer.** Your program authors the widgets (LVGL-based) and uploads
+  them, so the "smarts" — layouts, macros, updates, your app's logic — live in *your* code. That's
+  the whole point: custom graphical controls on a $15 board, no firmware work.
+* Both libraries speak the same wire protocol, so a Python script and a Rust program can drive the
+  same board — and either can drive the [simulator](docs/simulator.md) instead of hardware while
+  you're developing.
+
+### You *do* want the source when you're changing the source
+
+* **firmware** — new board support, panel/touch drivers, USB or HID behaviour → see
+  [developer setup](docs/development.md)
+* the **wire protocol** (`proto/*.proto`) — it changes the firmware *and* both libraries at once
+* the **OpenDeck plugin** / StreamController shim, or a bug in the published libraries themselves
+* sending a pull request (see [AI slop and development](#ai-slop-and-development) below for the
+  ground rules)
 
 ## For developers
 
 This project is intended to be 'open' to make it easy for host side code to manage little widgets/behaviors on these great little devices.  No embedded development experience needed.
+
+If you only want to *use* the libraries, install them — see ["you don't need to clone this repo"](#want-to-build-your-own-app-you-dont-need-to-clone-this-repo) above. Clone (or fork) this repo when you're changing the firmware, the wire protocol, or the libraries themselves; [docs/development.md](docs/development.md) covers the dev container, the `just` recipes and the git hooks.
 
 * A toolkit/API so that other projects can easily put custom widgets/screens on these little devices (with python or some other host-side language).  Customizable screen layouts (define with JSON or a python API), bind controls to built-in keyboard/mouse macros or host side python behaviors.  A full set of widgets are available (based on [LVGL](https://lvgl.io/)).
 * There is a full [python simulator](docs/simulator.md) of the device code - so you can test and develop a fair amount code without having to reflash your device.
@@ -136,6 +170,7 @@ There are [lots](docs/hardware.md) of $15-ish USD "Cheap Yellow Displays" that w
 * Current [design documents](docs/README.md).
 * [Developer setup](docs/development.md) — new-machine setup, `just` recipes, git hooks.
 * Current rough [TODO list](docs/TODO.md).
+* Are you an AI agent? [`llms.txt`](llms.txt) is a single-file orientation to the whole host API.
 
 # Support/Issues/Discussion
 

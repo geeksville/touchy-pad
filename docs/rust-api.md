@@ -25,8 +25,9 @@ are checked in at `rust/touchy-pad/src/proto/touchy.rs`, the same deal the Pytho
 package makes by shipping its generated `_pb2` modules inside the wheel.
 (`protoc` is only needed inside *this* repository, to regenerate them.)
 
-The crate is being prepared for crates.io (`docs/plans/crates-io-publishing.md`);
-until it is published you can consume the source tree instead:
+The crate is on crates.io — API docs at [docs.rs/touchy-pad](https://docs.rs/touchy-pad).
+You can also consume the source tree, which is what you want to track unreleased
+changes:
 
 ```toml
 touchy-pad = { git = "https://github.com/geeksville/touchy-pad" }

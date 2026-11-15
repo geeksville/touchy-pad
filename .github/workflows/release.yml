@@ -115,13 +115,12 @@ jobs:
   # `cargo publish` needs neither `protoc` nor a build script here — the prost
   # bindings are checked in (Stage lb22).
   #
-  # Auth, in order of preference:
-  #   1. the `CARGO_REGISTRY_TOKEN` repository secret — required for the *first*
-  #      release, because a crates.io trusted publisher can only be configured
-  #      on a crate that already exists;
-  #   2. crates.io **trusted publishing** (GitHub OIDC) — used automatically
-  #      when that secret is absent, so the long-lived credential can be
-  #      retired once the crate exists.
+  # Auth: crates.io **trusted publishing** (GitHub OIDC) first — `touchy-pad`
+  # reports `trustpub_only` on crates.io, so token publishing is not accepted for
+  # it, and a short-lived OIDC token needs no long-lived credential. If no trusted
+  # publisher is configured the auth step fails softly and the job falls back to
+  # the `CARGO_REGISTRY_TOKEN` repository secret (the path that published 0.3.9,
+  # the crate's first release).
   #
   # Setup steps for both paths: docs/plans/crates-io-publishing.md.
   # ---------------------------------------------------------------------------
@@ -161,35 +160,21 @@ jobs:
             echo "touchy-pad ${ver} is not on crates.io yet — it will be published"
           fi
 
-      # `secrets` cannot be referenced in an `if:`, so the choice between the
-      # secret and OIDC is made here and consumed as a step output.
-      - name: Decide how to authenticate
-        id: auth-mode
-        env:
-          TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          if [ -n "${TOKEN}" ]; then
-            echo "oidc=false" >> "$GITHUB_OUTPUT"
-            echo "Using the CARGO_REGISTRY_TOKEN repository secret."
-          else
-            echo "oidc=true" >> "$GITHUB_OUTPUT"
-            echo "No CARGO_REGISTRY_TOKEN secret — falling back to crates.io trusted publishing (OIDC)."
-          fi
-
-      # Only runs when no token secret is configured. Exchanges a GitHub OIDC
-      # token for a short-lived crates.io token (the action revokes it in a post
-      # step); needs a trusted publisher on the crate's crates.io page.
+      # Trusted publishing first (see the job comment): `continue-on-error` so an
+      # un-configured trusted publisher degrades to the token secret below rather
+      # than failing the whole release.
       - name: Authenticate with crates.io (trusted publishing)
         id: crates-io-auth
-        if: steps.auth-mode.outputs.oidc == 'true' && steps.version.outputs.published == 'false'
+        if: steps.version.outputs.published == 'false'
+        continue-on-error: true
         uses: rust-lang/crates-io-auth-action@v1
 
       - name: Publish touchy-pad
         if: steps.version.outputs.published == 'false'
         env:
-          # OIDC token when trusted publishing supplied one, otherwise the
-          # repository secret (empty if neither is configured — cargo then fails
-          # with an explicit "no token found" error).
+          # The short-lived OIDC token when trusted publishing worked, otherwise
+          # the repository secret (empty if neither is available — cargo then
+          # fails with an explicit "no token found" error).
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --manifest-path rust/touchy-pad/Cargo.toml
 

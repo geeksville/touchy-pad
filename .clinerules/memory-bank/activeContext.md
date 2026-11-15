@@ -9,14 +9,19 @@ crate is now crates.io-ready: the prost bindings are **checked in**
 browse-only `tools/autopage` submodule was removed — its dead *nested*
 `autopage-recipes` pin had broken cargo `git =` deps and recursive clones. No
 wire change; `cargo publish` now happens automatically from `release.yml`'s
-`publish-crates-io` job (same reusable `test-rust.yml` gate as the PR CI; needs
-either the first-publish `CARGO_REGISTRY_TOKEN` secret or a crates.io trusted
-publisher). **lb23** then added the consumer-facing docs that an AI/human
-consumer actually retrieves: `rust/touchy-pad/examples/` (compiled by
+`publish-crates-io` job (same reusable `test-rust.yml` gate as the PR CI).
+**0.3.9 shipped to crates.io on 2026-11-15** (first publish, via the
+`CARGO_REGISTRY_TOKEN` secret); later releases publish automatically, OIDC-first,
+since crates.io now reports `trustpub_only` for the crate. **lb23** then added the
+consumer-facing docs that an AI/human consumer actually retrieves:
+`rust/touchy-pad/examples/` (compiled by
 `cargo test`, shipped in the crate), a "For AI agents" crate-doc block,
 `# Errors` sections on every fallible public API (enforced by
 `clippy::missing_errors_doc`), `#[doc(alias)]` entry points, docs.rs built with
-the `serial` feature, and a repo `CHANGELOG.md`.
+the `serial` feature, and a repo `CHANGELOG.md`. The README got the same
+treatment: it now points people who just want to *use* the libraries at
+`pip install touchy-pad` / `cargo add touchy-pad` rather than a clone, with
+PyPI/crates.io/docs.rs badges up top.
 Plans: `docs/plans/crates-io-publishing.md`,
 `docs/plans/rust-ai-consumer-docs.md`. Before that:
 **Stages lb20 + lb21** — the two firmware bugs from

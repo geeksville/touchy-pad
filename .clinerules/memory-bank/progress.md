@@ -102,10 +102,14 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   `curl -sf .../api/v1/crates/touchy-pad/<ver>`, and authenticates with the
   `CARGO_REGISTRY_TOKEN` secret or — when that secret is absent — GitHub OIDC via
   `rust-lang/crates-io-auth-action@v1`). `app-ci.yml`'s inline `test-rust` job was
-  replaced by the same reusable workflow. The first release must use the token
-  secret: a crates.io trusted publisher can only be configured on a crate that
-  already exists. Plan: `docs/plans/crates-io-publishing.md` (its "Publishing"
-  section has both setup paths); stage write-up in `docs/design.md` §lb22.
+  replaced by the same reusable workflow.
+* **Shipped:** `touchy-pad` **0.3.9** went live on crates.io on 2026-11-15 — the
+  first publish, via the `CARGO_REGISTRY_TOKEN` secret, since a trusted publisher
+  can only be configured for a crate that already exists. crates.io now reports
+  `trustpub_only` for the crate, so `release.yml` prefers the OIDC token and keeps
+  the secret as a fallback only. Plan: `docs/plans/crates-io-publishing.md` (its
+  "Publishing" section has both setup paths); stage write-up in `docs/design.md`
+  §lb22.
 
 ### Stage lb23 — documentation aimed at AI consumers (2026-11-15)
 
