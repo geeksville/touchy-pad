@@ -29,6 +29,7 @@ use prost::Message;
 ///   [`Touchy::events`];
 /// * helpers like [`Touchy::file_save`] that chunk large payloads and
 ///   transparently convert PNG/JPEG/etc. to LVGL `.bin`.
+#[doc(alias = "Pad")]
 pub struct Touchy {
 	client: Client,
 	events_rx: Mutex<Option<mpsc::Receiver<LvEvent>>>,
@@ -55,6 +56,20 @@ impl Touchy {
 	/// Honours the `TOUCHY_SIM_URL` environment variable (Stage 63):
 	/// if set to e.g. `tcp://127.0.0.1:8935`, connects to that
 	/// out-of-process Python simulator instead of enumerating USB.
+	///
+	/// # Errors
+	///
+	/// * [`TouchyError::DeviceNotFound`] — nothing reachable: no USB pad, no
+	///   UART bridge (only tried with the `serial` feature), and no
+	///   `TOUCHY_SIM_URL`.
+	/// * [`TouchyError::UsbPermission`] — the account may not open the device
+	///   (missing Linux udev rule; see `docs/udev.md`).
+	/// * [`TouchyError::IncompatibleFirmware`] — the device's wire version
+	///   differs from this crate's; the message says which side to upgrade.
+	/// * any other transport error ([`TouchyError::Usb`] /
+	///   [`TouchyError::Transport`]).
+	#[doc(alias = "connect")]
+	#[doc(alias = "open device")]
 	pub async fn open() -> Result<Self> {
 		let transport: Arc<dyn Transport> = if let Some((host, port)) = sim_url_from_env() {
 			Arc::new(TcpTransport::connect(&host, port).await?)
@@ -154,6 +169,12 @@ impl Touchy {
 
 	/// Take ownership of the event receiver. The first caller gets it;
 	/// subsequent callers see `Ok(None)`.
+	///
+	/// Starting the receiver also starts the background poll task; device log
+	/// records are forwarded to the [`log`] facade either way
+	/// (`RUST_LOG=touchy_pad=debug`).
+	#[doc(alias = "subscribe")]
+	#[doc(alias = "event stream")]
 	pub async fn events(&self) -> Option<mpsc::Receiver<LvEvent>> {
 		self.events_rx.lock().await.take()
 	}
@@ -165,6 +186,15 @@ impl Touchy {
 	/// Returns the on-device path actually used — equal to `path`
 	/// except when the input was an image and the extension was
 	/// rewritten to `.bin`.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Image`] when `data` looks like a supported image but
+	/// can't be decoded or converted; otherwise the device
+	/// ([`TouchyError::Device`] — e.g. `IO_ERROR` when the filesystem is full)
+	/// or transport errors of [`Touchy::file_write_raw`].
+	#[doc(alias = "upload")]
+	#[doc(alias = "upload file")]
 	pub async fn file_save(&self, path: &str, data: &[u8]) -> Result<String> {
 		let needs_conversion = self.client.transport().needs_image_conversion();
 		// Path: rewrite a recognised image extension to `.bin` only when
@@ -183,6 +213,12 @@ impl Touchy {
 	/// Stream `data` to `path` verbatim (chunked), with no image
 	/// conversion or path rewriting. Used by callers that have already
 	/// normalised their bytes (e.g. [`crate::image_cache::ImageCache`]).
+	///
+	/// # Errors
+	///
+	/// Device ([`TouchyError::Device`]) or transport errors. On failure the
+	/// sequence is aborted device-side (`commit = false`), so a half-written
+	/// file is never committed.
 	pub async fn file_write_raw(&self, path: &str, data: &[u8]) -> Result<()> {
 		// Hold the write lock for the entire open→write→close so a
 		// concurrent writer can't open the device's single global write
@@ -214,6 +250,12 @@ impl Touchy {
 	}
 
 	/// Encode and save a [`Screen`] message at `path`.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Proto`] if `screen` can't be encoded, plus the
+	/// device/transport errors of [`Touchy::file_save`].
+	#[doc(alias = "upload screen")]
 	pub async fn screen_save(&self, path: &str, screen: &Screen) -> Result<()> {
 		let mut buf = Vec::with_capacity(screen.encoded_len());
 		screen.encode(&mut buf)?;
@@ -228,6 +270,11 @@ impl Touchy {
 	/// `F:host/uscr/<name>.pb`. The default chrome's
 	/// `widget_ref(id="page")` will cycle through these files via
 	/// the Prev / Next buttons.
+	///
+	/// # Errors
+	///
+	/// As [`Touchy::widget_save`] — an encode failure, then device/transport
+	/// errors from the write.
 	pub async fn user_screen_save(&self, name: &str, widget: &Widget) -> Result<()> {
 		use crate::USER_SCREENS_DIR;
 		let path = format!("{USER_SCREENS_DIR}{name}.pb");
@@ -237,6 +284,11 @@ impl Touchy {
 	/// Encode a [`Widget`] and write it verbatim to `path` (no image
 	/// conversion). Useful for standalone `WidgetRef` target files such
 	/// as the OpenDeck plugin's per-key stubs.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Proto`] if `widget` can't be encoded, then the
+	/// [`Touchy::file_write_raw`] device/transport errors.
 	pub async fn widget_save(&self, path: &str, widget: &Widget) -> Result<()> {
 		let mut buf = Vec::with_capacity(widget.encoded_len());
 		widget.encode(&mut buf)?;
@@ -252,6 +304,13 @@ impl Touchy {
 	/// `page` ref to `F:host/uscr/<name>.pb` — so the page shows
 	/// without a user touch. The target id (`"page"`) matches the id
 	/// the default chrome assigns its body `widget_ref`.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the device rejects the action (e.g. the chrome
+	/// has no `widget_ref` with id `page`), or a transport error. The page file
+	/// itself must already exist — see [`Touchy::user_screen_save`].
+	#[doc(alias = "show page")]
 	pub async fn show_user_screen(&self, name: &str) -> Result<()> {
 		use crate::USER_SCREENS_DIR;
 		use crate::proto::{Action, ActionChangeWidgetRef, ActionDevice, action, action_change_widget_ref, action_device};
@@ -283,6 +342,12 @@ impl Touchy {
 	/// [`ImageCache`][crate::image_cache::ImageCache]). The change is
 	/// visible at once only if that slot is the one currently displayed;
 	/// otherwise the bytes are staged for the next press/release edge.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the device rejects the action (e.g. no widget
+	/// with that id is on screen), or a transport error. Note that success does
+	/// *not* guarantee the pixels changed — an off-screen slot is only staged.
 	pub async fn set_image_button_slot(&self, target_id: &str, pressed: bool, path: &str) -> Result<()> {
 		use crate::proto::{Action, ActionChangeWidgetRef, ActionDevice, action, action_change_widget_ref, action_device};
 		let behavior = if pressed {
@@ -303,6 +368,15 @@ impl Touchy {
 	}
 
 	/// Activate a previously-uploaded screen.
+	///
+	/// Pass [`DEFAULT_SCREEN_PATH`][crate::DEFAULT_SCREEN_PATH] for the stock
+	/// prev/next chrome.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the file is missing or the device refused it —
+	/// the firmware **deletes** a screen whose root `Widget.version` does not
+	/// match its own wire version.
 	pub async fn screen_load(&self, path: &str) -> Result<()> {
 		self.client.screen_load(path).await
 	}

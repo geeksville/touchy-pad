@@ -45,6 +45,11 @@ pub fn crc8(data: &[u8]) -> u8 {
 }
 
 /// Wrap `payload` in a self-synchronising frame.
+///
+/// # Errors
+///
+/// [`TouchyError::Framing`] if `payload` exceeds [`MAX_FRAME`] — the on-wire
+/// length field is a `u16`.
 pub fn pack(payload: &[u8]) -> Result<Vec<u8>> {
 	if payload.len() > MAX_FRAME {
 		return Err(TouchyError::Framing(format!("payload exceeds {MAX_FRAME}-byte cap: {} bytes", payload.len())));
@@ -63,6 +68,11 @@ pub fn pack(payload: &[u8]) -> Result<Vec<u8>> {
 /// Parse one complete frame's payload from `buf`, which must begin at a
 /// MAGIC marker. Returns the payload and the total bytes consumed. Used
 /// by tests; streaming callers use [`FrameDecoder`].
+///
+/// # Errors
+///
+/// [`TouchyError::Framing`] for a short header, a missing MAGIC marker, a
+/// truncated frame, or a CRC mismatch.
 pub fn unpack(buf: &[u8]) -> Result<(Vec<u8>, usize)> {
 	if buf.len() < HDR {
 		return Err(TouchyError::Framing(format!("short header: {} bytes", buf.len())));
@@ -157,10 +167,21 @@ impl FrameDecoder {
 pub trait Transport: Send + Sync {
 	/// Send a serialised [`crate::proto::Command`] (the bytes are the
 	/// payload only; the transport adds the length prefix).
+	///
+	/// # Errors
+	///
+	/// Implementations return [`TouchyError::Usb`] / [`TouchyError::Transport`]
+	/// when the payload can't be written, and [`TouchyError::Framing`] when it
+	/// exceeds [`MAX_FRAME`].
 	async fn send_command(&self, payload: &[u8]) -> Result<()>;
 
 	/// Read one [`crate::proto::Response`] frame. Returns just the
 	/// payload (the length prefix is stripped).
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Timeout`] when no complete frame arrives within `timeout`;
+	/// otherwise the transport's own error (closed connection, I/O failure).
 	async fn recv_response(&self, timeout: Duration) -> Result<Vec<u8>>;
 
 	/// Whether host-side image conversion to LVGL `.bin` is required

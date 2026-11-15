@@ -29,6 +29,16 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
 
 ## Existing plans
 
+* `docs/plans/rust-ai-consumer-docs.md` — **documentation aimed at AI consumers**
+  (**done — Stage lb23**): Rust has no AI-specific doc standard, so the work was
+  to put usage recommendations where they are *served*. Adds
+  `rust/touchy-pad/examples/` (compiled by `cargo test`, shipped in the crate),
+  a "For AI agents" block in the crate docs, `# Errors` sections on every public
+  fallible API (enforced by `clippy::missing_errors_doc`), `#[doc(alias)]` on the
+  entry points, docs.rs built with the `serial` feature, and a repo
+  `CHANGELOG.md`. No wire change; plan records why `doc(cfg)`/`missing_panics_doc`
+  were left out.
+
 * `docs/plans/crates-io-publishing.md` — **crates.io-ready Rust crate**
   (**done — Stage lb22**): the prost bindings are **checked in**
   (`rust/touchy-pad/src/proto/touchy.rs`, emitted by the new `publish = false`

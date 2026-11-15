@@ -39,6 +39,11 @@ pub struct SerialTransport {
 
 impl SerialTransport {
 	/// Open `port` (e.g. `/dev/ttyACM0` or `COM3`) at [`BAUD_RATE`].
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Transport`] if the port can't be opened — busy, removed, or
+	/// permission denied (no `dialout` / `uucp` group membership).
 	pub fn open(port: &str) -> Result<Self> {
 		let stream = tokio_serial::new(port, BAUD_RATE)
 			.open_native_async()

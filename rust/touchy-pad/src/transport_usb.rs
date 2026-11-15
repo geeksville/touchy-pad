@@ -43,6 +43,12 @@ struct Inner {
 
 impl UsbTransport {
 	/// Find and open the first connected Touchy-Pad device.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::DeviceNotFound`] when no device with the crate's VID/PID
+	/// is attached; [`TouchyError::Usb`] / [`TouchyError::UsbPermission`] when
+	/// it can't be opened or claimed.
 	pub async fn open() -> Result<Self> {
 		let (vid, pid) = usb_vid_pid();
 		let info = enumerate_first(vid, pid).await?;
@@ -51,6 +57,12 @@ impl UsbTransport {
 
 	/// Open a specific device identified by an already-enumerated
 	/// [`nusb::DeviceInfo`].
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Usb`] when the device has gone away, can't be opened (see
+	/// [`TouchyError::UsbPermission`]), or lacks the vendor-class interface and
+	/// bulk endpoint pair this transport needs.
 	pub async fn open_info(info: &DeviceInfo) -> Result<Self> {
 		let device = match info.open().await {
 			Ok(d) => d,
@@ -121,6 +133,11 @@ impl UsbTransport {
 }
 
 /// Enumerate every connected Touchy-Pad device matching `(vid, pid)`.
+///
+/// # Errors
+///
+/// [`TouchyError::Usb`] if the USB subsystem can't be listed — e.g. no libusb
+/// backend at all, which is normal on Windows CI.
 pub async fn enumerate(vid: u16, pid: u16) -> Result<Vec<DeviceInfo>> {
 	let iter = nusb::list_devices().await.map_err(|e| TouchyError::Usb(format!("list_devices: {e}")))?;
 	Ok(iter.filter(|d| d.vendor_id() == vid && d.product_id() == pid).collect())

@@ -68,6 +68,13 @@ impl DiscoveredDevice {
 	}
 
 	/// Open a [`Transport`] for this candidate.
+	///
+	/// # Errors
+	///
+	/// A variant-specific transport error: [`crate::TouchyError::Usb`] (or
+	/// [`crate::TouchyError::UsbPermission`]) for USB,
+	/// [`crate::TouchyError::Transport`] for a UART bridge or the simulator. The
+	/// candidate may also have disappeared since enumeration.
 	pub async fn open(&self) -> Result<Arc<dyn Transport>> {
 		match self {
 			DiscoveredDevice::Usb(info) => Ok(Arc::new(UsbTransport::open_info(info).await?)),
@@ -85,6 +92,14 @@ impl DiscoveredDevice {
 /// simulator when a caller just wants "the first device". A failed USB
 /// enumeration is treated as "no USB devices" (logged) rather than an
 /// error, so the simulator remains discoverable on hosts without libusb.
+///
+/// # Errors
+///
+/// Currently never fails — the `Result` is there for future transports. An
+/// unreachable USB subsystem yields an empty list (logged at debug), which is
+/// indistinguishable from "nothing attached".
+#[doc(alias = "find devices")]
+#[doc(alias = "list devices")]
 pub async fn discover() -> Result<Vec<DiscoveredDevice>> {
 	let mut out: Vec<DiscoveredDevice> = Vec::new();
 

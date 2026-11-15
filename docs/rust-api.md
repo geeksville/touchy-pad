@@ -44,6 +44,28 @@ just rust-gen-proto  # Rust only (needs a `protoc` binary on PATH, or $PROTOC)
 Never hand-edit the generated file — CI re-runs the generator and fails if the
 committed copy differs.
 
+## Examples
+
+`rust/touchy-pad/examples/` holds runnable, compile-checked examples (they are
+built by `cargo test` and `clippy --all-targets`, so they cannot rot):
+
+```sh
+cargo run --example discover      # enumerate USB / UART / simulator devices
+cargo run --example screen        # build a screen from prost structs and show it
+cargo run --example events        # stream touch events
+cargo run --example image_cache   # upload an image once, repaint a key in place
+```
+
+## For AI agents
+
+The crate docs carry a "For AI agents" block with the facts that most often lead
+to wrong code (the device is a dumb renderer, `events()` is one-shot, images
+convert themselves, drive-prefixed paths), and the repo-root `llms.txt` is the
+wider orientation guide. docs.rs also serves **rustdoc JSON** for every
+published version — `https://docs.rs/crate/touchy-pad/latest/json` — which is the
+machine-readable form of this API. Release notes live in
+[`CHANGELOG.md`](https://github.com/geeksville/touchy-pad/blob/main/CHANGELOG.md).
+
 ## Layout
 
 | Module | Purpose |

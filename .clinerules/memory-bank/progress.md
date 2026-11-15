@@ -107,6 +107,31 @@ esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
   already exists. Plan: `docs/plans/crates-io-publishing.md` (its "Publishing"
   section has both setup paths); stage write-up in `docs/design.md` §lb22.
 
+### Stage lb23 — documentation aimed at AI consumers (2026-11-15)
+
+* **Context:** there is no Rust-specific AI documentation standard. Rust's served
+  surface is rustdoc on docs.rs (plus the **rustdoc JSON** docs.rs publishes per
+  crate/version); `llms.txt` is a cross-language *proposal* (already followed at
+  the repo root) and crates.io / docs.rs serve neither repo files nor `llms.txt`
+  — so the **crate docs** are what actually reach a consumer.
+* **Delivered (rust/touchy-pad only, no wire change):** `examples/`
+  (`discover` / `screen` / `events` / `image_cache` — compiled by `cargo test`,
+  shipped via `include`); a "For AI agents" block in `lib.rs`; `# Errors`
+  sections on every public fallible API (~45 sites across pad / client /
+  image_cache / images / discover / transport*), enforced with
+  `#![warn(clippy::missing_errors_doc)]`; `#[doc(alias)]` on the entry points;
+  `[package.metadata.docs.rs] features = ["serial"]` so the serial transport is
+  documented at all; repo `CHANGELOG.md` (0.3.5 → 0.3.9 + `Unreleased`,
+  reconstructed from the tagged commit ranges); and a pre-existing broken
+  intra-doc link in `proto.rs` fixed.
+* **Deliberately skipped:** `doc(cfg)` feature badges (they need the `docsrs` cfg
+  plus an `unexpected_cfgs` declaration to stay warning-free on stable) and
+  `missing_panics_doc` (wants a panic audit first) — both recorded in the plan.
+* `just rust-test` / `just rust-lint` green; `cargo doc --features serial` clean
+  under `RUSTDOCFLAGS=-D warnings`; `clippy -W clippy::missing_errors_doc` → 0
+  remaining; `cargo package` ships the examples. Plan:
+  `docs/plans/rust-ai-consumer-docs.md`; stage write-up `docs/design.md` §lb23.
+
 ### Repo housekeeping — googly-vr + voicebot submodules removed (2026-11-04)
 
 * Both apps are now developed in a different container/repo, so their submodules

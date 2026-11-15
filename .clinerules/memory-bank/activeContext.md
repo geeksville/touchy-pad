@@ -1,7 +1,7 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-15 (**Stage lb22** — the `touchy-pad` Rust crate is now
-crates.io-ready: the prost bindings are **checked in**
+**Last updated:** 2026-11-15 (**Stages lb22 + lb23** — the `touchy-pad` Rust
+crate is now crates.io-ready: the prost bindings are **checked in**
 (`rust/touchy-pad/src/proto/touchy.rs`, emitted by the new `publish = false`
 `rust/proto-gen` member) so the crate has no `build.rs` and its consumers need no
 `protoc`; `just rust-gen-proto` / `just build-proto` regenerate them and
@@ -11,8 +11,14 @@ browse-only `tools/autopage` submodule was removed — its dead *nested*
 wire change; `cargo publish` now happens automatically from `release.yml`'s
 `publish-crates-io` job (same reusable `test-rust.yml` gate as the PR CI; needs
 either the first-publish `CARGO_REGISTRY_TOKEN` secret or a crates.io trusted
-publisher).
-Plan: `docs/plans/crates-io-publishing.md`. Before that:
+publisher). **lb23** then added the consumer-facing docs that an AI/human
+consumer actually retrieves: `rust/touchy-pad/examples/` (compiled by
+`cargo test`, shipped in the crate), a "For AI agents" crate-doc block,
+`# Errors` sections on every fallible public API (enforced by
+`clippy::missing_errors_doc`), `#[doc(alias)]` entry points, docs.rs built with
+the `serial` feature, and a repo `CHANGELOG.md`.
+Plans: `docs/plans/crates-io-publishing.md`,
+`docs/plans/rust-ai-consumer-docs.md`. Before that:
 **Stages lb20 + lb21** — the two firmware bugs from
 the fork review. lb20: a `FileCloseCmd` with the wrong handle used to wedge every
 later `F:` write with `IO_ERROR` until reset; `Fs::abortWrite()` now aborts on

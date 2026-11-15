@@ -152,6 +152,10 @@ only reliable way. Same for `poetry`/`protoc` — use the `just` recipes.
   regenerate with `just rust-gen-proto` / `just build-proto` (protoc *is* needed
   for that). `rust/proto-gen` (`publish = false`) is the generator, and CI
   drift-checks the committed file. `tools/autopage` is no longer a submodule.
+* The public API must stay documented: `missing_docs` and
+  `clippy::missing_errors_doc` are both on (so `just rust-lint` fails without an
+  `# Errors` section), `examples/` are compiled by `just rust-test`, and any
+  user-visible change needs a `CHANGELOG.md` entry.
 
 **Python host**
 

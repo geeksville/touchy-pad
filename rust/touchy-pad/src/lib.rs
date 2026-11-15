@@ -35,8 +35,45 @@
 //!   and helpers like [`Touchy::file_save`] / [`Touchy::screen_save`].
 //! * [`images`] — PNG/JPEG/BMP/GIF/WebP → LVGL 9 native `.bin`
 //!   conversion.
+//!
+//! ## For AI agents (and other LLMs)
+//!
+//! If you are writing code against this crate, these are the facts that most
+//! often get it wrong — each one is checkable in the source.
+//!
+//! * **The device is a dumb renderer.** You author a [`proto::Widget`] tree and
+//!   upload it; the device materialises it with LVGL. There is **no screen DSL
+//!   in this crate** — build prost structs directly (see `examples/screen.rs`),
+//!   or author the screen with the Python DSL and push the resulting `.pb` bytes
+//!   with [`Touchy::file_write_raw`].
+//! * **Wire versions are checked, not negotiated.** The root widget of every
+//!   screen/widget file must carry [`proto::widget::Version::Current`], and
+//!   [`Touchy::open`] refuses a device whose `ProtocolVersion` differs from this
+//!   crate's — it returns [`TouchyError::IncompatibleFirmware`] and says which
+//!   side to upgrade.
+//! * **[`Touchy::events`] is one-shot.** The first caller takes the receiver;
+//!   later callers get `None`.
+//! * **Images convert themselves.** [`Touchy::file_save`] accepts
+//!   PNG/JPEG/BMP/GIF/WebP and rewrites the path to `.bin` when the transport
+//!   needs it — use the *returned* path, don't assume the one you passed.
+//!   [`ImageCache`] adds content-addressed dedup on top.
+//! * **Paths are drive-prefixed.** `F:` persistent flash, `R:` volatile PSRAM
+//!   ramdisk, `T:` transient (where [`ImageCache`] puts assets). Screens live
+//!   under [`SCREENS_DIR`], user pages under [`USER_SCREENS_DIR`].
+//! * **Not here yet:** live property overrides (text/colour/geometry) exist on
+//!   the wire and in the Python API, but have no Rust helper.
+//!
+//! Wider orientation — the Python API, the wire protocol, LCD vs LED panels —
+//! lives in [`llms.txt`](https://github.com/geeksville/touchy-pad/blob/main/llms.txt)
+//! and [`docs/rust-api.md`](https://github.com/geeksville/touchy-pad/blob/main/docs/rust-api.md).
+//! Runnable examples live in `rust/touchy-pad/examples/`: `discover`, `screen`,
+//! `events`, `image_cache`.
 
 #![warn(missing_docs)]
+// Every fallible public API carries an `# Errors` section: the rendered docs are
+// what consumers read, and docs.rs serves them (plus rustdoc JSON) as the
+// machine-readable API surface.
+#![warn(clippy::missing_errors_doc)]
 
 pub mod client;
 pub mod discover;

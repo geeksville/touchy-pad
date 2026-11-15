@@ -33,6 +33,11 @@ pub struct TcpTransport {
 
 impl TcpTransport {
 	/// Connect to `host:port`.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Transport`] if the TCP connection can't be established —
+	/// most often "no `touchy simulator` listening on that port".
 	pub async fn connect(host: &str, port: u16) -> Result<Self> {
 		let addr = format!("{host}:{port}");
 		let stream = TcpStream::connect(&addr).await.map_err(|e| TouchyError::Transport(format!("sim TCP connect {addr}: {e}")))?;
@@ -42,6 +47,11 @@ impl TcpTransport {
 	}
 
 	/// Connect using a `host[:port]` / `tcp://host[:port]` URL string.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Transport`] if `url` doesn't parse (see
+	/// [`parse_sim_url`]) or the connection fails.
 	pub async fn connect_url(url: &str) -> Result<Self> {
 		let (host, port) = parse_sim_url(url)?;
 		Self::connect(&host, port).await
@@ -92,6 +102,11 @@ impl Transport for TcpTransport {
 /// Mirrors `touchy_pad.transport_net.parse_sim_url`. Supports IPv6
 /// literals in square brackets (e.g. `[::1]:8935`). Returns
 /// [`DEFAULT_SIM_PORT`] when no port is given.
+///
+/// # Errors
+///
+/// [`TouchyError::Transport`] if the string is malformed (unterminated IPv6
+/// bracket) or the port isn't a valid `u16`.
 pub fn parse_sim_url(value: &str) -> Result<(String, u16)> {
 	let s = value.trim();
 	let s = s.strip_prefix("tcp://").unwrap_or(s);

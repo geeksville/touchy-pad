@@ -27,6 +27,7 @@ a StreamDeck-compatibility shim (`TouchyDeck`).
 | `docs/host-api.md` | USB endpoint + protocol spec |
 | `Justfile` | All build/test/run tasks — prefer `just <recipe>` over raw commands |
 | `VERSION` | Single-source version (read by Python + CMake) |
+| `CHANGELOG.md` | User-facing release notes — add an entry when a release ships |
 
 > **`tools/googly-vr` and `tools/voicebot` are no longer submodules.** Both are
 > real, actively developed apps (googly-vr: the googly-eyes animation demo;
@@ -163,7 +164,9 @@ touches `usb.core.find()` must guard against `NoBackendError`
   (checkout, `actions/cache`, `upload-artifact`/`download-artifact` within the
   same run) works with `contents: read` alone.
 - `docs/design.md` is the source of truth for "what stage are we on" —
-  update it when you finish a stage.
+  update it when you finish a stage. `CHANGELOG.md` (Keep a Changelog format) is
+  the *user-facing* release notes: add an entry for anything a host app or a
+  firmware user would notice, and mark it `Unreleased` until the version ships.
 - The git submodule at `tools/StreamController` tracks branch
   `pr-touchypad`; `just streamcontroller-run` does
   `git submodule update --init --remote` first.

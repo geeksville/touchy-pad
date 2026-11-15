@@ -6263,6 +6263,52 @@ trusted-publishing token). The first release must use the token secret, since a
 trusted publisher can only be configured on a crate that exists — setup steps for
 both paths are in the plan's "Publishing" section.
 
+## Stage lb23: documentation aimed at AI consumers — DONE
+
+Rust has **no AI-specific documentation standard**. What it has is a *served*,
+machine-readable surface — rustdoc on docs.rs, plus the **rustdoc JSON** docs.rs
+has published for every crate/version since 2025-05-23 — and conventions (the
+Rust API Guidelines) that agents already ingest, alongside the cross-language
+`llms.txt` proposal (which this repo already follows at the root) and
+`AGENTS.md`. So the job was not to invent a format but to put usage
+recommendations where consumers can *retrieve* them: crates.io serves the README
+and docs.rs serves rustdoc, and **neither serves repo files** — an agent reading
+only those never sees `llms.txt`. Plan: `docs/plans/rust-ai-consumer-docs.md`.
+
+* **`rust/touchy-pad/examples/`** — `discover`, `screen`, `events`,
+  `image_cache`. Compiled by `cargo test` / `clippy --all-targets` (so they cannot
+  rot) and shipped in the `.crate` (`include` gained `examples/**`). Until now
+  the only worked examples lived in `touchy-demo`, a separate `publish = false`
+  crate that is invisible from the touchy-pad crate page.
+* **A "For AI agents" block in the crate docs** (`src/lib.rs`) carrying the facts
+  that most often produce wrong code — the device is a dumb renderer, wire
+  versions are checked on the root widget, `events()` is one-shot, images convert
+  themselves, paths are drive-prefixed, property overrides have no Rust helper —
+  plus pointers to the repo `llms.txt` and `docs/rust-api.md`.
+* **`# Errors` sections on every public fallible API** (~45 across `pad.rs`,
+  `client.rs`, `image_cache.rs`, `images.rs`, `discover.rs`, `transport*.rs`),
+  enforced by `#![warn(clippy::missing_errors_doc)]` so a new fallible method
+  without one fails `just rust-lint`.
+* **`#[doc(alias = "…")]`** on the entry points (`Touchy::open` → connect,
+  `events` → subscribe, `file_save` → upload, `to_lvgl_bin` → convert image, …) —
+  rustdoc's only native retrieval aid, also exposed in rustdoc JSON.
+* **docs.rs built with the `serial` feature**
+  (`[package.metadata.docs.rs] features = ["serial"]`), because the default
+  no-feature build hides the whole serial transport from the rendered API.
+* **`CHANGELOG.md`** (C-RELNOTES) — user-facing release notes reconstructed from
+  the tagged commit ranges (0.3.5 → 0.3.9) plus an `Unreleased` section;
+  `docs/design.md` remains the deep stage history. Deliberately *not* `doc(cfg)`
+  feature badges: those need the `docsrs` cfg plus an `unexpected_cfgs`
+  declaration to stay warning-free on stable, and prose conveys the same thing.
+* Also fixed a pre-existing broken intra-doc link in `proto.rs`, surfaced by
+  building docs with `RUSTDOCFLAGS=-D warnings`.
+
+**Verification.** `just rust-test` and `just rust-lint` green; `cargo doc
+--features serial` under `RUSTDOCFLAGS=-D warnings` clean; `cargo clippy
+-W clippy::missing_errors_doc` reports **zero** remaining sites; `cargo package`
+ships the examples. No wire change — `proto/*.proto` untouched and the
+checked-in bindings are unchanged.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

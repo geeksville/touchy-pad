@@ -8,7 +8,10 @@ readme = "../README.md"
 # schemas — kept so the crate documents its own wire format — and `tests/**`
 # ship so the packaged crate stays testable (`cargo package` also stops
 # warning about the excluded tests).
-include = ["src/**", "proto/*.proto", "tests/**"]
+# tests/** ships so the packaged crate stays testable; examples/** ships because
+# they are the primary "how am I meant to use this" surface (compiled by
+# `cargo test` / `clippy --all-targets`, so they cannot rot).
+include = ["src/**", "proto/*.proto", "tests/**", "examples/**"]
 keywords = ["touchpad", "streamdeck", "lvgl", "esp32", "usb"]
 categories = ["hardware-support", "api-bindings"]
 version.workspace = true
@@ -36,6 +39,12 @@ base64 = "0.22"
 # Off by default: pulls in tokio-serial (and its libudev/serialport
 # transitive deps on Linux). Enable for the serial-port transport.
 serial = ["dep:tokio-serial"]
+
+# docs.rs builds with no features by default, which would hide the optional
+# `serial` transport from the rendered API — and therefore from anyone (human or
+# agent) retrieving these docs. Everything it needs is in docs.rs's build image.
+[package.metadata.docs.rs]
+features = ["serial"]
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

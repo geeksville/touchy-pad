@@ -110,6 +110,12 @@ impl ImageCache {
 	/// LVGL `.bin`. Bytes are normalised exactly as
 	/// [`Touchy::file_save`][crate::Touchy::file_save] would, then hashed
 	/// (xxh3-128); identical inputs hit the cache and upload nothing.
+	///
+	/// # Errors
+	///
+	/// [`crate::TouchyError::Image`] if `data` looks like a supported image but
+	/// can't be decoded; otherwise the device/transport errors of the upload.
+	/// A cache *hit* performs no device I/O at all.
 	pub async fn set_cached_image(&self, data: &[u8]) -> Result<String> {
 		let needs_conversion = self.pad.client().transport().needs_image_conversion();
 		let (bytes, suffix) = normalize_for_device(data, needs_conversion, self.max_dim)?;

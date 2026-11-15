@@ -42,6 +42,17 @@ See [docs/rust-api.md](https://github.com/geeksville/touchy-pad/blob/main/docs/r
 for the full public-API tour and `touchy-demo/src/main.rs`
 for a worked example that uploads images and listens for touch events.
 
+Runnable examples live in this crate's `examples/` directory:
+
+```sh
+cargo run --example discover      # enumerate USB / UART / simulator devices
+cargo run --example screen        # build a screen from prost structs and show it
+cargo run --example events        # stream touch events
+cargo run --example image_cache   # upload an image once, repaint a key in place
+```
+
+Release notes: [CHANGELOG.md](https://github.com/geeksville/touchy-pad/blob/main/CHANGELOG.md).
+
 ## Conventions
 
 * Edition 2024, hard tabs, `max_width = 200` (see `rustfmt.toml`).

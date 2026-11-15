@@ -483,7 +483,13 @@ async fn main() -> anyhow::Result<()> {
 - Path constants mirror Python: `touchy_pad::SCREENS_DIR`,
   `DEFAULT_SCREEN_PATH`, `USER_SCREENS_DIR`, `TEMP_DRIVE`.
 - Build/test with `just rust-test`, `just rust-lint`, `just rust-doc`,
-  `just rust-run -- <demo|info|listen>`.
+  `just rust-run -- <demo|info|listen>`; regenerate the checked-in prost bindings
+  with `just rust-gen-proto` (needs `protoc` — crate *consumers* need neither
+  protoc nor a build script).
+- Runnable examples ship inside the crate: `cargo run --example
+  {discover,screen,events,image_cache}`. Each fallible API documents an
+  `# Errors` section, and docs.rs serves the machine-readable form of this API as
+  rustdoc JSON: `https://docs.rs/crate/touchy-pad/latest/json`.
 
 ## Developing without hardware (simulator)
 

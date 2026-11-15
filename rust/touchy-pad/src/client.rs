@@ -4,6 +4,21 @@
 //! exchange. The high-level [`crate::Touchy`] in `pad.rs` layers
 //! convenience (file streaming, image conversion, event delivery) on
 //! top of this.
+//!
+//! ## Errors
+//!
+//! Every method returns [`crate::Result`], and the failure modes are shared:
+//!
+//! * [`TouchyError::Device`] — the device answered with a non-OK
+//!   [`ResultCode`] (e.g. `INVALID_ARG` for a malformed command, `IO_ERROR`
+//!   when a filesystem write fails).
+//! * a transport error — [`TouchyError::Usb`], [`TouchyError::Transport`],
+//!   [`TouchyError::Framing`] or [`TouchyError::Timeout`] (each round-trip has
+//!   a hard 2 s budget).
+//! * [`TouchyError::Proto`] — the reply was missing a payload the command
+//!   promises, i.e. the firmware and this library disagree.
+//!
+//! Per-method `# Errors` sections only spell out what goes beyond that.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +43,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
 pub const FILE_WRITE_CHUNK: usize = 4096;
 
 /// Low-level RPC client wrapping a [`Transport`].
+#[doc(alias = "rpc")]
 #[derive(Clone)]
 pub struct Client {
 	transport: Arc<dyn Transport>,
@@ -111,6 +127,11 @@ impl Client {
 	// -- typed wrappers ----------------------------------------------------
 
 	/// Return board / firmware info.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Proto`] if the reply omits the board-info payload.
+	#[doc(alias = "board info")]
 	pub async fn sys_board_info_get(&self) -> Result<SysBoardInfoResponse> {
 		let resp = Self::check(
 			self.rpc(Command {
@@ -125,6 +146,12 @@ impl Client {
 	}
 
 	/// Reboot into the ESP32 ROM bootloader (USB-DFU).
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the device rejects the request. A
+	/// [`TouchyError::Timeout`] here usually means the reboot already happened —
+	/// the board resets before it can answer.
 	pub async fn sys_reboot_bootloader(&self) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
@@ -136,6 +163,10 @@ impl Client {
 	}
 
 	/// Wake the display backlight.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the device rejects the request.
 	pub async fn screen_wake(&self) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
@@ -149,6 +180,11 @@ impl Client {
 	/// Apply a partial set of device preferences (Stage 82). Only the
 	/// fields present on `prefs` are changed device-side; the device
 	/// persists the merged result.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] (`INVALID_ARG`) if the device rejects a field
+	/// value.
 	pub async fn set_preferences(&self, prefs: PreferencesFile) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
@@ -160,6 +196,10 @@ impl Client {
 	}
 
 	/// Configure the display sleep timeout (milliseconds; 0 = never).
+	///
+	/// # Errors
+	///
+	/// Same failure surface as [`Client::set_preferences`].
 	pub async fn screen_sleep_timeout(&self, timeout_ms: u32) -> Result<()> {
 		self.set_preferences(PreferencesFile {
 			screen_timeout_ms: Some(timeout_ms),
@@ -170,6 +210,10 @@ impl Client {
 
 	/// Set the minimum device log priority queued back to the host
 	/// (Stage 82). Records below this level are dropped device-side.
+	///
+	/// # Errors
+	///
+	/// Same failure surface as [`Client::set_preferences`].
 	pub async fn set_min_log_level(&self, level: LogPriority) -> Result<()> {
 		self.set_preferences(PreferencesFile {
 			min_log_level: Some(level as u32),
@@ -179,6 +223,10 @@ impl Client {
 	}
 
 	/// Configure the early-boot delay in seconds (Stage 82; 0 = none).
+	///
+	/// # Errors
+	///
+	/// Same failure surface as [`Client::set_preferences`].
 	pub async fn set_boot_delay(&self, seconds: u32) -> Result<()> {
 		self.set_preferences(PreferencesFile {
 			boot_delay_s: Some(seconds),
@@ -190,6 +238,10 @@ impl Client {
 	/// Set the persistent display brightness (Stage 94; 0 = off … 100 = max).
 	/// The device maps the level onto its panel-specific PWM duty (or
 	/// quantises to on/off on expander-driven backlights) and persists it.
+	///
+	/// # Errors
+	///
+	/// Same failure surface as [`Client::set_preferences`].
 	pub async fn set_backlight_level(&self, level: u32) -> Result<()> {
 		self.set_preferences(PreferencesFile {
 			backlight_level: Some(level),
@@ -199,6 +251,11 @@ impl Client {
 	}
 
 	/// Delete a file or directory subtree.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the device rejects the request; deleting a
+	/// path that doesn't exist is **not** an error.
 	pub async fn file_delete(&self, path: &str) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
@@ -210,6 +267,12 @@ impl Client {
 	}
 
 	/// Begin streaming a file write. Returns an opaque write handle.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the device refuses to start the write
+	/// (`IO_ERROR`, or a stale transaction it had to abort), or
+	/// [`TouchyError::Proto`] if the reply omits the handle.
 	pub async fn file_open_write(&self, path: &str) -> Result<u32> {
 		let resp = Self::check(
 			self.rpc(Command {
@@ -224,6 +287,11 @@ impl Client {
 	}
 
 	/// Append a chunk to an in-progress file write.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the write is rejected — unknown handle, out of
+	/// space, or a stale transaction.
 	pub async fn file_write(&self, handle: u32, data: &[u8]) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
@@ -235,6 +303,12 @@ impl Client {
 	}
 
 	/// Finish (commit=true) or abort (commit=false) a streaming write.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the write can't be committed or aborted. A
+	/// *wrong* handle aborts the device's in-flight transaction (see
+	/// `docs/plans/fs-write-transaction-recovery.md`).
 	pub async fn file_close(&self, handle: u32, commit: bool) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
@@ -246,6 +320,12 @@ impl Client {
 	}
 
 	/// Activate a previously-uploaded screen. Empty path = default screen.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the file is missing or the device refused it —
+	/// the firmware deletes a screen whose root `Widget.version` doesn't match
+	/// its own wire version.
 	pub async fn screen_load(&self, path: &str) -> Result<()> {
 		self.set_preferences(PreferencesFile {
 			current_screen: Some(path.into()),
@@ -258,6 +338,11 @@ impl Client {
 	/// them (Stage 71). Used to drive device-local behaviour from the
 	/// host — e.g. forcing a page to the front via an
 	/// `ActionChangeWidgetRef` without a user touch.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] if the device rejects the action list (e.g. a
+	/// `WidgetRef` target that doesn't exist).
 	pub async fn run_actions(&self, actions: Vec<Action>) -> Result<()> {
 		Self::check(
 			self.rpc(Command {
@@ -277,6 +362,12 @@ impl Client {
 	/// until either an [`LvEvent`] surfaces or the device reports
 	/// `ResultNotFound` — that way the caller's poll-and-sleep loop
 	/// doesn't insert latency between consecutive log records.
+	///
+	/// # Errors
+	///
+	/// Transport errors only — an empty event *and* log queue is `Ok(None)`,
+	/// never an error. (Prefer [`crate::Touchy::events`] for a push-style
+	/// stream; this is the manual poll primitive.)
 	pub async fn event_consume(&self) -> Result<Option<LvEvent>> {
 		{
 			let mut parked = self.pending_event.lock().await;
@@ -303,6 +394,10 @@ impl Client {
 	/// [`LvEvent`] surfaces during the drain it is parked for the
 	/// next [`Client::event_consume`] call so no event is lost. Caps
 	/// at `max_iterations` polls as a runaway guard.
+	///
+	/// # Errors
+	///
+	/// Transport errors only; an empty queue ends the drain successfully.
 	pub async fn drain_pending(&self, max_iterations: usize) -> Result<()> {
 		for _ in 0..max_iterations {
 			match self.poll().await? {
@@ -323,6 +418,10 @@ impl Client {
 
 	/// Low-level drain: pop whichever of an [`LvEvent`] or [`LogRecord`]
 	/// the device has pending, or `None` when both queues are empty.
+	///
+	/// # Errors
+	///
+	/// Transport errors only.
 	pub async fn poll(&self) -> Result<Option<PollItem>> {
 		let resp = self
 			.rpc(Command {

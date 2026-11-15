@@ -112,6 +112,11 @@ pub fn detect_image_suffix(data: &[u8]) -> &'static str {
 ///   rescale an oversized icon every frame.
 /// * Otherwise the bytes pass through verbatim and the suffix is
 ///   inferred from the magic bytes via [`detect_image_suffix`].
+///
+/// # Errors
+///
+/// [`TouchyError::Image`] when conversion is requested and `data` decodes as a
+/// supported image but can't be converted (truncated or corrupt file).
 pub fn normalize_for_device(data: &[u8], needs_conversion: bool, max_dim: Option<u32>) -> Result<(Cow<'_, [u8]>, &'static str)> {
 	if needs_conversion && looks_like_supported_image(data) {
 		Ok((Cow::Owned(to_lvgl_bin(data, LvFormat::Auto, max_dim)?), ".bin"))
@@ -142,6 +147,12 @@ pub enum LvFormat {
 /// left untouched. Pre-scaling on the host means the device receives a
 /// `.bin` already at its display size and never has to rescale per
 /// frame — on a slow MCU that runtime rescale stalls the LVGL task.
+///
+/// # Errors
+///
+/// [`TouchyError::Image`] if `source` isn't a decodable image (unsupported
+/// format, or a truncated/corrupt file).
+#[doc(alias = "convert image")]
 pub fn to_lvgl_bin(source: &[u8], format: LvFormat, max_dim: Option<u32>) -> Result<Vec<u8>> {
 	let mut img = image::load_from_memory(source)?;
 	if let Some(max) = max_dim
