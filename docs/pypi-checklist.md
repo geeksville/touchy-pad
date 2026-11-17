@@ -13,11 +13,11 @@ Use this checklist before your first PyPI release.
     - PyPI Project Name: `touchy-pad`
     - Owner: `geeksville`
     - Repository: `touchy-pad`
-    - Workflow: `publish-pypi.yml`
+    - Workflow: `release.yml` (the file that contains the `publish-pypi` job — PyPI matches the workflow *filename* and cannot use a reusable workflow)
     - Environment: `pypi`
 - [ ] **Configure trusted publisher on TestPyPI**:
   - Go to [test.pypi.org/manage/account/publishing/](https://test.pypi.org/manage/account/publishing/)
-  - Same settings but environment: `testpypi`
+  - Same settings but Workflow: `testpypi.yml` and Environment: `testpypi`
 - [ ] **Create GitHub environments**:
   - Settings → Environments → New environment → `pypi`
   - Settings → Environments → New environment → `testpypi`
@@ -40,9 +40,8 @@ Use this checklist before your first PyPI release.
 ## First test release
 
 - [ ] **Test on TestPyPI**:
-  - Go to Actions → "Publish to PyPI" → "Run workflow"
+  - Go to Actions → **Publish to TestPyPI (dry run)** → "Run workflow"
   - Select branch: `main`
-  - Dry run: `true`
   - Click "Run workflow"
   - Wait for completion
   - Check [test.pypi.org/project/touchy-pad](https://test.pypi.org/project/touchy-pad/)
@@ -69,7 +68,7 @@ Use this checklist before your first PyPI release.
   - Title: `vX.Y.Z`
   - Description: Summarize changes
   - Publish release
-- [ ] **Monitor workflow**: Watch Actions → "Publish to PyPI"
+- [ ] **Monitor workflow**: Watch Actions → **Release** (its `publish-pypi` job)
 - [ ] **Verify on PyPI**: [pypi.org/project/touchy-pad](https://pypi.org/project/touchy-pad/)
 - [ ] **Test installation**:
   ```bash
@@ -77,6 +76,12 @@ Use this checklist before your first PyPI release.
   touchy --version
   ```
 - [ ] **Announce release**: Update README, docs, or community channels as needed
+
+> **Publishing without cutting a release:** `release.yml` also has a
+> `workflow_dispatch` trigger — Actions → **Release** → **Run workflow** runs just
+> `test-app` + `publish-pypi` (the release-only jobs are skipped). Handy after a
+> PyPI-only fix; the version published is the one on the selected ref. See
+> [pypi-publishing.md](pypi-publishing.md) → "Manual publish".
 
 ## Troubleshooting
 

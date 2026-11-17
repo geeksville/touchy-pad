@@ -1,12 +1,30 @@
 name: Release
 
-# Triggered when a GitHub release is published via the UI.
-# Runs tests, builds firmware for all boards, publishes the Python package to
-# PyPI and the Rust crate to crates.io, and uploads firmware binaries as
-# release assets.
+# Two triggers:
+#
+#   * `release: published` — a full release: tests, firmware + plugin builds,
+#     PyPI and crates.io publishing, and the firmware binaries attached to the
+#     GitHub release.
+#   * `workflow_dispatch` — run manually from the Actions tab ("Release" →
+#     "Run workflow", picking a branch or tag): builds and publishes **only the
+#     Python package to PyPI**. The release-only jobs are gated on
+#     `github.event_name == 'release'`, so a manual run reduces to `test-app` +
+#     `publish-pypi` (`test-app` is what produces the dist artifact the publish
+#     job uploads, and it gates the publish on lint + tests).
+#
+# The PyPI (and crates.io) jobs deliberately stay in *this* file instead of
+# moving into a reusable workflow: PyPI trusted publishing cannot use a reusable
+# workflow as the publishing workflow
+# (https://docs.pypi.org/trusted-publishers/troubleshooting/ → "Reusable
+# workflows on GitHub"), and PyPI matches the OIDC token against the configured
+# repository_owner / repository / **workflow filename**. Keeping the job in
+# `release.yml` means both the release path and the manual path present the same
+# identity, so the trusted publisher already registered on PyPI keeps working.
 on:
   release:
     types: [published]
+  # Manual: build + publish the Python package to PyPI (see the note above).
+  workflow_dispatch:
 
 # Least privilege: read-only by default. Only the publish jobs and the
 # release-asset upload widen it, via job-level `permissions:` blocks that
@@ -20,6 +38,8 @@ jobs:
   # ---------------------------------------------------------------------------
   # test-app: lint + test + build the Python package.
   # PyPI publish and release asset upload both depend on this passing.
+  # Runs on both triggers — a manual dispatch needs it too, since it produces
+  # the `python-package-distributions` artifact `publish-pypi` uploads.
   # ---------------------------------------------------------------------------
   test-app:
     name: Test & build Python package
@@ -57,6 +77,8 @@ jobs:
   # runs on every PR.
   # ---------------------------------------------------------------------------
   test-rust:
+    # Release-only: a manual dispatch publishes PyPI alone.
+    if: github.event_name == 'release'
     uses: ./.github/workflows/test-rust.yml
 
   # ---------------------------------------------------------------------------
@@ -66,6 +88,8 @@ jobs:
   # only live in one place.
   # ---------------------------------------------------------------------------
   build-firmware:
+    # Release-only: firmware binaries are release assets.
+    if: github.event_name == 'release'
     uses: ./.github/workflows/build-firmware.yml
 
   # ---------------------------------------------------------------------------
@@ -74,10 +98,15 @@ jobs:
   # app-ci.yml via the reusable workflow.
   # ---------------------------------------------------------------------------
   build-opendeck:
+    # Release-only: the plugin zip is a release asset.
+    if: github.event_name == 'release'
     uses: ./.github/workflows/build-opendeck.yml
 
   # ---------------------------------------------------------------------------
   # publish-pypi: OIDC trusted publish — only runs after tests pass.
+  #
+  # Runs on both triggers: a published release, and the manual "Run workflow"
+  # dispatch (which is exactly this job, plus the `test-app` that feeds it).
   # ---------------------------------------------------------------------------
   publish-pypi:
     name: Publish to PyPI
@@ -126,6 +155,9 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-crates-io:
     name: Publish to crates.io
+    # Release-only: a manual dispatch publishes the Python package to PyPI.
+    # (`cargo publish` is idempotent-by-check below, so a re-release is safe.)
+    if: github.event_name == 'release'
     needs: [test-rust]
     runs-on: ubuntu-latest
     environment: cratesio  # Optional: for enhanced security
@@ -184,6 +216,8 @@ jobs:
   # ---------------------------------------------------------------------------
   upload-release-assets:
     name: Upload firmware to GitHub Release
+    # Release-only: a manual dispatch has no GitHub release to attach to.
+    if: github.event_name == 'release'
     needs: [build-firmware, build-opendeck, test-app]
     runs-on: ubuntu-latest
     permissions:
