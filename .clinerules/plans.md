@@ -105,6 +105,22 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   Rust `file_write_raw()` gets the same flush+retry (`Client::flush_stale_frames`).
   On-hardware 20×`kill -9` loop still to run.
 
+* `docs/plans/thought-bubbles.md` — **proposed (decision pending)** — chat-style
+  "thought bubbles" for voicebot: a rounded rectangle with **three rounded corners and one
+  sharp one**, text centred. Today nothing in the stack can express it — LVGL 9.5 has a single
+  uniform `LV_STYLE_RADIUS` and `Style.radius` is the only wire knob — so the plan records the
+  three zero-firmware workarounds that work right now (rounded `button` + corner-covering
+  `spacer`; a host-rendered bubble image + a `label`; four-rounded-corners) and proposes
+  **Route A**: per-corner radii on `Style` (`radius_tl/tr/br/bl`) drawn by a new
+  `widget_shape.cpp` composite (union of 2 bands + 4 corner discs, with a 2-task fast path for
+  one sharp corner), `LayoutFlex.main_align/cross_align` (`lv_obj_set_flex_align`) so a bubble
+  can centre its text vertically, two local-style fixes in `widget_builders.cpp` (layout
+  containers and labels currently force local styles that beat host styles), a host-side
+  `bubble()` DSL helper, a Qt per-corner-radius sim mirror, and `Widget.Version` 30 → 31.
+  Alternatives Route B (a `Bubble` widget kind) / Route C (a bubble-capable `Label`) are
+  documented with their trade-offs (firmware-owned text loses the `set_properties("text")`
+  path; bespoke vertical text centring).
+
 Docs that are *not* plans but are easy to confuse with them:
 
 | Doc | What it is |

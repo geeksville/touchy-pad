@@ -1,5 +1,21 @@
 # Active Context — current focus
 
+**Open plan (not implemented; design decision pending):**
+`docs/plans/thought-bubbles.md` — voicebot wants SMS-style "thought bubbles" (a rounded
+rectangle with three rounded corners and one sharp bottom-right corner, text centred). The
+answer to "can the current API do it?" is **no, not natively**: LVGL 9.5 exposes exactly one
+uniform `LV_STYLE_RADIUS` (`lv_obj_style_gen.h`) and the wire has only `Style.radius`
+(`proto/widgets.proto:302` → `widget_styles.cpp:233`), so "3 rounded + 1 sharp" is
+inexpressible; `Label` also can't paint a background (`build_label` forces a local
+`bg_opa = TRANSP`, and local styles outrank host styles), `Button` can't wrap, `Label` wraps
+but is top-aligned (no vertical text align in LVGL), children exist only under layout widgets,
+and `apply_layout` never calls `lv_obj_set_flex_align`. The plan records the three
+**zero-firmware** workarounds that work today (rounded button + corner-filling spacer;
+host-rendered bubble image + label; plain four-rounded-corner) and proposes **Route A** —
+per-corner radii on `Style` + `LayoutFlex` alignment + a host-side `bubble()` helper +
+`Widget.Version` 30 → 31 (stage `lb24`) — with Routes B (a `Bubble` widget kind) / C (a
+bubble-capable `Label`) documented as alternatives. **Awaiting the user's route choice.**
+
 **Last updated:** 2026-11-17 (**host-side desync recovery** — a bug report from
 voicebot, a consumer of the published `touchy-pad` PyPI package: a host
 hard-killed mid-RPC leaves a reply unread in the device's reply FIFO, and since
