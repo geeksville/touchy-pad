@@ -43,6 +43,21 @@ by that design history and the git tags (`git tag -l`).
 
 ### Fixed
 
+- `touchy-pad` (Python): `TouchyClient.file_save()` now retries once when
+  `FileOpenWrite` reads a stale `NOT_FOUND` (or an `OK` with no handle) left in
+  the device's reply FIFO by a host that was hard-killed mid-RPC. A genuine open
+  failure is `RESULT_IO_ERROR`, so this cannot mask a real error. Before the fix
+  the misread reply also leaked a device-side write transaction (visible as
+  `fs_open_write: stale transaction detected …` on the next session) and the
+  write never completed. Also: `touchy_open()` no longer accepts a leftover `OK`
+  reply as board info — a default reply (`protocol_version == 0`, 0×0 panel) is
+  flushed and retried once, so callers stop seeing a phantom 0×0 board; a
+  successful `FileOpenWrite` reply without a handle is rejected instead of
+  becoming handle `0`; and concurrent `file_save()`s from different threads are
+  serialised so they can't abort each other's transaction.
+- `touchy-pad` (Rust): `Touchy::file_write_raw()` gets the same flush-and-retry
+  on a desynced `FileOpenWrite`, via the new crate-internal
+  `Client::flush_stale_frames()`.
 - `touchy-pad`: mutes lints for the generated protobuf module, fixing a
   `just rust-lint` failure that newer clippy raised on it
   (`clippy::large_enum_variant`).

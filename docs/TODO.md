@@ -12,13 +12,14 @@
 * [x] add photo of the small board
 * [ ] fix touch on the really cheap cyd
 * [ ] update autopage and do steam background and sys info pages (cpu %, gpu %, temp, frame rate, graph)
-* [ ] finish [user widgets](user-widgets.md) 
+* [x] finish [user widgets](user-widgets.md) 
 * [ ] Built-in [StreamController](https://streamcontroller.github.io/docs/latest/) support.  Probably via the mock device proof of concept.
 * [ ] add a which hw/why guide (psram etc...)
 * [ ] change recommended board in hardware.md
 * [ ] explain plans w.r.t. 3d printing and knobs on the screen
 * [ ] write a hackster.io article.  Reference old Meshtastic article.
-* [ ] Post here https://www.reddit.com/r/esp32
+* [x] Post here https://www.reddit.com/r/esp32
+* [ ] possibly use https://github.com/PastorCatto/ESP32-Emulator for device emulator developer support
 
 # Alpha n
 Main new features? Much easier scripting than through StreamController - allow arbitrary Python snippets for button presses/slider moves etc...  Dynamic data displays from host to Touchypad (server stats, ZMK modes, whatever user wants to show)
@@ -28,12 +29,12 @@ Main new features? Much easier scripting than through StreamController - allow a
 * [ ] Implement multitouch HID to support multitouch native apps
 * [ ] make a 'builder' to help users with making new uscrs - walk them through running apps, icon selection etc...
 * [ ] determine USB security issues (might need to set a secure key for future API operations - to prevent untrusted users from changing macro behavior)
-* [ ] support no-touch devices
-* [ ] Support a few more board types
+* [x] support no-touch devices
+* [x] Support a few more board types
 * [ ] support eink displays in my test devices drawer
 * [ ] investigate this appstore (or others) https://www.xda-developers.com/someone-created-an-esp32-app-store-and-it-lets-you-flash-apps-straight-from-your-browser/
 * [ ] Stylus support for 'paintbrush mode'
-* [ ] expose device API via wifi/tcp (for arbitary smart signage applications).   Find a good esp32 lib for wifi settings/management/firmware update?
+* [x] expose device API via wifi/tcp (for arbitary smart signage applications).   Find a good esp32 lib for wifi settings/management/firmware update?
 * [ ] Haptics (figure out best way to mount haptics for best effect)
 * [ ] tactile precut sticker/3d printable case for screen overlay?
 * [ ] Use my auto-populated per-app button standard page generator - Default to use the material design icons

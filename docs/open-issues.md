@@ -90,6 +90,32 @@ absorbs it on the next open.
 
 **Tests:** `app/tests/test_client.py::test_flush_stale_frames_*`.
 
+**Follow-up (2026-11-17) — the flush is not always enough, so the RPCs now
+recover.** `TouchyClient.open()`'s flush uses a 40 ms read timeout, so a reply
+that arrives late (device busy in LittleFS/LVGL) survives it; and `touchy_open()`
+does not go through `TouchyClient.open()` at all, so nothing is flushed on that
+path. A leftover then lands in front of *any* later reply:
+
+* a leftover `NOT_FOUND` (the usual empty-`EventConsume` answer) read by
+  `FileOpenWrite` raised `TouchyError: device returned NOT_FOUND (3)` even though
+  the device had opened the handle — and because the open sat outside
+  `file_save()`'s cleanup `try`, no `FileClose(commit=False)` was sent, leaking a
+  device-side write transaction per failed attempt (`fs_open_write: stale
+  transaction detected …`);
+* a leftover `OK` with no payload read by `SysBoardInfoGet` parsed as the
+  *default* `SysBoardInfoResponse`, so `touchy_open()` returned a phantom 0×0
+  board (`protocol_version == 0`).
+
+Fixed by making the two RPCs self-correcting: `file_save()` flushes the stale
+frame(s) and retries once on `NOT_FOUND` / a payload-less `OK` (a genuine open
+failure is `IO_ERROR`), `file_open_write()` rejects a reply with no handle, and
+`touchy_open()` flushes + retries a default board reply (twice → a clear error).
+`_flush_stale_frames()` also holds the RPC lock now, so a flush can't steal an
+in-flight reply. Rust got the same flush-and-retry in
+`Touchy::file_write_raw()`. Plan: `docs/plans/host-desync-recovery.md`; tests:
+`app/tests/test_client.py` (`*_stale_*`) and `app/tests/test_api.py`
+(`test_touchy_open_*board_info*`).
+
 ## Stage 59 — Animated object leaves draw artifacts on LVGL slider's inactive track
 
 **Symptom:** When the Stage-59 `reddot` spacer animates across the "test"

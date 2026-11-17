@@ -11,6 +11,57 @@ property batch repaints immediately — idle panels were waiting for
 esp_lvgl_port's 500 ms sleep) and a **USB enumeration fix**
 (a running app never saw a re-plugged pad) — see the sections below.
 
+### Host-side desync recovery — stale NOT_FOUND in FileOpenWrite (2026-11-17)
+
+**Bug report:** voicebot (a consumer of the published `touchy-pad` PyPI package,
+against a `jc4827w543` pad on protocol 14): after a hard-killed host session
+(`kill -9` mid-RPC), the **next** session's first `screen_save()` raised
+`TouchyError: device returned NOT_FOUND (3)` and the panel never updated, and
+each failed attempt leaked a device-side write transaction
+(`fs_open_write: stale transaction detected …`). A second symptom: `touchy_open()`
+could return a phantom 0×0 board (`protocol_version == 0`).
+
+**Root cause (host-side):** the wire protocol has *no command id* — a `Response`
+is matched to its `Command` purely by FIFO order — so an unread reply left by a
+killed host makes every later reply one command behind. The firmware never
+answers `FileOpenWrite` with `NOT_FOUND` (a real failure is `IO_ERROR`, success
+always carries a handle), so a `NOT_FOUND`/payload-less `OK` there is always
+somebody else's frame; and `file_save()` opened the handle *outside* its
+`try/finally`, so the misread reply left the device transaction open. `touchy_open()`
+skipped every version check when the (default) reply said `protocol_version == 0`.
+
+**Fix (host library only; no wire / proto / firmware / sim change):**
+
+* `app/src/touchy_pad/api/client.py` — new private `_DesyncedReply`
+  (`TouchyError` with `code == 0`); `file_open_write()` rejects an `OK` reply
+  with no handle (mirrors the Rust client's `TouchyError::Proto`);
+  `file_save()` split into a retry wrapper + `_save_bytes()` — on
+  `RESULT_NOT_FOUND`/`_DesyncedReply` it warns, `_flush_stale_frames()`s the
+  orphaned reply and retries **once** (`IO_ERROR` propagates immediately);
+  `_flush_stale_frames()` now holds `_rpc_lock`; new `_write_lock` serialises
+  whole open→write→close sequences (the Python analogue of the Rust
+  `write_lock`, so two threads can't abort each other).
+* `app/src/touchy_pad/api/device.py` — new `_read_board_info()`: a leftover
+  `NOT_FOUND` or a default (`protocol_version == 0`) reply is flushed and
+  retried once; a second raises a clear "reply FIFO is desynchronised" error.
+  A valid version with a 0×0 display stays legal (headless board).
+* `rust/touchy-pad/src/client.rs` — crate-internal `Client::flush_stale_frames()`;
+  `rust/touchy-pad/src/pad.rs` — `Touchy::file_write_raw()` retries once on
+  `Device{NOT_FOUND}` from `file_open_write` after flushing.
+
+**Tests:** `app/tests/test_client.py` (`StaleThenLoopback` + stale-`NOT_FOUND`,
+stale-`OK`-without-payload, and no-retry-on-`IO_ERROR`); `app/tests/test_api.py`
+(`test_touchy_open_retries_a_default_board_info_reply`,
+`test_touchy_open_rejects_repeated_default_board_info`); Rust
+`pad::tests::file_write_raw_retries_a_stale_not_found_open` + the negative
+counterpart (mock transport, no poller).
+
+**Validated:** `just app-test` **290 passed, 2 skipped**; `just app-lint` clean;
+`just rust-test` green (12 lib + all integration/doc tests); `just rust-lint`
+clean. **On hardware still outstanding:** the reporter's 20×`kill -9` acceptance
+loop. Plan: `docs/plans/host-desync-recovery.md`; docs updated in
+`CHANGELOG.md` + `docs/open-issues.md` (follow-up to the 2026-11-04 entry).
+
 ### Stage lb20 — FS write-transaction recovery (2026-11-15)
 
 * **Bug (found by a fork review, @jellydn):** a `FileCloseCmd` with the *wrong*

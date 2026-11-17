@@ -1,6 +1,18 @@
 # Active Context — current focus
 
-**Last updated:** 2026-11-15 (**Stages lb22 + lb23** — the `touchy-pad` Rust
+**Last updated:** 2026-11-17 (**host-side desync recovery** — a bug report from
+voicebot, a consumer of the published `touchy-pad` PyPI package: a host
+hard-killed mid-RPC leaves a reply unread in the device's reply FIFO, and since
+the wire protocol has no command id every later reply is one command behind. The
+next session's `FileOpenWrite` then read the leftover `NOT_FOUND`, raised, and —
+because the handle was opened outside `file_save()`'s cleanup `try` — leaked a
+device-side write transaction; `touchy_open()` could likewise return a phantom
+0×0 board from a leftover `OK`. Fixed in the **host library only** (no wire /
+proto / firmware / sim change): Python `file_save()` flush+retry-once,
+`file_open_write()` reply validation, `touchy_open()`'s `_read_board_info()`, a
+`_write_lock` around whole write sequences, and the Rust `file_write_raw()`
+flush+retry. Plan `docs/plans/host-desync-recovery.md`.) Before that,
+2026-11-15 (**Stages lb22 + lb23** — the `touchy-pad` Rust
 crate is now crates.io-ready: the prost bindings are **checked in**
 (`rust/touchy-pad/src/proto/touchy.rs`, emitted by the new `publish = false`
 `rust/proto-gen` member) so the crate has no `build.rs` and its consumers need no
@@ -45,6 +57,30 @@ brightness when `backlight_level` is unset; voicebot Stage 4a — "audio in":
 mic → VAD → STT → reply, logged; voicebot Stage 1+2 — the remote-Ollama
 responder CLI; and 2026-09-29 — googly-vr stage 5 + Stage lb15 + Stage lb16 +
 the USB enumeration fix ("a running app never sees a re-plugged pad").
+
+### This session (2026-11-17): host-side desync recovery (stale `NOT_FOUND` in `FileOpenWrite`)
+
+* Implemented `docs/plans/host-desync-recovery.md` in full — the companion to
+  Stage lb20's firmware fix. The **host** created the stale transaction Stage
+  lb20 taught the device to abort; now it doesn't, and it recovers instead.
+* **Key insight:** the wire protocol has *no command id* — a `Response` is
+  matched to its `Command` purely by FIFO order — so one unread reply makes every
+  later reply one command behind. The firmware **never** answers `FileOpenWrite`
+  with `NOT_FOUND` (real failure = `IO_ERROR`; success always carries a handle),
+  so a `NOT_FOUND`/payload-less `OK` there is unambiguously a desync — which is
+  what makes a retry safe rather than a mask for a real error.
+* Python: `_DesyncedReply` (a `TouchyError` with `code == 0`), `file_open_write()`
+  reply validation, `file_save()` = retry-once wrapper + `_save_bytes()`,
+  `_flush_stale_frames()` under `_rpc_lock`, new `_write_lock`, and
+  `_read_board_info()` in `touchy_open()`. Rust: `Client::flush_stale_frames()`
+  (crate-internal) + a retry in `Touchy::file_write_raw()`. No wire change.
+* Tests added at the *transport* level (the simulator can't reproduce this — it
+  never emits `NOT_FOUND` from `file_open_write`): `StaleThenLoopback` in
+  `test_client.py`, `DesyncFirstTransport`/`_ForeignOkForever` in `test_api.py`,
+  and a poller-less mock-transport test in `rust/touchy-pad/src/pad.rs`.
+* Validated: `just app-test` 290 passed / 2 skipped, `just app-lint` clean,
+  `just rust-test` + `just rust-lint` green. On-hardware 20×`kill -9` loop still
+  outstanding (the reporter's acceptance criterion).
 
 ### This session (2026-11-06): Stage lb19 — label scroll speed (+ documented default)
 

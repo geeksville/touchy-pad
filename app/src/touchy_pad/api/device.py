@@ -36,6 +36,7 @@ from . import _events, images_dynamic, protobuf
 from ._transport import Transport
 from ._usb_ids import PID, VID
 from .client import TouchyClient
+from .errors import TouchyError
 from .screens import Screen as _DslScreen
 
 logger = logging.getLogger(__name__)
@@ -735,7 +736,7 @@ def touchy_open(
 
     client = TouchyClient(transport)
     try:
-        ver = client.sys_board_info_get()
+        ver = _read_board_info(client)
     except Exception:
         client.close()
         raise
@@ -752,6 +753,53 @@ def touchy_open(
             )
 
     return Touchy(client, board_info=ver)
+
+
+def _read_board_info(client: TouchyClient) -> _proto.SysBoardInfoResponse:
+    """Read the device's board info, hardened against a leftover reply.
+
+    A host that was hard-killed mid-RPC leaves its reply in the device's
+    FIFO; the wire protocol matches replies to commands purely by order, so
+    the *next* RPC reads it (``docs/open-issues.md``). Two shapes hit this
+    RPC:
+
+    * a leftover ``NOT_FOUND`` (the usual empty-``EventConsume`` answer) —
+      the firmware never answers ``SysBoardInfoGet`` that way, so it is
+      always a desync;
+    * a leftover ``OK`` with no ``sys_board_info`` payload, which parses as
+      a **default** response (``protocol_version == 0``, 0×0 panel, empty
+      name) and used to be accepted as a real board.
+
+    Either one is flushed and retried once; a second is fatal. A
+    ``protocol_version`` that is valid but a zero display size is left
+    alone — a headless board is legal.
+    """
+    for attempt in range(2):
+        try:
+            ver = client.sys_board_info_get()
+        except TouchyError as exc:
+            if exc.code != _proto.RESULT_NOT_FOUND or attempt == 1:
+                raise
+            logger.warning(
+                "sys_board_info_get read a leftover %s reply (desynced FIFO); "
+                "flushing stale frames and retrying once",
+                exc.code_name or exc.code,
+            )
+            client._flush_stale_frames()
+            continue
+        if ver.protocol_version != 0:
+            return ver
+        if attempt == 1:
+            raise TouchyError(
+                message="device returned a default board-info reply twice; "
+                "the reply FIFO is desynchronised (power-cycle the pad)"
+            )
+        logger.warning(
+            "sys_board_info_get returned a default board (desynced reply); "
+            "flushing stale frames and retrying once"
+        )
+        client._flush_stale_frames()
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def _open_first_real_device() -> Transport | None:

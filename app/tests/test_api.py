@@ -21,6 +21,7 @@ from touchy_pad.api import (
     IncompatibleFirmwareError,
     Screen,
     Touchy,
+    TouchyError,
     button,
     protobuf,
     touchy_open,
@@ -52,6 +53,42 @@ class FakeTransport(Transport):
 
     def close(self) -> None:
         self.closed = True
+
+
+class DesyncFirstTransport(Transport):
+    """Returns a leftover frame first, then normal replies (killed-host sim).
+
+    Models the device's reply FIFO after a host was hard-killed mid-RPC: the
+    orphaned frame is read as the answer to the *next* command.
+    """
+
+    def __init__(self, server, stale: list[bytes]) -> None:
+        self._inner = FakeTransport(server)
+        self._stale = list(stale)
+
+    def send_command(self, payload: bytes) -> None:
+        self._inner.send_command(payload)
+
+    def recv_response(self, timeout_ms: int = 2000) -> bytes:
+        if self._stale:
+            return self._stale.pop(0)
+        return self._inner.recv_response(timeout_ms)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+class _ForeignOkForever(Transport):
+    """Every read returns a foreign ``OK`` — a permanently desynced FIFO."""
+
+    def send_command(self, payload: bytes) -> None:
+        pass
+
+    def recv_response(self, timeout_ms: int = 2000) -> bytes:
+        return _proto.Response(code=_proto.RESULT_OK).SerializeToString()
+
+    def close(self) -> None:
+        pass
 
 
 def _make_server(*, protocol_version: int = MINIMUM_FIRMWARE_VERSION):
@@ -167,6 +204,25 @@ def test_firmware_too_old_raises():
     server = _make_server(protocol_version=too_old)
     with pytest.raises(IncompatibleFirmwareError):
         touchy_open(transport=FakeTransport(server))
+
+
+def test_touchy_open_retries_a_default_board_info_reply():
+    """A leftover OK reply parses as a default board — flush and retry once."""
+    server = _make_server()
+    stale = [_proto.Response(code=_proto.RESULT_OK).SerializeToString()]
+    pad = touchy_open(transport=DesyncFirstTransport(server, stale))
+    try:
+        assert pad.board_info.protocol_version == MINIMUM_FIRMWARE_VERSION
+        assert pad.board_info.board_name == "test_board"
+    finally:
+        pad.close()
+
+
+def test_touchy_open_rejects_repeated_default_board_info():
+    """Two default replies mean the FIFO is desynced — fail loudly."""
+    with pytest.raises(TouchyError) as info:
+        touchy_open(transport=_ForeignOkForever())
+    assert "desynchronised" in str(info.value)
 
 
 def test_screen_save_accepts_host_dsl(open_pad):

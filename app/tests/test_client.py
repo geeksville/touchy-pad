@@ -78,6 +78,99 @@ def test_flush_stale_frames_is_bounded():
     assert TouchyClient(t)._flush_stale_frames(max_frames=8) == 8
 
 
+class StaleThenLoopback(Transport):
+    """A leftover frame is read first, then normal loopback replies follow."""
+
+    def __init__(self, server, stale):
+        self._inner = LoopbackTransport(server)
+        self._stale = list(stale)
+
+    def send_command(self, payload: bytes) -> None:
+        self._inner.send_command(payload)
+
+    def recv_response(self, timeout_ms: int = 2000) -> bytes:
+        if self._stale:
+            return self._stale.pop(0)
+        return self._inner.recv_response(timeout_ms)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+def test_file_save_recovers_from_a_stale_not_found():
+    """A leftover NOT_FOUND (killed host) must not leak a write transaction."""
+    opened = []
+    closed = []
+
+    def server(cmd, _t):
+        kind = cmd.WhichOneof("cmd")
+        if kind == "file_open_write":
+            opened.append(cmd.file_open_write.path)
+            handle = len(opened)
+            return _proto.Response(
+                code=_proto.RESULT_OK,
+                file_open_write=_proto.FileOpenWriteResponse(handle=handle),
+            )
+        if kind == "file_write":
+            return _proto.Response(code=_proto.RESULT_OK)
+        if kind == "file_close":
+            closed.append((cmd.file_close.handle, cmd.file_close.commit))
+            return _proto.Response(code=_proto.RESULT_OK)
+        raise AssertionError(kind)
+
+    stale = [_proto.Response(code=_proto.RESULT_NOT_FOUND).SerializeToString()]
+    c = TouchyClient(StaleThenLoopback(server, stale))
+    c.file_save("F:host/s/x.pb", b"x")
+
+    assert len(opened) == 2  # first open was "lost", retried
+    assert closed == [(2, True)]  # retry committed its own handle
+
+
+def test_file_save_recovers_from_a_stale_ok_without_payload():
+    """An OK leftover with no handle is also a desync, not a real open."""
+    opened = []
+    committed = []
+
+    def server(cmd, _t):
+        kind = cmd.WhichOneof("cmd")
+        if kind == "file_open_write":
+            opened.append(cmd.file_open_write.path)
+            handle = len(opened)
+            return _proto.Response(
+                code=_proto.RESULT_OK,
+                file_open_write=_proto.FileOpenWriteResponse(handle=handle),
+            )
+        if kind == "file_write":
+            return _proto.Response(code=_proto.RESULT_OK)
+        if kind == "file_close":
+            committed.append(cmd.file_close.commit)
+            return _proto.Response(code=_proto.RESULT_OK)
+        raise AssertionError(kind)
+
+    stale = [_proto.Response(code=_proto.RESULT_OK).SerializeToString()]
+    c = TouchyClient(StaleThenLoopback(server, stale))
+    c.file_save("F:host/s/x.pb", b"x")
+
+    assert len(opened) == 2
+    assert committed == [True]
+
+
+def test_file_save_does_not_retry_a_real_open_failure():
+    """IO_ERROR from FileOpenWrite is a genuine failure — surface it at once."""
+    opens = 0
+
+    def server(cmd, _t):
+        nonlocal opens
+        opens += 1
+        return _proto.Response(code=_proto.RESULT_IO_ERROR)
+
+    c = TouchyClient(LoopbackTransport(server))
+    with pytest.raises(TouchyError) as info:
+        c.file_save("F:host/s/x.pb", b"x")
+    assert info.value.code == _proto.RESULT_IO_ERROR
+    assert opens == 1
+
+
 def test_close_waits_for_an_in_flight_rpc(make_client):
     """close() takes the RPC lock so a reply isn't orphaned in the device FIFO."""
 

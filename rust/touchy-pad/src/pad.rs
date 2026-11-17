@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use crate::client::{Client, FILE_WRITE_CHUNK};
 use crate::error::{Result, TouchyError};
 use crate::images::{looks_like_supported_image, normalize_for_device, rewrite_to_bin_path};
-use crate::proto::{LvEvent, Screen, Widget};
+use crate::proto::{LvEvent, ResultCode, Screen, Widget};
 use crate::transport::Transport;
 use crate::transport_net::{TcpTransport, sim_url_from_env};
 use crate::transport_usb::UsbTransport;
@@ -218,7 +218,10 @@ impl Touchy {
 	///
 	/// Device ([`TouchyError::Device`]) or transport errors. On failure the
 	/// sequence is aborted device-side (`commit = false`), so a half-written
-	/// file is never committed.
+	/// file is never committed. A desynced reply to the opening
+	/// `FileOpenWrite` (a leftover from a host that was hard-killed mid-RPC,
+	/// surfaced as `NOT_FOUND`) is flushed and the sequence retried once
+	/// before it becomes an error.
 	pub async fn file_write_raw(&self, path: &str, data: &[u8]) -> Result<()> {
 		// Hold the write lock for the entire open→write→close so a
 		// concurrent writer can't open the device's single global write
@@ -231,7 +234,23 @@ impl Touchy {
 			log::debug!("file_write_raw('{path}'): waited {waited:?} for write_lock");
 		}
 		log::debug!("file_write_raw('{path}'): {} bytes — begin", data.len());
-		let handle = self.client.file_open_write(path).await?;
+		// A host that was hard-killed mid-RPC leaves its reply in the device
+		// FIFO, so the *next* RPC reads it. The firmware answers
+		// FileOpenWrite with IO_ERROR when it really fails and always
+		// carries a handle on success — it never emits NOT_FOUND — so a
+		// NOT_FOUND here is a desynced reply, not a real failure. Flush the
+		// stale frame(s) and retry once; the retry's open also makes the
+		// device abort the transaction our lost open created
+		// (docs/open-issues.md).
+		let handle = match self.client.file_open_write(path).await {
+			Ok(handle) => handle,
+			Err(TouchyError::Device { code, .. }) if code == ResultCode::NotFound as i32 => {
+				log::warn!("file_write_raw('{path}'): FileOpenWrite answered NOT_FOUND (desynced reply); flushing stale frames and retrying once");
+				self.client.flush_stale_frames().await;
+				self.client.file_open_write(path).await?
+			}
+			Err(e) => return Err(e),
+		};
 		let result: Result<()> = async {
 			for chunk in data.chunks(FILE_WRITE_CHUNK) {
 				self.client.file_write(handle, chunk).await?;
@@ -444,4 +463,131 @@ fn spawn_event_poller(client: Client, tx: mpsc::Sender<LvEvent>, mut shutdown_rx
 #[allow(dead_code)]
 fn _touch(e: TouchyError) -> TouchyError {
 	e
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::collections::VecDeque;
+
+	use crate::proto::{Command, FileOpenWriteResponse, Response, command, response};
+	use async_trait::async_trait;
+
+	/// Mock transport modelling the device's strict one-reply-per-request
+	/// FIFO: each command queues exactly one reply, and `stale` frames (as
+	/// left behind by a hard-killed host) are read before those replies.
+	/// An empty FIFO reads as a timeout, so `flush_stale_frames` stops.
+	#[derive(Default)]
+	struct Mock {
+		stale: Mutex<VecDeque<Response>>,
+		replies: Mutex<VecDeque<Response>>,
+		sent: Mutex<Vec<Command>>,
+		opens: Mutex<u32>,
+		open_error: Mutex<bool>,
+	}
+
+	impl Mock {
+		async fn push_stale(&self, resp: Response) {
+			self.stale.lock().await.push_back(resp);
+		}
+	}
+
+	#[async_trait]
+	impl Transport for Mock {
+		async fn send_command(&self, payload: &[u8]) -> Result<()> {
+			let cmd = Command::decode(payload).expect("decode command");
+			// Read the flag outside the match: guards can't `.await`.
+			let open_error = *self.open_error.lock().await;
+			let reply = match &cmd.cmd {
+				Some(command::Cmd::FileOpenWrite(_)) if open_error => Response {
+					code: ResultCode::IoError as i32,
+					payload: None,
+				},
+				Some(command::Cmd::FileOpenWrite(_)) => {
+					let mut n = self.opens.lock().await;
+					*n += 1;
+					open_handle(*n)
+				}
+				_ => ok(None),
+			};
+			self.sent.lock().await.push(cmd);
+			self.replies.lock().await.push_back(reply);
+			Ok(())
+		}
+		async fn recv_response(&self, _: Duration) -> Result<Vec<u8>> {
+			let next = match self.stale.lock().await.pop_front() {
+				Some(r) => Some(r),
+				None => self.replies.lock().await.pop_front(),
+			};
+			match next {
+				Some(resp) => {
+					let mut buf = Vec::with_capacity(resp.encoded_len());
+					resp.encode(&mut buf).expect("encode response");
+					Ok(buf)
+				}
+				None => Err(TouchyError::Timeout(Duration::from_millis(1))),
+			}
+		}
+	}
+
+	fn ok(payload: Option<response::Payload>) -> Response {
+		Response { code: ResultCode::Ok as i32, payload }
+	}
+
+	fn open_handle(handle: u32) -> Response {
+		ok(Some(response::Payload::FileOpenWrite(FileOpenWriteResponse { handle })))
+	}
+
+	/// A `Touchy` with **no** background poller, so the mock's reply queue is
+	/// consumed deterministically by this test's own RPCs.
+	fn touchy_without_poller(t: Arc<dyn Transport>) -> Touchy {
+		let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+		Touchy {
+			client: Client::new(t),
+			events_rx: Mutex::new(None),
+			poller: Mutex::new(None),
+			write_lock: Mutex::new(()),
+			shutdown_tx,
+		}
+	}
+
+	#[tokio::test]
+	async fn file_write_raw_retries_a_stale_not_found_open() {
+		let mock = Arc::new(Mock::default());
+		// The device's FIFO still holds the NOT_FOUND reply from the killed
+		// host's last (empty) EventConsume, so our first open reads that
+		// instead of its own reply — which stays queued for the retry to
+		// flush away.
+		mock.push_stale(Response {
+			code: ResultCode::NotFound as i32,
+			payload: None,
+		})
+		.await;
+
+		let pad = touchy_without_poller(mock.clone());
+		pad.file_write_raw("F:host/s/x.pb", b"hi").await.expect("retried write");
+
+		let sent = mock.sent.lock().await;
+		assert_eq!(sent.len(), 4, "open, open, write, close — got {sent:?}");
+		match &sent[2].cmd {
+			Some(command::Cmd::FileWrite(w)) => {
+				assert_eq!(w.handle, 2, "write must use the retry's handle, not the stale one");
+			}
+			other => panic!("expected file_write, got {other:?}"),
+		}
+	}
+
+	#[tokio::test]
+	async fn file_write_raw_does_not_retry_a_real_open_failure() {
+		let mock = Arc::new(Mock::default());
+		*mock.open_error.lock().await = true;
+
+		let pad = touchy_without_poller(mock.clone());
+		let err = pad.file_write_raw("F:host/s/x.pb", b"hi").await.unwrap_err();
+		match err {
+			TouchyError::Device { code, .. } => assert_eq!(code, ResultCode::IoError as i32),
+			other => panic!("expected Device error, got {other:?}"),
+		}
+		assert_eq!(mock.sent.lock().await.len(), 1, "IO_ERROR must not be retried");
+	}
 }

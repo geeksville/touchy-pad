@@ -92,6 +92,19 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   so an already-wedged board self-heals. Firmware-only, no wire change; replaces
   the reporter's host-side `R:` fallback. On-hardware repro still to run.
 
+* `docs/plans/host-desync-recovery.md` — **done — host library (Python + Rust),
+  no wire change**: the companion to Stage lb20, reported by voicebot. A host
+  hard-killed mid-RPC leaves a reply in the device FIFO, so the *next* RPC reads
+  it — `FileOpenWrite` then saw a stale `NOT_FOUND` (raising, and leaking a write
+  transaction because the handle was opened outside `file_save()`'s cleanup
+  `try`), and `SysBoardInfoGet` saw a foreign `OK` that parsed as a phantom 0×0
+  board. Fix: `file_save()` flushes + retries once on `NOT_FOUND`/a payload-less
+  `OK` (`_DesyncedReply`), `file_open_write()` validates its reply,
+  `touchy_open()` flushes + retries a default board reply via
+  `_read_board_info()`, `_write_lock` serialises whole write sequences, and the
+  Rust `file_write_raw()` gets the same flush+retry (`Client::flush_stale_frames`).
+  On-hardware 20×`kill -9` loop still to run.
+
 Docs that are *not* plans but are easy to confuse with them:
 
 | Doc | What it is |

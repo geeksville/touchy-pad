@@ -81,6 +81,23 @@ def _check(response: _proto.Response) -> _proto.Response:
     return response
 
 
+class _DesyncedReply(TouchyError):
+    """An ``OK`` reply that cannot belong to the command just sent.
+
+    The wire protocol carries no command/sequence id — a ``Response`` is
+    matched to its ``Command`` purely by FIFO order — so a reply left over
+    from a host that was hard-killed mid-RPC is read as the answer to the
+    *next* command (``docs/open-issues.md``). When the firmware guarantees a
+    payload for a reply (``FileOpenWrite`` always carries a handle), a
+    successful-looking response with no payload is the signature of such a
+    leftover. Carrying ``code == 0`` (like a host-side failure) keeps it
+    distinguishable from a genuine device ``ResultCode``.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message=message)
+
+
 class TouchyClient:
     """Low-level interface to a connected Touchy-Pad device.
 
@@ -96,6 +113,12 @@ class TouchyClient:
         # RPCs with foreground calls on the same transport (which would
         # cross-route the responses).
         self._rpc_lock = threading.Lock()
+        # Serializes whole file-write sequences (open→write→close). The
+        # device has a single global write transaction, so a concurrent
+        # writer that lands between our open and close aborts ours — the
+        # device logs "stale transaction detected" and drops our bytes.
+        # Mirrors the Rust `write_lock` in `pad.rs::file_write_raw`.
+        self._write_lock = threading.Lock()
         # Stage 64.1: ``drain_pending()`` may surface an ``LvEvent``
         # while draining tunneled log records at connect time; we
         # park it here so the next ``event_consume()`` call returns
@@ -163,19 +186,23 @@ class TouchyClient:
     def _flush_stale_frames(self, max_frames: int = 8, timeout_ms: int = 40) -> int:
         """Drop complete frames already queued in the device's bulk-IN FIFO.
 
-        Called once at open (see :meth:`open`). Each read uses a short timeout
-        and the loop stops as soon as the FIFO is empty — the frame decoder
-        keeps any *partial* bytes across calls, so this can never corrupt a
-        genuine reply that arrives mid-flush. Returns the number of stale
-        frames discarded.
+        Called once at open (see :meth:`open`) and again before retrying a
+        desynced RPC. Each read uses a short timeout and the loop stops as
+        soon as the FIFO is empty — the frame decoder keeps any *partial*
+        bytes across calls, so this can never corrupt a genuine reply that
+        arrives mid-flush. Returns the number of stale frames discarded.
+
+        The RPC lock is held throughout so an in-flight (e.g. background
+        event-poll) exchange can't have its reply stolen by the flush.
         """
         dropped = 0
-        for _ in range(max_frames):
-            try:
-                self._t.recv_response(timeout_ms)
-            except Exception:  # noqa: BLE001 — a timeout just means "empty"
-                break
-            dropped += 1
+        with self._rpc_lock:
+            for _ in range(max_frames):
+                try:
+                    self._t.recv_response(timeout_ms)
+                except Exception:  # noqa: BLE001 — a timeout just means "empty"
+                    break
+                dropped += 1
         if dropped:
             logger.info("dropped %d stale frame(s) left in the device FIFO", dropped)
         return dropped
@@ -323,10 +350,24 @@ class TouchyClient:
         _check(self._rpc(_proto.Command(file_delete=_proto.FileDeleteCmd(path=path))))
 
     def file_open_write(self, path: str) -> int:
-        """Begin streaming a new file. Returns an opaque write handle."""
+        """Begin streaming a new file. Returns an opaque write handle.
+
+        The firmware answers this RPC with ``OK`` + a handle, or with
+        ``IO_ERROR`` when it cannot start the write — it **never** emits
+        ``NOT_FOUND`` here. A reply that is not ``OK`` + a payload is
+        therefore somebody else's frame (a leftover from a host that was
+        hard-killed mid-RPC; see ``docs/open-issues.md``), so
+        :class:`_DesyncedReply` is raised rather than returning a bogus
+        handle.
+        """
         reply = _check(
             self._rpc(_proto.Command(file_open_write=_proto.FileOpenWriteCmd(path=path)))
         )
+        if not reply.HasField("file_open_write") or reply.file_open_write.handle == 0:
+            raise _DesyncedReply(
+                "file_open_write: response payload missing or zero handle "
+                "(desynced reply from a killed host session?)"
+            )
         return reply.file_open_write.handle
 
     def file_write(self, handle: int, data: bytes) -> None:
@@ -375,6 +416,12 @@ class TouchyClient:
         the device RX buffer) and a ``FileClose(commit=True)``. If any
         chunk fails we send ``FileClose(commit=False)`` so the device
         can drop the partial file.
+
+        If ``FileOpenWrite`` reads a leftover reply from a host that was
+        hard-killed mid-RPC (``NOT_FOUND`` or an ``OK`` with no handle) the
+        stale frame is flushed and the whole sequence is retried once, so a
+        desync is invisible to callers. A genuine open failure is
+        ``IO_ERROR`` and is surfaced immediately.
         """
         if isinstance(data, str):
             data = data.encode("utf-8")
@@ -411,6 +458,32 @@ class TouchyClient:
             )
         else:
             logger.debug("file_save: %s (%d bytes)", path, len(data))
+        # Hold the write lock for the whole open→write→close (and the retry
+        # below) so a concurrent writer can't abort our transaction — the
+        # device has a single global write transaction (see `_write_lock`).
+        with self._write_lock:
+            try:
+                self._save_bytes(path, data)
+            except TouchyError as exc:
+                if exc.code != _proto.RESULT_NOT_FOUND and not isinstance(exc, _DesyncedReply):
+                    raise
+                # The firmware answers FileOpenWrite with IO_ERROR when it
+                # really fails (firmware/main/api/host_api.cpp) and always
+                # carries a handle on success, so a NOT_FOUND / missing
+                # payload here is a leftover reply from a host that was
+                # hard-killed mid-RPC. Discard it and retry once; the retry's
+                # open also makes the device abort whatever write transaction
+                # our lost open created.
+                logger.warning(
+                    "file_save(%s): desynced reply (%s); flushing stale frames and retrying once",
+                    path,
+                    exc,
+                )
+                self._flush_stale_frames()
+                self._save_bytes(path, data)
+
+    def _save_bytes(self, path: str, data: bytes) -> None:
+        """One streaming write: FileOpenWrite, chunked FileWrite, FileClose."""
         handle = self.file_open_write(path)
         committed = False
         try:

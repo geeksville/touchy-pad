@@ -37,6 +37,12 @@ use crate::transport::Transport;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Frames to drop at most when resyncing a desynced reply FIFO, and the
+/// per-read timeout used while doing so. Mirrors the Python
+/// `TouchyClient._flush_stale_frames()` defaults.
+const FLUSH_MAX_FRAMES: usize = 8;
+const FLUSH_TIMEOUT: Duration = Duration::from_millis(40);
+
 /// Max payload bytes per [`FileWriteCmd`] — the on-wire frame must fit
 /// inside the device's RX buffer (5 KiB after stage 51); we leave
 /// ~1 KiB of headroom for the surrounding `Command`/oneof overhead.
@@ -317,6 +323,33 @@ impl Client {
 			.await?,
 		)?;
 		Ok(())
+	}
+
+	/// Drop complete frames already queued in the device's reply FIFO.
+	///
+	/// A host process that died mid-RPC leaves its reply unread, and the
+	/// device answers strictly one frame per request — so every later reply
+	/// is one command behind (`docs/open-issues.md`). Reading (and
+	/// discarding) the leftovers resynchronises the FIFO. Each read uses a
+	/// short timeout and the loop stops at the first read that yields
+	/// nothing, so an already-clean FIFO costs one short wait. Returns the
+	/// number of frames discarded. Best-effort: any transport error also
+	/// stops the loop.
+	pub(crate) async fn flush_stale_frames(&self) -> usize {
+		// Hold the RPC lock so a concurrent (background event-poll)
+		// round-trip can't have its reply stolen by the flush.
+		let _rpc_guard = self.rpc_lock.lock().await;
+		let mut dropped = 0;
+		for _ in 0..FLUSH_MAX_FRAMES {
+			match self.transport.recv_response(FLUSH_TIMEOUT).await {
+				Ok(_) => dropped += 1,
+				Err(_) => break,
+			}
+		}
+		if dropped > 0 {
+			log::info!("dropped {dropped} stale frame(s) left in the device FIFO");
+		}
+		dropped
 	}
 
 	/// Activate a previously-uploaded screen. Empty path = default screen.
