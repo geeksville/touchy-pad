@@ -60,8 +60,10 @@
 //! * **Paths are drive-prefixed.** `F:` persistent flash, `R:` volatile PSRAM
 //!   ramdisk, `T:` transient (where [`ImageCache`] puts assets). Screens live
 //!   under [`SCREENS_DIR`], user pages under [`USER_SCREENS_DIR`].
-//! * **Not here yet:** live property overrides (text/colour/geometry) exist on
-//!   the wire and in the Python API, but have no Rust helper.
+//! * **Not here yet:** live property overrides have one helper
+//!   ([`Touchy::set_font_size`], stage lb26) plus the generic
+//!   [`Touchy::set_properties`] batch; text/colour/geometry overrides have no
+//!   typed sugar beyond that.
 //!
 //! Wider orientation — the Python API, the wire protocol, LCD vs LED panels —
 //! lives in [`llms.txt`](https://github.com/geeksville/touchy-pad/blob/main/llms.txt)
@@ -92,6 +94,21 @@ pub use discover::{DiscoveredDevice, discover};
 pub use error::{Result, TouchyError};
 pub use image_cache::ImageCache;
 pub use pad::Touchy;
+// Stage lb26 — the pixel font sizes the firmware compiles a font for. The
+// generated enum's *values* are the pixel sizes, and it is what
+// [`Touchy::set_font_size`] / [`client::Client::set_font_size`] take.
+pub use proto::FontSize;
+
+/// The pixel font sizes the firmware can actually render, as plain numbers
+/// (stage lb26) — the values of [`FontSize`], in ascending order.
+///
+/// `Style.font_size` / `Span.font_size` are `int32` on the wire, but the
+/// device only maps the fonts its build compiled: today
+/// `[8, 14, 16, 30]` (8 is LVGL's UNSCII 8, the rest Montserrat; see
+/// `CONFIG_LV_FONT_*` in `firmware/sdkconfig.defaults`). Any other value
+/// silently renders at the theme default (Montserrat 14), so validate against
+/// this list (or `FontSize`) rather than passing an arbitrary number.
+pub const FONT_SIZES: &[u32] = &[8, 14, 16, 30];
 
 /// On-device directory holding screen-layout blobs (Stage 68; moved from
 /// the old `host/screens/`). Mirror of `touchy_pad.paths.SCREENS_DIR`.

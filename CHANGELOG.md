@@ -16,6 +16,25 @@ by that design history and the git tags (`git tag -l`).
 
 ### Added
 
+- **`FontSize` / `FONT_SIZES`: the list of font sizes the device can render.**
+  `label(…, font_size=…)`, `span(…)`, `style(font_size=…)` and
+  `build_property_override(…, "text_font", …)` now take a pixel size from a
+  published set — `FONT_SIZES == (8, 14, 16, 30)` (`FontSize.FONT_SIZE_*`; 8 is
+  LVGL's UNSCII 8 for the LED panels, the rest Montserrat) — and raise
+  `ValueError` for anything else. Previously any other number silently rendered
+  at the theme default (Montserrat 14), so `font_size=24` looked "supported" but
+  came out at 14 px. The list is generated from the proto enum, so Python, Rust
+  and firmware can never disagree.
+- **Change a label's font size at runtime** — no screen re-upload:
+  `pad.set_properties([build_property_override("title", "text_font", 30)])`
+  (Python), `pad.set_font_size("title", FontSize::FontSize30)` (Rust, the
+  crate's first property-override helper), `touchy property set title text_font
+  30 --int` (CLI), or `{"setProperties":{"props":[…{"propertyName":"text_font",
+  "fontSizeValue":30}]}}` over the JSON network API. The change is sticky
+  (survives screen reloads and page swaps) and repaints immediately; `0`
+  restores the theme font.
+- The Rust crate gained `Touchy::set_properties` / `Touchy::set_font_size` and
+  re-exports `FontSize` + `FONT_SIZES`.
 - **Rich text: the `span_group` widget** (`Widget.kind.span_group`, `span()` /
   `span_group()` in `touchy_pad.api`). A paragraph built from independently
   styled *runs* — per-run text colour **and** font size — with `overflow`

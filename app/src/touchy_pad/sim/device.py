@@ -45,6 +45,11 @@ _log = logging.getLogger("touchy_pad.sim")
 #: the firmware so existing version checks in the host pass.
 _CURRENT_PROTOCOL = _proto.SysBoardInfoResponse.ProtocolVersion.CURRENT
 
+# Stage lb26 — the pixel font sizes the *device* can actually render (proto
+# `FontSize`). Derived from the enum so the sim mirrors the wire rather than a
+# hand-kept list; a `text_font` override outside it is rejected, as on hardware.
+_SIM_FONT_SIZES = frozenset(v for v in _proto.FontSize.values() if v)
+
 #: Sentinel firmware version reported by the sim. Distinct from any
 #: real build number so callers can tell they're talking to a sim.
 _SIM_FW_VERSION = 0
@@ -109,14 +114,46 @@ def _find_widget(screen: _proto.Screen, widget_id: str) -> _proto.Widget | None:
     return None
 
 
+def _apply_font_size_override(w: _proto.Widget, entry: _proto.SetPropertyCmd) -> bool:
+    """Apply a ``text_font`` override (stage lb26) to a Widget proto.
+
+    Mirrors the firmware: ``font_size_value`` carries a pixel size, which the
+    device maps through the compiled-font table; ``FONT_SIZE_DEFAULT`` (0)
+    drops the local font again so the widget falls back to the theme, and an
+    uncompiled size is rejected. The materialised `font_size` style is the same
+    one the widget builders read, so removal is lossless (the caller
+    re-materialises from pristine bytes). Qt renders the size as a point size
+    (advisory), exactly as it does for a `Style.font_size`.
+    """
+    px = int(entry.font_size_value)
+    if px and px not in _SIM_FONT_SIZES:
+        _log.warning(
+            "sim: set_properties text_font %d has no compiled font on the device "
+            "(valid: %s) — ignored",
+            px,
+            ", ".join(str(s) for s in sorted(_SIM_FONT_SIZES)),
+        )
+        return False
+    if not px:
+        # Drop the newest font style; the renderer uses the last one that is set.
+        for i in range(len(w.styles) - 1, -1, -1):
+            if w.styles[i].HasField("font_size"):
+                del w.styles[i]
+                break
+        return True
+    w.styles.append(_proto.Style(font_size=px))
+    return True
+
+
 def _apply_override_to_widget(w: _proto.Widget, entry: _proto.SetPropertyCmd) -> bool:
     """Apply one SetPropertyCmd entry to a Widget proto (sim subset).
 
     Mirrors a small, explicitly-documented slice of the firmware's LVGL
     property behaviour at the proto level: ``x`` / ``y`` / ``w`` / ``h``
     (integer) map onto the widget's ``rect`` placement, ``bg_color``
-    (colour) onto a style entry, and ``text`` (string) onto a
-    button/label's text. Anything else WARNs and is ignored.
+    (colour) onto a style entry, ``text`` (string) onto a
+    button/label's text, and ``text_font`` (stage lb26) onto a
+    ``font_size`` style entry. Anything else WARNs and is ignored.
     """
     prop_arm = entry.WhichOneof("property")
     ident = entry.property_name if prop_arm == "property_name" else f"#{entry.property_id}"
@@ -157,6 +194,8 @@ def _apply_override_to_widget(w: _proto.Widget, entry: _proto.SetPropertyCmd) ->
             kind,
         )
         return False
+    if ident == "text_font" and value_arm == "font_size_value":
+        return _apply_font_size_override(w, entry)
     _log.warning(
         "sim: set_properties unsupported property %r on %r — ignored",
         ident,

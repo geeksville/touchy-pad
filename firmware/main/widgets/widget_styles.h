@@ -37,9 +37,11 @@ void apply_styles(lv_obj_t *obj, const touchy_Widget &w);
 lv_style_prop_t   lv_prop_from_proto(touchy_StyleProp p);
 lv_anim_path_cb_t lv_path_from_proto(touchy_AnimPath  p);
 
-// Map a requested pixel font size to the nearest Montserrat font compiled into
-// this build; nullptr when no font of that size is compiled in (callers then
-// leave the current font in place). This is the same mapping `Style.font_size`
-// uses, shared with the Stage-lb24 rich-text builder (`widget_span.cpp`) for a
-// per-span font size.
+// Map a requested pixel font size to the font compiled into this build;
+// nullptr when no font of that size is compiled in (callers then leave the
+// current font in place, and a WARN is logged). This is the same mapping
+// `Style.font_size` uses, shared with the Stage-lb24 rich-text builder
+// (`widget_span.cpp`) for a per-span font size and with the Stage-lb26 runtime
+// `font_size_value` property override. The published list of valid sizes is
+// `FontSize` in proto/widgets.proto.
 const lv_font_t *font_for_size(int32_t size);

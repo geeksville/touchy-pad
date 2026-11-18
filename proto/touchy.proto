@@ -220,6 +220,20 @@ message SetPropertyCmd {
         string string_value = 6;
         uint32 color_value  = 7;   // 0xRRGGBB
         Point  point_value  = 8;
+        // Stage lb26 — the widget's text font, given as a PIXEL SIZE rather
+        // than a font pointer (the wire cannot carry a pointer). Use it with
+        // `property_name = "text_font"` (or `property_id =
+        // LV_PROPERTY_STYLE_TEXT_FONT`); the device resolves the size with the
+        // same `font_for_size()` mapping `Style.font_size` uses and applies
+        // `lv_obj_set_style_text_font()`. `FONT_SIZE_DEFAULT` (0) drops the
+        // local font instead, so the widget inherits its style stack / the
+        // theme again.
+        //
+        // A size the firmware did not compile, or any property other than
+        // `text_font`, is rejected with INVALID_ARG. So is *every* other value
+        // arm aimed at `text_font` (e.g. `int_value`): LVGL would reinterpret
+        // it as a `const lv_font_t *`.
+        FontSize font_size_value = 9;
     }
 }
 
@@ -291,7 +305,7 @@ message SysBoardInfoResponse {
         option allow_alias = true;
         UNSPECIFIED = 0;
 
-        CURRENT = 14;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
+        CURRENT = 15;  // alias: always equals the latest defined version MUST BE LISTED FIRST so that rust can see it!
         MIN_FIRMWARE_VERSION = 13;  // minimum version the PC library supports 
 
         V1 = 1;  // stage 13 baseline: SysBoardInfoGet + file/screen ops
@@ -325,6 +339,11 @@ message SysBoardInfoResponse {
         V14 = 14; // googly-vr / stage lb14: SetPropertiesCmd (batched
                   //           repeated SetPropertyCmd) REPLACES the singular
                   //           set_property at tag 14 — deliberate wire break
+        V15 = 15; // stage lb26: SetPropertyCmd.value gains font_size_value
+                  //           (FontSize), so a host can change a label's font
+                  //           at runtime — additive arm, but a bump lets a
+                  //           host detect the capability instead of having an
+                  //           older device read the unknown arm as "remove".
     }
     ProtocolVersion protocol_version = 1;
     uint32 firmware_version = 2;    // monotonically-increasing build number

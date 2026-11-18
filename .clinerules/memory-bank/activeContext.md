@@ -1,7 +1,38 @@
 # Active Context — current focus
 
 **Open plan (not implemented; design decision pending):**
-`docs/plans/thought-bubbles.md` — see below (span-rich-text has now landed).
+`docs/plans/thought-bubbles.md` — see below (span-rich-text and font-size-api
+have both now landed).
+
+**Landed since the last update — Stage lb26 (`docs/plans/font-size-api.md`),
+2026-11-18: published font sizes + a runtime font-size override.** Font size was
+an untyped `int32` everywhere and `font_for_size()` exact-matches the compiled
+fonts (`UNSCII_8` + Montserrat `14/16/30`), so an unsupported size silently
+rendered at the theme default (**Montserrat 14**) — `font_size=24` was sitting in
+`app/examples/demo.py`. Now: a **`FontSize` proto enum** (`FONT_SIZE_8/14/16/30`
+whose values *are* the px sizes, plus `_DEFAULT = 0`) is the single source of the
+published list, re-exported as `touchy_pad.api.FontSize` with a derived
+`FONT_SIZES == (8, 14, 16, 30)`; `label()` / `span()` / `style()` **raise**
+`ValueError` for anything else (the device WARNs when `font_for_size()` cannot
+map a hand-built proto's size), and a host test pins the enum to
+`firmware/sdkconfig.defaults`. And `SetPropertyCmd.value` gained
+**`FontSize font_size_value = 9`**, applied in
+`widget_property.cpp::apply_font_size()` *before* the generic property setter via
+`font_for_size()` → `lv_obj_set_style_text_font()` (`0` drops the local font), so
+`build_property_override("title", "text_font", 30)` /
+`touchy property set title text_font 30 --int` / JSON `fontSizeValue` change a
+label's font live — one RPC, sticky across reloads. That also closed a real
+footgun (`text_font` + `int_value` made LVGL read the int as a
+`const lv_font_t *`). Host mapper: an `int` for the `"text_font"` property routes
+to the new arm (the name settles the type, so no wrapper class). Rust gained its
+first property helpers (`Touchy::set_properties` / `set_font_size`) and
+re-exports `FontSize` + `FONT_SIZES`. **`ProtocolVersion` 14 → 15**; no
+`Widget.Version` / prefs change; also fixed `font_for_size()`'s duplicate
+`case 8:` (UNSCII 8 + Montserrat 8 together did not compile). Verified: `just
+build-proto` (committed, incl. Rust), **345 host tests / 2 skipped**, `just
+app-lint`, `just rust-lint`, `just rust-test`, `just firmware-build`.
+**Still to run: the on-hardware `text_font` check** (plan §7) — plus the lb24
+wrap check, which is also still outstanding.
 
 **Landed since the last update — Stage lb24 (`docs/plans/span-rich-text.md`),
 2026-11-18.** A second voicebot bug report, this time in **LVGL** itself: the

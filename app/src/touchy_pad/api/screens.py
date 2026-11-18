@@ -8,7 +8,7 @@ Typical usage::
     from touchy_pad.screens import Screen, button, label, grid
 
     home = Screen("home", layout=grid(cols=4, gap=8))
-    home += label("title", text="Hello, Touchy!", font_size=24)
+    home += label("title", text="Hello, Touchy!", font_size=FontSize.FONT_SIZE_30)
     home += button("play", text="Play", on_click="play_pressed")
     home += button("stop", text="Stop", on_click="stop_pressed")
 
@@ -111,6 +111,10 @@ __all__ = [
     "TextAlign",
     "LongMode",
     "SpanOverflow",
+    # Stage lb26 — valid choices for any ``font_size=`` (and the value type for
+    # a runtime ``text_font`` override).
+    "FontSize",
+    "FONT_SIZES",
     # Stage LB19 — valid range for ``label(scroll_speed_px_s=...)``.
     "SCROLL_SPEED_MIN_PX_S",
     "SCROLL_SPEED_MAX_PX_S",
@@ -127,6 +131,35 @@ TextAlign = _proto.TextAlign
 LongMode = _proto.LongMode
 # Stage lb24 — how a rich-text span group overflows its box.
 SpanOverflow = _proto.SpanOverflow
+# Stage lb26 — the pixel font sizes the firmware compiles a font for
+# (8 = LVGL's UNSCII 8, 14/16/30 = Montserrat). The members ARE the pixel
+# sizes, so ``font_size=FontSize.FONT_SIZE_30`` is just ``font_size=30``.
+FontSize = _proto.FontSize
+
+# Stage lb26 — the same list as a plain tuple, derived from the enum so the two
+# cannot drift. This is what ``font_size=`` arguments are validated against and
+# what a UI should offer as choices: the device renders *only* these sizes, and
+# silently falls back to the theme default (Montserrat 14) for anything else.
+FONT_SIZES: tuple[int, ...] = tuple(sorted(v for v in FontSize.values() if v))
+
+
+def _check_font_size(value: int, what: str) -> int:
+    """Validate a pixel font size against :data:`FONT_SIZES` (stage lb26).
+
+    ``0`` (and ``None``, at the callers) means "theme default" and is always
+    allowed. Anything else must be one of the sizes the firmware actually
+    compiled — see :class:`FontSize`. Raises :exc:`ValueError` otherwise, since
+    the device would otherwise render the theme default *silently*.
+    """
+    size = int(value)
+    if size and size not in FONT_SIZES:
+        choices = ", ".join(str(s) for s in FONT_SIZES)
+        raise ValueError(
+            f"{what}: font_size must be 0 (theme default) or one of {choices} "
+            f"(FontSize.* / FONT_SIZES), got {size} — the firmware has no font "
+            "of that size and would render the theme default instead"
+        )
+    return size
 
 
 # ---------------------------------------------------------------------------
@@ -286,10 +319,12 @@ def style(
       animates the listed properties when the style is added / removed
       from the widget's selector match (e.g. entering / leaving
       ``STATE_PRESSED``). See :func:`transition` for the pattern.
-    * ``font_size`` sets the text font size in pixels (matches the
-      Montserrat ``N`` naming). The firmware maps it to the nearest
-      ``lv_font_montserrat_<N>`` compiled in; sizes without a matching
-      font fall back to the theme default. ``0``/unset = theme default.
+    * ``font_size`` sets the text font size in pixels. It must be ``0``
+      (theme default) or one of the sizes the firmware compiled — see
+      :class:`FontSize` / :data:`FONT_SIZES`; anything else raises
+      :exc:`ValueError`, because the device would silently render the
+      theme default. The same applies to ``label(font_size=…)`` and
+      ``span(font_size=…)``.
 
     Stack several ``Style`` instances on a widget by passing a list as
     the factory's ``style=`` argument.
@@ -318,7 +353,7 @@ def style(
     if shadow_width is not None:
         s.shadow_width = shadow_width
     if font_size is not None:
-        s.font_size = font_size
+        s.font_size = _check_font_size(font_size, "style()")
     if transition is not None:
         s.transition.CopyFrom(transition)
     return s
@@ -787,6 +822,15 @@ def label(
     explicit ``style=`` with its own ``font_size`` to override it per
     state (e.g. a bigger font only while pressed).
 
+    The value must be ``0`` or one of the sizes the firmware actually
+    compiled — the members of :class:`FontSize` (also available as the
+    :data:`FONT_SIZES` tuple)::
+
+        label("title", text="Hello", font_size=FontSize.FONT_SIZE_30)
+
+    Any other number raises :exc:`ValueError` rather than silently
+    rendering at the theme default on the device.
+
     ``text_align`` controls horizontal alignment of the text *within the
     label's box* (``TEXT_ALIGN_*``; default ``AUTO`` follows LVGL). To
     actually centre across the screen, also give the label full width
@@ -846,6 +890,7 @@ def label(
         )
     styles = _normalise_styles(style)
     if font_size:
+        font_size = _check_font_size(font_size, "label()")
         # Fold font_size into an extra default-state style (LVGL treats
         # font as a style prop). If the caller also passed a style with a
         # font_size, theirs wins (last entry in `styles`).
@@ -877,8 +922,9 @@ def span(
     wrapped line).
 
     ``color`` is a packed ``0xRRGGBB`` int; ``None`` (the default) inherits the
-    group widget's ``text_color`` style. ``font_size`` is a pixel size; ``None``
-    inherits the group's font.
+    group widget's ``text_color`` style. ``font_size`` is a pixel size — ``None``
+    inherits the group's font, and any value must be one of the compiled sizes
+    (:class:`FontSize` / :data:`FONT_SIZES`), like ``label(font_size=…)``.
     """
     if color is not None and not 0 <= color <= 0xFFFFFF:
         raise ValueError(f"span(): color must be 0x000000..0xFFFFFF (got {color!r})")
@@ -888,7 +934,7 @@ def span(
     if color is not None:
         s.text_color = int(color)
     if font_size is not None:
-        s.font_size = int(font_size)
+        s.font_size = _check_font_size(font_size, "span()")
     return s
 
 

@@ -30,8 +30,8 @@ use crate::error::{Result, TouchyError};
 use crate::proto::Action;
 use crate::proto::{Command, LogPriority, LogRecord, LvEvent, ResultCode, command, response};
 use crate::proto::{
-	EventConsumeCmd, FileCloseCmd, FileDeleteCmd, FileOpenWriteCmd, FileWriteCmd, PreferencesFile, Response, RunActionsCmd, ScreenWakeCmd, SetPreferencesCmd, SysBoardInfoGetCmd, SysBoardInfoResponse,
-	SysRebootBootloaderCmd,
+	EventConsumeCmd, FileCloseCmd, FileDeleteCmd, FileOpenWriteCmd, FileWriteCmd, FontSize, PreferencesFile, Response, RunActionsCmd, ScreenWakeCmd, SetPreferencesCmd, SetPropertiesCmd,
+	SetPropertyCmd, SysBoardInfoGetCmd, SysBoardInfoResponse, SysRebootBootloaderCmd, set_property_cmd,
 };
 use crate::transport::Transport;
 
@@ -253,6 +253,63 @@ impl Client {
 			backlight_level: Some(level),
 			..Default::default()
 		})
+		.await
+	}
+
+	/// Apply a **batch** of runtime widget-property overrides in one
+	/// round-trip (stages lb12/lb14; `SetPropertiesCmd`).
+	///
+	/// Overrides are session-scoped (RAM only) and *sticky*: the device
+	/// applies each entry immediately if the widget is on screen and re-applies
+	/// it whenever that widget is next built, so targeting a not-yet-loaded
+	/// widget is fine. An entry whose `value` is `None` **removes** the
+	/// override. A malformed entry fails the RPC but never aborts the rest of
+	/// the batch.
+	///
+	/// Build the entries by hand — Rust has no wrapper for the value oneof —
+	/// or use [`Client::set_font_size`] for the common font case.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] with `INVALID_ARG` if an entry is malformed
+	/// (no property, or a value/type the widget cannot accept).
+	#[doc(alias = "set_property")]
+	#[doc(alias = "setProperties")]
+	pub async fn set_properties(&self, props: Vec<SetPropertyCmd>) -> Result<()> {
+		Self::check(
+			self.rpc(Command {
+				cmd: Some(command::Cmd::SetProperties(SetPropertiesCmd { props })),
+			})
+			.await?,
+		)?;
+		Ok(())
+	}
+
+	/// Change one widget's text font size at runtime (stage lb26).
+	///
+	/// `size` is a pixel size: one of the sizes the firmware compiled
+	/// ([`FontSize`], mirrored by [`crate::FONT_SIZES`]) — or
+	/// `FontSize::Default` (proto `FONT_SIZE_DEFAULT`) to drop the local font
+	/// again so the widget inherits its style stack / the theme.
+	///
+	/// The size travels as [`SetPropertyCmd`]'s `font_size_value` arm on the
+	/// `text_font` property. (An `int_value` there would be reinterpreted by
+	/// LVGL as a `const lv_font_t *`, so the device rejects it.)
+	///
+	/// Like every property override this is session-scoped and sticky: it
+	/// survives screen reloads and page swaps until the device reboots or the
+	/// override is removed.
+	///
+	/// # Errors
+	///
+	/// [`TouchyError::Device`] with `INVALID_ARG` if `size` is not a compiled
+	/// font size, or if the widget's font cannot be changed.
+	pub async fn set_font_size(&self, widget_id: &str, size: FontSize) -> Result<()> {
+		self.set_properties(vec![SetPropertyCmd {
+			widget_id: widget_id.to_string(),
+			property: Some(set_property_cmd::Property::PropertyName("text_font".into())),
+			value: Some(set_property_cmd::Value::FontSizeValue(size as i32)),
+		}])
 		.await
 	}
 

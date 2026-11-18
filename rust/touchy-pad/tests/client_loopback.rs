@@ -198,3 +198,71 @@ async fn drain_pending_dispatches_logs_and_parks_event() {
 	let evt = client.event_consume().await.unwrap().expect("parked event");
 	assert_eq!(evt.host_code, 7);
 }
+
+// ---- stage lb26: font-size override ----------------------------------------
+
+#[tokio::test]
+async fn set_font_size_sends_the_font_size_arm() {
+	use touchy_pad::proto::{FontSize, SetPropertiesCmd, command, set_property_cmd};
+
+	let mock = Arc::new(Mock::default());
+	mock.push(Response {
+		code: ResultCode::Ok as i32,
+		payload: None,
+	});
+	let client = Client::new(mock.clone());
+	client.set_font_size("title", FontSize::FontSize30).await.unwrap();
+
+	let sent = mock.sent.lock().await;
+	let cmd = Command::decode(sent[0].as_slice()).unwrap();
+	match cmd.cmd {
+		Some(command::Cmd::SetProperties(SetPropertiesCmd { props })) => {
+			assert_eq!(props.len(), 1);
+			assert_eq!(props[0].widget_id, "title");
+			assert!(matches!(
+				props[0].property,
+				Some(set_property_cmd::Property::PropertyName(ref n)) if n == "text_font"
+			));
+			assert!(matches!(props[0].value, Some(set_property_cmd::Value::FontSizeValue(30))));
+		}
+		other => panic!("expected a SetProperties command, got {other:?}"),
+	}
+}
+
+#[tokio::test]
+async fn font_size_default_lets_a_widget_inherit_the_theme_again() {
+	use touchy_pad::proto::{FontSize, SetPropertiesCmd, command, set_property_cmd};
+
+	let mock = Arc::new(Mock::default());
+	mock.push(Response {
+		code: ResultCode::Ok as i32,
+		payload: None,
+	});
+	let client = Client::new(mock.clone());
+	client.set_font_size("title", FontSize::Default).await.unwrap();
+
+	let sent = mock.sent.lock().await;
+	let cmd = Command::decode(sent[0].as_slice()).unwrap();
+	match cmd.cmd {
+		Some(command::Cmd::SetProperties(SetPropertiesCmd { props })) => {
+			assert!(matches!(props[0].value, Some(set_property_cmd::Value::FontSizeValue(0))));
+		}
+		other => panic!("expected a SetProperties command, got {other:?}"),
+	}
+}
+
+#[test]
+fn font_sizes_const_matches_the_enum() {
+	use touchy_pad::FontSize;
+
+	// Stage lb26 — the published list is exactly the enum's non-zero members,
+	// in ascending order. (prost strips the enum-name prefix, hence
+	// `FontSize8` rather than `FontSize_FONT_SIZE_8`.)
+	let mut from_enum: Vec<u32> = [FontSize::FontSize8, FontSize::FontSize14, FontSize::FontSize16, FontSize::FontSize30]
+		.iter()
+		.map(|f| *f as u32)
+		.collect();
+	from_enum.sort_unstable();
+	assert_eq!(from_enum.as_slice(), touchy_pad::FONT_SIZES);
+	assert_eq!(FontSize::Default as u32, 0);
+}

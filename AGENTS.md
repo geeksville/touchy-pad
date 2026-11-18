@@ -173,9 +173,9 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
-`lb` line (lb5–lb24) are **done**. Latest active wire-format:
+`lb` line (lb5–lb26) are **done**. Latest active wire-format:
 `Widget.Version.CURRENT == 31`,
-`SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
+`SysBoardInfoResponse.ProtocolVersion.CURRENT == 15`,
 `PreferencesFile.Version.CURRENT == 9`.
 
 > There is **no `Screen.Version`** (the pre-Stage-56 enum was removed). Since
@@ -932,6 +932,34 @@ Highlights worth remembering:
   demo/regression page `touchy_pad/pages/span.py`, so the `F:host/uscr/` page
   cycle is now span → test → trackpad. **`Widget.Version` 30 → 31**; no
   `ProtocolVersion` / prefs change. Plan: `docs/plans/span-rich-text.md`.
+
+- **Stage lb26 (published font sizes + a runtime font-size override).** Font size
+  was an untyped `int32` everywhere, and `font_for_size()`
+  (`firmware/main/widgets/widget_styles.cpp`) exact-matches the compiled fonts
+  (`LV_FONT_UNSCII_8` + `MONTSERRAT_14/16/30`), so any other size silently
+  rendered at the **theme default (Montserrat 14)** — `font_size=24` was in
+  `app/examples/demo.py`. (1) New `FontSize` enum in `proto/widgets.proto`
+  (`FONT_SIZE_DEFAULT = 0`, `FONT_SIZE_8/14/16/30`; the values *are* the pixel
+  sizes, so `Style.font_size` / `Span.font_size` stay `int32` — **no
+  `Widget.Version` bump**) generates the names for Python / Rust / C from one
+  definition; `touchy_pad.api.FONT_SIZES` and `touchy_pad::FONT_SIZES` are
+  derived from it (`(8, 14, 16, 30)`), and `label()` / `span()` / `style()` now
+  **raise `ValueError`** for anything else (the device WARNs instead, for
+  hand-built protos). A host test pins the enum to `firmware/sdkconfig.defaults`.
+  (2) `SetPropertyCmd.value` gained **`FontSize font_size_value = 9`**, so a font
+  can be changed live — `build_property_override("title", "text_font", 30)`,
+  `touchy property set title text_font 30 --int` (no new flag; the CLI now
+  validates before connecting so a bad size is a click error, not a traceback),
+  JSON
+  `fontSizeValue` — applied in `widget_property.cpp::apply_font_size()` *before*
+  the generic setter via `font_for_size()` → `lv_obj_set_style_text_font()`, with
+  `0` dropping the local font. This also closed a footgun: `text_font` + any
+  non-font value arm (e.g. `int_value`) used to hand LVGL the value as a
+  `const lv_font_t *` (UB) — now only the font arm is accepted. Rust
+  gained its first property helpers (`Touchy::set_properties`,
+  `Touchy::set_font_size`). **`ProtocolVersion` 14 → 15**; no `Widget.Version` /
+  prefs change. Also fixed `font_for_size()`'s duplicate `case 8:` (UNSCII 8 +
+  Montserrat 8 together did not compile). Plan: `docs/plans/font-size-api.md`.
 
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host
   code).** libusb ≥ 1.0.27 caches its device list **per libusb context**, and

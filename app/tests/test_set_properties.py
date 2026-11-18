@@ -13,7 +13,7 @@ import queue
 import pytest
 
 from touchy_pad import _proto
-from touchy_pad.api import Color, Point, TouchyClient, build_property_override
+from touchy_pad.api import Color, FontSize, Point, TouchyClient, build_property_override
 from touchy_pad.api._transport import Transport
 
 
@@ -122,6 +122,62 @@ def test_override_rejects_bad_value_type():
         _ov("text", 1.5)
 
 
+# ---- stage lb26: font sizes travel as their own arm --------------------------
+
+
+def test_override_text_font_maps_to_the_font_size_arm():
+    sp = _ov("text_font", 30)
+    assert sp.WhichOneof("property") == "property_name"
+    assert sp.WhichOneof("value") == "font_size_value"
+    assert sp.font_size_value == 30
+
+
+def test_override_text_font_accepts_the_enum_member():
+    """`FontSize` members ARE the pixel sizes (and ints), so they just work."""
+    sp = _ov("text_font", FontSize.FONT_SIZE_8)
+    assert sp.WhichOneof("value") == "font_size_value"
+    assert sp.font_size_value == FontSize.FONT_SIZE_8 == 8
+
+
+def test_override_text_font_zero_is_the_font_arm_not_a_removal():
+    """0 == FONT_SIZE_DEFAULT (theme default); removal is `None`, not 0."""
+    sp = _ov("text_font", FontSize.FONT_SIZE_DEFAULT)
+    assert sp.WhichOneof("value") == "font_size_value"
+    assert sp.font_size_value == 0
+    assert _ov("text_font", None).WhichOneof("value") is None
+
+
+def test_override_text_font_rejects_uncompiled_size():
+    """An uncompiled size would silently theme the text on the device."""
+    with pytest.raises(ValueError, match="no font of that size"):
+        _ov("text_font", 24)
+
+
+def test_override_text_font_rejects_non_int_values():
+    """`text_font` is a font pointer on the device — only an int size is valid."""
+    for bad in ("big", Color(0xFF0000), Point(1, 2), True, 1.5):
+        with pytest.raises(TypeError, match="int pixel size"):
+            _ov("text_font", bad)
+
+
+def test_override_other_int_properties_keep_the_int_arm():
+    """`text_font` is the only property whose int means a font size."""
+    assert _ov("x", 30).WhichOneof("value") == "int_value"
+    assert _ov("anim_duration", 4000).int_value == 4000
+
+
+def test_font_size_value_arm_round_trips():
+    cmd = _proto.SetPropertyCmd(
+        widget_id="w",
+        property_name="text_font",
+        font_size_value=_proto.FontSize.FONT_SIZE_30,
+    )
+    again = _proto.SetPropertyCmd()
+    again.ParseFromString(cmd.SerializeToString())
+    assert again.WhichOneof("value") == "font_size_value"
+    assert again.font_size_value == _proto.FontSize.FONT_SIZE_30
+
+
 # ---- client batching --------------------------------------------------------
 
 
@@ -158,6 +214,13 @@ def _screen_bytes() -> bytes:
     b.rect.x, b.rect.y, b.rect.w, b.rect.h = 1, 2, 30, 10
     b.button.text = "hi"
     b.styles.add(bg_color=0x0000FF)
+    # Stage lb26 — a label, so the font-size override has a realistic target
+    # (the sim renders `font_size` on labels and span groups).
+    t = root.layout_absolute.layout.children.add()
+    t.id = "title"
+    t.rect.SetInParent()
+    t.rect.x, t.rect.y, t.rect.w, t.rect.h = 0, 0, 40, 12
+    t.label.text = "Title"
     return s.SerializeToString()
 
 
@@ -244,6 +307,52 @@ def test_sim_absent_widget_is_not_an_error(tmp_path):
     _apply(dev, [build_property_override("ghost", "x", 5)])
     # Still OK (checked in _apply) and the widget never materialises.
     assert _widget(dev, "ghost") is None
+
+
+# ---- stage lb26: the sim mirrors the text_font override ----------------------
+
+
+def _font_styles(dev, widget_id="title"):
+    """The `font_size` values carried by the (re-materialised) widget's styles."""
+    return [s.font_size for s in _widget(dev, widget_id).styles if s.HasField("font_size")]
+
+
+def test_sim_applies_text_font_override(tmp_path):
+    dev = _sim(tmp_path)
+    _apply(dev, [build_property_override("title", "text_font", FontSize.FONT_SIZE_30)])
+    assert _font_styles(dev) == [30]
+
+
+def test_sim_text_font_override_is_sticky_across_reload(tmp_path):
+    dev = _sim(tmp_path)
+    _apply(dev, [build_property_override("title", "text_font", 8)])
+    dev._do_screen_load("F:host/s/default.pb")
+    assert _font_styles(dev) == [8]
+
+
+def test_sim_text_font_default_drops_the_local_font(tmp_path):
+    dev = _sim(tmp_path)
+    _apply(dev, [build_property_override("title", "text_font", 16)])
+    assert _font_styles(dev) == [16]
+    _apply(dev, [build_property_override("title", "text_font", FontSize.FONT_SIZE_DEFAULT)])
+    assert _font_styles(dev) == []
+
+
+def test_sim_text_font_removal_restores_pristine(tmp_path):
+    dev = _sim(tmp_path)
+    _apply(dev, [build_property_override("title", "text_font", 14)])
+    _apply(dev, [build_property_override("title", "text_font", None)])
+    assert _font_styles(dev) == []
+
+
+def test_sim_text_font_uncompiled_size_warns_and_is_ignored(caplog, tmp_path):
+    """Bypass the host-side validation to prove the sim mirrors the device."""
+    dev = _sim(tmp_path)
+    entry = _proto.SetPropertyCmd(widget_id="title", property_name="text_font", font_size_value=24)
+    with caplog.at_level(logging.WARNING):
+        _apply(dev, [entry])
+    assert any("no compiled font" in r.message for r in caplog.records)
+    assert _font_styles(dev) == []
 
 
 # ---- stage lb24: a `text` override on a span group is markup -----------------

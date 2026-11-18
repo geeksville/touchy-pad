@@ -388,6 +388,7 @@ on-device, e.g. `"text"`, `"bg_color"`, `"x"`) or an `int` raw
 |-------------------------|----------------------|
 | `bool`                  | boolean              |
 | `int`                   | integer              |
+| `int` on `"text_font"`  | **font size** (px; `FontSize` / `FONT_SIZES`) |
 | `str`                   | text (e.g. label)    |
 | `Color(0xRRGGBB)`       | colour               |
 | `Point(x, y)`           | point                |
@@ -395,7 +396,11 @@ on-device, e.g. `"text"`, `"bg_color"`, `"x"`) or an `int` raw
 
 `Color` and `Point` (both importable from `touchy_pad.api`) are required
 wrappers: a bare `int` always means an integer property, so colours and
-points must be wrapped to be distinguishable.
+points must be wrapped to be distinguishable. `"text_font"` needs no wrapper
+because the property *name* settles it — see "Changing a font size at
+runtime" below. It accepts **only** an int size (or `None` to remove): LVGL's
+`text_font` value is a font pointer, so any other type raises `TypeError`
+rather than being sent as something the device must read as a pointer.
 
 Overrides are **session-scoped** (RAM only, never persisted) and
 **sticky**: the device re-applies them whenever the target widget is
@@ -431,7 +436,66 @@ The **simulator** honours the documented subset `x` / `y` / `w` / `h`
 (button/label) at the proto level — entries for other properties, or for
 widgets without a rect placement, log a warning and are ignored. This is
 what lets host animation apps (e.g. `googly-vr`) be developed
-against the sim with visible motion.
+against the sim with visible motion. A `text_font` size is applied to the
+widget's `font_size` style (the sim renders it for labels and span groups).
+
+### Changing a font size at runtime
+
+A label's (or button's / span group's) font size is a **style** property in
+LVGL, so it can be changed live with the same `set_properties` path — the
+property name is `"text_font"` and the value is a pixel size:
+
+```python
+from touchy_pad.api import FontSize, build_property_override, touchy_open
+
+with touchy_open() as pad:
+    pad.set_properties([
+        build_property_override("title", "text_font", FontSize.FONT_SIZE_30),
+        # …or a plain int: 30 — same thing
+        # back to the theme default:
+        # build_property_override("title", "text_font", FontSize.FONT_SIZE_DEFAULT),
+    ])
+```
+
+That is one RPC, no screen re-upload, and the override is **sticky** — it
+survives screen reloads and page swaps until the device reboots or you remove
+it (`value=None`). `0` (`FontSize.FONT_SIZE_DEFAULT`) *drops* the local font so
+the widget inherits its style stack and the theme again.
+
+#### Which sizes are valid
+
+The device renders only the fonts its build compiled. `FONT_SIZES` (derived
+from the `FontSize` enum, so the two can never drift) is the published list:
+
+```python
+from touchy_pad.api import FONT_SIZES, FontSize
+
+FONT_SIZES              # (8, 14, 16, 30)
+FontSize.FONT_SIZE_30   # 30 — the members ARE the pixel sizes
+```
+
+* `8` is LVGL's **UNSCII 8** (a monospace bitmap face — the only legible font
+  on an 8-pixel-tall LED matrix), the rest are Montserrat.
+* `0` / unset means the **theme default**, which is Montserrat **14**.
+* Any *other* number is not a request the device can honour: `font_for_size()`
+  exact-matches the compiled fonts and otherwise leaves the theme font in place
+  — so `font_size=24` would silently render at 14 px.
+
+`label(…, font_size=…)`, `span(…, font_size=…)`, `style(font_size=…)` and
+`build_property_override(…, "text_font", …)` therefore **raise `ValueError`**
+for a size outside that list (listing it in the message) instead of letting the
+device render something you did not ask for. Build the list into your UI:
+
+```python
+for size in FONT_SIZES:
+    page += button(f"size_{size}", text=str(size), font_size=size)
+```
+
+From the shell, `--int` on `text_font` is the same call:
+
+```sh
+touchy property set title text_font 30 --int
+```
 
 ## Lifecycle
 

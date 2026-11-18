@@ -6358,6 +6358,70 @@ end-to-end simulator run of the new `span` page including a live markup override
 On-hardware check of the wrap case is still to run (the plan's §10 acceptance
 case). Full stage notes: `docs/hardware/lightbar/design.md` → "stage lb24".
 
+## Stage lb26: published font sizes + a runtime font-size override — DONE
+
+**Status: implemented.** Font size was an untyped integer everywhere: the wire
+fields (`Style.font_size`, `Span.font_size`) and the DSL arguments
+(`label(…, font_size=)`, `span(…)`, `style(…)`) were bare `int32`s, and nothing
+told a Python or Rust consumer which sizes the firmware could actually render.
+`font_for_size()` (`firmware/main/widgets/widget_styles.cpp`) exact-matches the
+`lv_font_*` symbols the build enabled — `LV_FONT_UNSCII_8` +
+`LV_FONT_MONTSERRAT_14/16/30` — and returns `nullptr` for anything else, which
+every caller read as "leave the theme font": so `font_size=24` rendered at the
+**theme default (Montserrat 14)** with no error anywhere (the repo itself shipped
+that line in `app/examples/demo.py`). Plan: `docs/plans/font-size-api.md`.
+
+Two halves, one new wire member:
+
+* **A published list.** New `FontSize` enum in `proto/widgets.proto`
+  (`FONT_SIZE_DEFAULT = 0`, `FONT_SIZE_8/14/16/30` — the values *are* the pixel
+  sizes, so the existing `int32` fields keep working and there is no
+  `Widget.Version` bump). The enum generates the names for Python
+  (`touchy_pad.api.FontSize`, re-exported like `TextAlign`/`LongMode`), Rust
+  (prost `FontSize`, re-exported at the crate root) and C
+  (`touchy_FontSize`) from one definition, and `touchy_pad.api.FONT_SIZES` /
+  `touchy_pad::FONT_SIZES` are derived from it (`(8, 14, 16, 30)`) so the two
+  can never drift. `label()` / `span()` / `style()` now **reject** any other size
+  with a `ValueError` naming the valid choices, and the firmware logs a WARN when
+  `font_for_size()` sees a size it did not compile (covering hand-built protos
+  and older hosts). A host test also asserts the enum still matches
+  `firmware/sdkconfig.defaults`, the one link codegen cannot check.
+* **A runtime override.** `SetPropertyCmd.value` gained
+  **`FontSize font_size_value = 9`**, so a font can be changed live without
+  re-uploading the screen:
+  `build_property_override("title", "text_font", 30)`. This also closed a real
+  footgun — LVGL resolves `"text_font"` to a *style* property whose value is a
+  `const lv_font_t *`, so the pre-lb26 `property_name="text_font"` +
+  `int_value=30` path handed `lv_obj_set_local_style_prop()` the integer `30` as
+  a pointer (UB / a draw-time crash). The firmware now handles the new arm
+  *before* the generic property setter (`widget_property.cpp::apply_font_size()`),
+  rejects any other value arm aimed at `text_font` (int / colour / string / …)
+  with a hint, and maps the size with the same
+  `font_for_size()` → `lv_obj_set_style_text_font()` path `Style.font_size` uses.
+  `FONT_SIZE_DEFAULT` (0) drops the local font (`lv_obj_remove_local_style_prop`)
+  so the widget inherits its style stack again. The host mapper routes an `int`
+  for the `"text_font"` property to that arm (the property name settles the type,
+  so no wrapper type is needed); the CLI needed no new flag
+  (`touchy property set title text_font 30 --int`) — it now builds the entry
+  *before* connecting, so a rejected value is a readable click error instead of
+  a traceback. The JSON bridge parses
+  `fontSizeValue`, and the simulator mirrors all of it at the proto level.
+
+Also fixed in passing: `font_for_size()`'s duplicate `case 8:` (a build enabling
+both UNSCII 8 and Montserrat 8 failed to compile) and its misleading `#error`
+text; the "nearest Montserrat" wording in the comments (the code is exact-match).
+
+**`ProtocolVersion.CURRENT` 14 → 15** (`V15`); `Widget.Version` (31) and
+`PreferencesFile.Version` (9) unchanged. Host surfaces: `FONT_SIZES` /
+`FontSize` (`touchy_pad.api`), the `text_font` rule in `build_property_override`,
+`TouchyClient`/CLI unchanged in shape, and in Rust `FONT_SIZES` + `FontSize`
+re-export plus the crate's first property helpers —
+`Touchy::set_properties()` and `Touchy::set_font_size()` (which clears the
+"live property overrides have no Rust helper" caveat). Verified: `just
+build-proto` + `just rust-gen-proto` (committed), 345 host tests (21 new),
+`just app-lint`, `just rust-lint`, `just rust-test`, `just firmware-build`.
+On-hardware check of a live `text_font` change is still to run.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

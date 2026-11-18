@@ -147,6 +147,52 @@ pad.show_user_screen("opendeck").await?; // RunActionsCmd → ChangeWidgetRef(pa
 # Ok(()) }
 ```
 
+## Live widget property overrides
+
+`pad.set_properties(vec![…])` applies a batch of runtime LVGL property
+overrides in one round-trip (stage lb12/lb14). Overrides are session-scoped
+and **sticky**: the device applies them at once if the widget is on screen and
+re-applies them whenever it is next built, so targeting a not-yet-loaded widget
+is fine. An entry with `value: None` removes the override.
+
+The one helper with typed sugar is the font size (stage lb26): a label's font is
+a *style* property whose value is a font pointer, so the wire carries a **pixel
+size** instead and the device maps it (`text_font` →
+`SetPropertyCmd.font_size_value`):
+
+```rust,no_run
+# use touchy_pad::Touchy;
+# async fn run(pad: &Touchy) -> anyhow::Result<()> {
+use touchy_pad::{FONT_SIZES, FontSize};
+
+FONT_SIZES;                                        // [8, 14, 16, 30]
+pad.set_font_size("title", FontSize::FontSize30).await?;
+pad.set_font_size("title", FontSize::Default).await?;  // back to the theme
+# Ok(()) }
+```
+
+Only those sizes exist — the firmware exact-matches the fonts its build
+compiled, and anything else would silently render at the theme default
+(Montserrat 14), so `set_font_size` with a size outside the list is answered
+with `INVALID_ARG`. `FontSize::Default` (`0`) drops the local font so the widget
+inherits its style stack again.
+
+Anything else (text, colour, geometry) is built by hand and sent through the
+same batch:
+
+```rust,no_run
+# use touchy_pad::Touchy;
+# async fn run(pad: &Touchy) -> anyhow::Result<()> {
+use touchy_pad::proto::{SetPropertyCmd, set_property_cmd};
+
+pad.set_properties(vec![SetPropertyCmd {
+    widget_id: "title".into(),
+    property: Some(set_property_cmd::Property::PropertyName("text".into())),
+    value: Some(set_property_cmd::Value::StringValue("New title".into())),
+}]).await?;
+# Ok(()) }
+```
+
 ## Image conversion
 
 PNG/JPG/BMP/GIF/WebP are auto-converted to LVGL RGB565 (or RGB565A8 when

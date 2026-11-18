@@ -8,7 +8,9 @@ import pytest
 
 from touchy_pad import _proto
 from touchy_pad.api import (
+    FONT_SIZES,
     AnimPath,
+    FontSize,
     LongMode,
     LvState,
     Screen,
@@ -87,7 +89,7 @@ def _layout(layer: object):
 def test_button_round_trip():
     s = Screen("home", layout=col(gap=4))
     s += button("play", text="Play", on_click=host_action(0x42))
-    s += label("title", text="Hello", font_size=24)
+    s += label("title", text="Hello", font_size=FontSize.FONT_SIZE_30)
 
     decoded = _proto.Screen.FromString(s.to_bytes())
     assert _layer_kind(decoded.active) == "layout_flex"
@@ -108,7 +110,7 @@ def test_button_round_trip():
     assert w1.label.text == "Hello"
     # font_size folds into a default-state Style (LVGL treats font as a
     # style property).
-    assert any(st.font_size == 24 for st in w1.styles)
+    assert any(st.font_size == 30 for st in w1.styles)
     assert w1.label.long_mode == _proto.LongMode.LONG_MODE_WRAP
 
 
@@ -1151,6 +1153,70 @@ def test_span_group_rejects_bad_overflow_and_max_lines():
         span_group("a", [span("x")], max_lines=-1)
     with pytest.raises(ValueError):
         span_group("a", [span("x")], overflow=7)
+
+
+# ---- stage lb26: the published font sizes -----------------------------------
+
+
+def test_font_sizes_are_derived_from_the_enum():
+    """`FONT_SIZES` is the enum's non-zero members — one source of truth."""
+    assert FONT_SIZES == (8, 14, 16, 30)
+    assert set(FONT_SIZES) == {v for v in FontSize.values() if v}
+    assert FontSize.FONT_SIZE_30 == 30  # the members ARE the pixel sizes
+
+
+@pytest.mark.parametrize("size", FONT_SIZES)
+def test_font_size_choices_are_accepted(size):
+    """Every published size round-trips through label(), span() and style()."""
+    s = Screen("f", layout=col())
+    s += label("a", text="x", font_size=size)
+    w = _children(_proto.Screen.FromString(s.to_bytes()).active)[0]
+    assert any(st.font_size == size for st in w.styles)
+    assert span("x", font_size=size).font_size == size
+    assert style(font_size=size).font_size == size
+
+
+def test_font_size_zero_means_theme_default():
+    """0 / unset stays "theme default" — no font style is emitted."""
+    s = Screen("f", layout=col())
+    s += label("a", text="x", font_size=0)
+    w = _children(_proto.Screen.FromString(s.to_bytes()).active)[0]
+    assert not any(st.HasField("font_size") for st in w.styles)
+    assert span("x", font_size=0).font_size == 0
+    assert style(font_size=0).font_size == 0
+
+
+def test_font_size_rejects_uncompiled_sizes():
+    """A size the firmware didn't compile in would silently theme the text."""
+    with pytest.raises(ValueError, match="theme default"):
+        label("t", text="x", font_size=24)
+    with pytest.raises(ValueError, match="theme default"):
+        style(font_size=24)
+    with pytest.raises(ValueError, match="theme default"):
+        span("x", font_size=13)
+
+
+def test_font_sizes_match_the_firmware_fonts():
+    """The published list matches the fonts the firmware actually compiles.
+
+    `font_for_size()` (firmware/main/widgets/widget_styles.cpp) maps only the
+    CONFIG_LV_FONT_* symbols the build enabled, so `FontSize` and
+    `firmware/sdkconfig.defaults` have to agree — that is the one link the
+    proto codegen cannot check for us.
+    """
+    import re
+
+    defaults = Path(__file__).resolve().parents[2] / "firmware" / "sdkconfig.defaults"
+    if not defaults.exists():  # pragma: no cover — installed package, no firmware tree
+        pytest.skip("firmware tree not present")
+    text = defaults.read_text(encoding="utf-8")
+    enabled = {
+        int(px) for px in re.findall(r"^CONFIG_LV_FONT_(?:UNSCII|MONTSERRAT)_(\d+)=y$", text, re.M)
+    }
+    assert enabled == set(FONT_SIZES), (
+        f"firmware/sdkconfig.defaults compiles fonts {sorted(enabled)} but "
+        f"FontSize publishes {sorted(FONT_SIZES)}"
+    )
 
 
 def test_label_scroll_duration_round_trips():

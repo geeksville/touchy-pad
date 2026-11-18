@@ -55,6 +55,9 @@ bool parse_set_property(const cJSON *o, touchy_SetPropertyCmd *sp, const char **
     const cJSON *sv = cJSON_GetObjectItemCaseSensitive(o, "stringValue");
     const cJSON *cv = cJSON_GetObjectItemCaseSensitive(o, "colorValue");
     const cJSON *pv = cJSON_GetObjectItemCaseSensitive(o, "pointValue");
+    // Stage lb26 — a pixel font size (see SetPropertyCmd.font_size_value; the
+    // device maps it with font_for_size()). Additive key.
+    const cJSON *fv = cJSON_GetObjectItemCaseSensitive(o, "fontSizeValue");
     if (cJSON_IsBool(bv)) {
         sp->which_value = touchy_SetPropertyCmd_bool_value_tag;
         sp->value.bool_value = cJSON_IsTrue(bv);
@@ -75,6 +78,12 @@ bool parse_set_property(const cJSON *o, touchy_SetPropertyCmd *sp, const char **
         const cJSON *y = cJSON_GetObjectItemCaseSensitive(pv, "y");
         sp->value.point_value.x = cJSON_IsNumber(x) ? (int32_t)x->valuedouble : 0;
         sp->value.point_value.y = cJSON_IsNumber(y) ? (int32_t)y->valuedouble : 0;
+    } else if (cJSON_IsNumber(fv)) {
+        // Stage lb26 — a pixel font size, applied with the `text_font`
+        // property (fontSizeValue is deliberately checked last: an entry
+        // carries exactly one value key).
+        sp->which_value = touchy_SetPropertyCmd_font_size_value_tag;
+        sp->value.font_size_value = (touchy_FontSize)(uint32_t)fv->valuedouble;
     }
     // else: no value arm → which_value stays 0 → remove.
     return true;

@@ -50,6 +50,7 @@ from .widgets_pb2 import (  # noqa: F401  (re-exported)
     Arc,
     Button,
     Checkbox,
+    FontSize,
     ForceRender,
     Fps,
     GridCell,
@@ -104,6 +105,15 @@ LOG_PRIORITY_ERROR = LogPriority.Value("ERROR")
 # can write ``_proto.SPAN_OVERFLOW_ELLIPSIS`` without poking at the descriptor.
 SPAN_OVERFLOW_CLIP = SpanOverflow.Value("SPAN_OVERFLOW_CLIP")
 SPAN_OVERFLOW_ELLIPSIS = SpanOverflow.Value("SPAN_OVERFLOW_ELLIPSIS")
+
+# Flat aliases for the ``FontSize`` enum (stage lb26) so callers can write
+# ``_proto.FONT_SIZE_30`` without poking at the descriptor. The values ARE the
+# pixel sizes; the published list lives in ``touchy_pad.api.FONT_SIZES``.
+FONT_SIZE_DEFAULT = FontSize.Value("FONT_SIZE_DEFAULT")
+FONT_SIZE_8 = FontSize.Value("FONT_SIZE_8")
+FONT_SIZE_14 = FontSize.Value("FONT_SIZE_14")
+FONT_SIZE_16 = FontSize.Value("FONT_SIZE_16")
+FONT_SIZE_30 = FontSize.Value("FONT_SIZE_30")
 
 # Flat aliases for the ``TextAlign`` enum so callers can write
 # ``_proto.TEXT_ALIGN_CENTER`` without poking into the descriptor.

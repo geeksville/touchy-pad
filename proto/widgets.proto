@@ -339,11 +339,15 @@ message Style {
     // Vertical scale in 1/256 units; 256 = 100% (LV_SCALE_NONE), 192 = 75%.
     // Maps to `lv_style_set_transform_scale_y`.
     optional int32  transform_scale_y = 20;
-    // Font size in pixels (matches the Montserrat N naming). 0/unset =
-    // theme default. The firmware maps each value to the nearest
-    // `lv_font_montserrat_<N>` compiled in (see
-    // CONFIG_LV_FONT_MONTSERRAT_* in firmware/sdkconfig.defaults); sizes
-    // without a matching font fall back to the theme default.
+    // Font size in pixels. 0/unset = theme default (Montserrat 14 today).
+    //
+    // The firmware maps the value through `font_for_size()`, which
+    // *exact*-matches the fonts compiled into this build (see
+    // CONFIG_LV_FONT_* in firmware/sdkconfig.defaults): today the valid
+    // values are `FontSize.FONT_SIZE_8` (LVGL UNSCII 8), `_14`, `_16` and
+    // `_30`. Any other number silently renders at the theme default, so
+    // validate against `FontSize` / `touchy_pad.api.FONT_SIZES` rather than
+    // passing an arbitrary int.
     optional int32  font_size         = 21;
 }
 
@@ -596,6 +600,33 @@ enum TextAlign {
     RIGHT  = 3;
 }
 
+// Stage lb26 — the pixel font sizes this firmware compiles a font for.
+//
+// `Style.font_size` and `Span.font_size` are `int32` fields (so the wire stays
+// open-ended), but the device can only render the sizes it actually compiled:
+// `font_for_size()` (firmware/main/widgets/widget_styles.cpp) exact-matches the
+// `lv_font_*` symbols enabled by CONFIG_LV_FONT_* in
+// firmware/sdkconfig.defaults, and any other number silently falls back to the
+// theme default — so a host that hard-codes e.g. 24 gets 14 px text and no
+// error. This enum is the published list: use it (or the derived
+// `touchy_pad.api.FONT_SIZES` / `touchy_pad::FONT_SIZES`) instead of a bare
+// number, and validate against it.
+//
+// The numeric values ARE the pixel sizes, so a `FontSize` member can be used
+// anywhere an `int32` font size is expected (e.g. `Style.font_size`).
+//
+// NOTE: 8 is LVGL's UNSCII 8 (a monospace bitmap face) because it is the only
+// legible font on the 8-pixel-tall LED matrices; the other sizes are
+// Montserrat. The naming is deliberately by pixel size so that detail stays
+// internal.
+enum FontSize {
+    FONT_SIZE_DEFAULT = 0;   // 0 = theme default (Montserrat 14 today)
+    FONT_SIZE_8       = 8;
+    FONT_SIZE_14      = 14;
+    FONT_SIZE_16      = 16;
+    FONT_SIZE_30      = 30;
+}
+
 // Long-mode behaviour for a label whose width/height is fixed. Maps
 // directly to lv_label_long_mode_t (values chosen 1:1 so the firmware
 // casts directly). See
@@ -673,8 +704,8 @@ message Span {
     string text = 1;
     // 0xRRGGBB. Unset = inherit the group widget's `Style.text_color`.
     optional uint32 text_color = 2;
-    // Font size in pixels; same names / mapping as `Style.font_size` (the
-    // nearest lv_font_montserrat_<N> compiled in). Unset/0 = the group's font.
+    // Font size in pixels; same `FontSize` values / mapping as
+    // `Style.font_size`. Unset/0 = the group's font.
     optional int32 font_size = 3;
 }
 

@@ -141,6 +141,21 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   documented with their trade-offs (firmware-owned text loses the `set_properties("text")`
   path; bespoke vertical text centring).
 
+* `docs/plans/font-size-api.md` — **DONE — Stage lb26** (2026-11-18): how to tell
+  Python/Rust consumers *which* font sizes are valid, and how to change one at
+  runtime. `FontSize` enum in `widgets.proto` (`FONT_SIZE_8/14/16/30`, values =
+  px sizes) re-exported as `touchy_pad.api.FontSize` + derived `FONT_SIZES` tuple
+  (and Rust `FontSize` / `FONT_SIZES`), strict DSL validation (`label()` /
+  `span()` / `style()` raise `ValueError` for anything else — an uncompiled size
+  used to silently render at the theme default, Montserrat 14), plus a
+  **`FontSize font_size_value = 9` arm on `SetPropertyCmd`** so
+  `build_property_override("title", "text_font", 30)` /
+  `touchy property set title text_font 30 --int` / JSON `fontSizeValue` change a
+  label's font live (also closing a pointer-reinterpretation UB in the old
+  `text_font` + `int_value` path). `ProtocolVersion` 14 → 15; **no
+  `Widget.Version` bump**. Rust gained its first property helpers
+  (`Touchy::set_properties` / `set_font_size`). On-hardware check outstanding.
+
 Docs that are *not* plans but are easy to confuse with them:
 
 | Doc | What it is |

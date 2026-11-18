@@ -122,7 +122,7 @@ def build_page() -> protobuf.Widget:
     page = Layer(layout=grid(cols=2, rows=2, gap=8))
 
     page += cell(
-        label("title", text="Status panel", font_size=24,
+        label("title", text="Status panel", font_size=FontSize.FONT_SIZE_30,
               style=style(text_color=0xFFFFFF)),
         col=0, row=0, col_span=2, grow_x=1,
     )
@@ -181,7 +181,7 @@ from touchy_pad.api import macros     # (macros is a submodule — import it exp
 | Styling | `style(bg_color, radius, border_w, pad, text_color, font_size, recolor, recolor_opa, transform_width, shadow_width, for_state, transition)` — colours are `0xRRGGBB` ints; `for_state` is an `LvState` bitmask (e.g. `STATE_PRESSED`). Stack several by passing a list. `transition(props, path, duration_ms, delay_ms)` animates a style change. |
 | Animations | `ripple_animation(...)` and `AnimPath` are re-exported; `animation(*anim_track(...), duration_ms, path, repeat_count, reverse, …)` and `anim_track(prop, start, end, *, start_inverted, end_inverted)` live in `touchy_pad.api.screens` (`prop` is a `StyleProp` member, e.g. `StyleProp.X`). Pass them via the widget factories' `animations=` argument. |
 | Actions | `action(...)`, `host_action(code=None, *, on_event=callable)`, `macro_action(steps)`, `device_action(...)`, `change_widget_ref_action(id, path)`, `next_widget_action(id, dir)` / `prev_widget_action(id, dir)`, `set_image_button_slot_action(id, pressed, path)` |
-| Enums / consts | `AnimPath`, `LongMode`, `LvState`, `StyleProp`, `TextAlign`, `SpanOverflow`, `SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S`, `parse_recolor_markup(text) -> list[Span]` |
+| Enums / consts | `AnimPath`, `LongMode`, `LvState`, `StyleProp`, `TextAlign`, `SpanOverflow`, `FontSize` / `FONT_SIZES` (valid `font_size` choices: 8, 14, 16, 30), `SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S`, `parse_recolor_markup(text) -> list[Span]` |
 | Lifecycle | `touchy_open`, `touchy_get_pad_ids`, `Touchy`, `TouchyClient`, `TouchyError`, `IncompatibleFirmwareError`, `ImageCache`, `Color`, `Point`, `build_property_override`, `protobuf` (raw generated classes) |
 | Macros | `macros.key_tap/key_down/key_up/type_text`, `macros.mouse_click/mouse_move/scroll_move/zoom_move/mouse_button_down/mouse_button_up`, `macros.consumer_key(VOLUME_UP\|VOLUME_DOWN\|MUTE\|PLAY_PAUSE)`, `macros.set_delay/delay`, `hid_keys.*` (import `macros` explicitly — it is not part of `import *`) |
 | Upload helpers | `Screen(name, layout=, widgets=, *, top=, sys=, bottom=)`, `Layer(layout=, widgets=)` (use `Layer` when you want a `widget_ref`-style body without a whole screen), `build_default_screen()`, `build_demo_screen()`, `build_setup_screen_touchless()` |
@@ -266,15 +266,26 @@ with touchy_open() as pad:
         build_property_override("box", "bg_color", Color(0xFF8800)), # colour
         build_property_override("box", "x", 12),                     # integer prop
         build_property_override("ticker", "anim_duration", 1000),    # ms per scroll lap
+        build_property_override("title", "text_font", 30),           # font size (px)
         build_property_override("welcome", "text", None),            # remove override
     ])
 ```
 
 - `prop` is an **LVGL property name** (`"text"`, `"bg_color"`, `"x"`, `"w"`,
-  `"opa"`, `"anim_duration"`, …) or a raw `lv_prop_id_t` int.
+  `"opa"`, `"anim_duration"`, `"text_font"`, …) or a raw `lv_prop_id_t` int.
 - Value type selects the wire payload: `bool` → bool, `int` → int, `str` → text,
   `Color(0xRRGGBB)` → colour, `Point(x, y)` → point, `None` → **remove**.
   `Color`/`Point` wrappers are required — a bare `int` is always an integer prop.
+  The one exception is `"text_font"`: an `int` there is a **pixel font size**
+  (stage lb26), sent as its own arm and validated against the compiled fonts —
+  and *only* an int (or `None` to remove) is accepted, since any other type
+  would be read as a font pointer on the device.
+- Font sizes: `FONT_SIZES == (8, 14, 16, 30)` (`FontSize.FONT_SIZE_*`;
+  `8` is UNSCII 8, the rest Montserrat; the theme default is **14**). Anything
+  else would silently render at the theme size, so `label(…, font_size=…)`,
+  `span(…, font_size=…)`, `style(font_size=…)` and
+  `build_property_override(…, "text_font", …)` raise `ValueError`. `0`
+  (`FontSize.FONT_SIZE_DEFAULT`) means "theme default" / drop the local font.
 - Overrides are **session-scoped (RAM only) and sticky**: they re-apply whenever
   the target widget is (re)built, and work even if it is not loaded yet. An
   absent widget is not an error; a malformed entry fails the RPC without

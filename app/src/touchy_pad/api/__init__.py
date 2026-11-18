@@ -74,9 +74,11 @@ from .macros import (
 )
 from .props import Color, Point, build_property_override
 from .screens import (
+    FONT_SIZES,
     SCROLL_SPEED_MAX_PX_S,
     SCROLL_SPEED_MIN_PX_S,
     AnimPath,
+    FontSize,
     ImageSource,
     Layer,
     LongMode,
@@ -203,6 +205,11 @@ __all__ = [
     # Stage LB19 — scroll-speed bounds for label(scroll_speed_px_s=...).
     "SCROLL_SPEED_MIN_PX_S",
     "SCROLL_SPEED_MAX_PX_S",
+    # Stage lb26 — the pixel font sizes the firmware can render, and the enum
+    # to name them with (used by label()/span()/style() and by a runtime
+    # `text_font` property override).
+    "FontSize",
+    "FONT_SIZES",
     # On-device filesystem paths (Stage 68).
     "SCREENS_DIR",
     "USER_SCREENS_DIR",

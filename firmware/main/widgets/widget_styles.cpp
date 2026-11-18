@@ -139,10 +139,13 @@ lv_style_transition_dsc_t *build_lv_transition(const touchy_Transition &t,
 
 }  // namespace
 
-// Map a requested pixel font size to the nearest Montserrat font that is
-// compiled into this firmware build. Returns nullptr for sizes with no
-// matching font (the caller then leaves the theme default in place).
-// Add new sizes here as they are enabled in sdkconfig.defaults.
+// Map a requested pixel font size to the font compiled into this firmware
+// build. Returns nullptr for sizes with no matching font (the caller then
+// leaves the theme default in place) — and logs a WARN, because a host asking
+// for e.g. 24 gets *themed* text rather than an error otherwise. The published
+// list of sizes is `FontSize` in proto/widgets.proto
+// (`touchy_pad.api.FONT_SIZES` / `touchy_pad::FONT_SIZES`); add new sizes both
+// here and in that enum when you enable more CONFIG_LV_FONT_* options.
 //
 // Exported via widget_styles.h since Stage lb24 — the rich-text builder
 // (widget_span.cpp) needs the same mapping for a per-span font size. It sits
@@ -151,12 +154,13 @@ lv_style_transition_dsc_t *build_lv_transition(const touchy_Transition &t,
 const lv_font_t *font_for_size(int32_t size)
 {
     switch (size) {
+    // 8 px is special: LVGL's UNSCII 8 is a monospace bitmap face and the only
+    // thing legible on an 8-pixel-tall LED matrix, so it wins over Montserrat 8
+    // when both are compiled in (two `case 8:` labels would not compile, hence
+    // the `#elif`).
 #if LV_FONT_UNSCII_8
     case 8:  return &lv_font_unscii_8;
-#else
-#error "Montserrat 8 is the smallest built-in font; if you want to use it, enable LV_FONT_MONTSERRAT_8 in sdkconfig.defaults and rebuild."
-#endif
-#if LV_FONT_MONTSERRAT_8
+#elif LV_FONT_MONTSERRAT_8
     case 8:  return &lv_font_montserrat_8;
 #endif
 #if LV_FONT_MONTSERRAT_10
@@ -219,7 +223,16 @@ const lv_font_t *font_for_size(int32_t size)
 #if LV_FONT_MONTSERRAT_48
     case 48: return &lv_font_montserrat_48;
 #endif
-    default: return nullptr;
+    default:
+        // Stage lb26 — a size with no compiled font is a host request the
+        // device cannot honour. Say so instead of silently theming it (the
+        // host's own `FONT_SIZES` validation catches this much earlier; this
+        // covers hand-built protos and older hosts).
+        ESP_LOGW(TAG,
+                 "font size %d has no compiled font — leaving the theme font "
+                 "(valid sizes: FontSize in widgets.proto)",
+                 (int)size);
+        return nullptr;
     }
 }
 
@@ -261,9 +274,9 @@ lv_style_t *build_lv_style(const touchy_Style &s, WidgetStyles *ws)
     if (s.has_transform_scale_y) lv_style_set_transform_scale_y(st, s.transform_scale_y);
     if (s.has_font_size) {
         // Font size is a style property in LVGL (lv_style_set_text_font).
-        // Map the requested pixel size to the nearest Montserrat font
-        // compiled into the firmware; sizes without a matching font fall
-        // back to the theme default (no set_text_font call).
+        // Map the requested pixel size to the font this build compiled in;
+        // 0 or a size with no compiled font leaves the theme font in place
+        // (font_for_size() WARNs). Valid sizes: `FontSize` in widgets.proto.
         if (const lv_font_t *font = font_for_size(s.font_size))
             lv_style_set_text_font(st, font);
     }

@@ -37,8 +37,15 @@ def build_page() -> protobuf.Widget:
     """
     page = Layer(layout=col(gap=8))
 
-    # A friendly title.
-    page += label("title", text="Hello, Touchy-Pad!", font_size=24, style=style(text_color=0xFFFFFF))
+    # A friendly title. `FontSize` lists the sizes the firmware can render
+    # (see `FONT_SIZES`); any other number would raise rather than silently
+    # come out at the theme size.
+    page += label(
+        "title",
+        text="Hello, Touchy-Pad!",
+        font_size=FontSize.FONT_SIZE_30,
+        style=style(text_color=0xFFFFFF),
+    )
 
     # A button that *types* for you. Tap it and the device sends the
     # keystrokes over USB, exactly as if you'd typed them yourself.

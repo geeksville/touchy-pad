@@ -204,6 +204,37 @@ def test_json_set_properties_round_trips_over_http() -> None:
     assert json.loads(reply) == {}
 
 
+def test_json_font_size_override_is_accepted() -> None:
+    """Stage lb26 — `fontSizeValue` is part of the canonical JSON surface.
+
+    A key the bridge does not know is a 400 (stage lb13), so a 200 here proves
+    `text_font` + `fontSizeValue` is understood end to end.
+    """
+    import json
+
+    with make_tempdir_transport() as t:
+        with SimHttpServer(t.device, port=0) as http:
+            body = json.dumps(
+                {
+                    "setProperties": {
+                        "props": [
+                            {
+                                "widgetId": "welcome",
+                                "propertyName": "text_font",
+                                "fontSizeValue": 30,
+                            }
+                        ]
+                    }
+                }
+            ).encode()
+            status, ctype, reply = _post(
+                http.url + "/touchy/api/v1/command", body, "application/json"
+            )
+    assert status == 200
+    assert "json" in ctype
+    assert json.loads(reply) == {}
+
+
 def test_json_board_info_returns_nested_object() -> None:
     import json
 

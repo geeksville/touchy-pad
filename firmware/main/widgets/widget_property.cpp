@@ -4,7 +4,8 @@
 
 #include "widget_property.h"
 #include "tc_tag.h"
-#include "widget_span.h"   // Stage lb24 — markup-backed span groups take `text`
+#include "widget_span.h"     // Stage lb24 — markup-backed span groups take `text`
+#include "widget_styles.h"   // Stage lb26 — font_for_size() for font_size_value
 
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -83,6 +84,65 @@ void delete_cb(lv_event_t *e)
 }
 
 #if LV_USE_OBJ_PROPERTY
+// Resolve an entry's property ident to an LVGL property id (name → the
+// widget's own property, else a style property; numeric → as-is).
+lv_prop_id_t resolve_prop_id(lv_obj_t *obj, const touchy_SetPropertyCmd &cmd)
+{
+    if (cmd.which_property == touchy_SetPropertyCmd_property_name_tag) {
+        return lv_obj_property_get_id(obj, cmd.property.property_name);
+    }
+    if (cmd.which_property == touchy_SetPropertyCmd_property_id_tag) {
+        return (lv_prop_id_t)cmd.property.property_id;
+    }
+    return LV_PROPERTY_ID_INVALID;
+}
+
+// Does this ident name the text-font style property? Compare the *index*, not
+// the whole id: a name resolves to LV_PROPERTY_STYLE_TEXT_FONT (style-prop
+// index OR'd with LVGL's type bits) while a host that used a raw
+// `property_id` sends the bare LV_STYLE_TEXT_FONT.
+bool is_text_font_prop(lv_prop_id_t pid)
+{
+    return LV_PROPERTY_ID_INDEX(pid) == (uint32_t)LV_STYLE_TEXT_FONT;
+}
+
+// Stage lb26 — apply a `font_size_value` entry (the pixel size is carried
+// instead of the `const lv_font_t *` the value really is, because a pointer
+// cannot travel on the wire).
+//
+// This must NOT go through the generic lv_obj_set_property() below: LVGL would
+// hand the integer to lv_obj_set_local_style_prop() as the style value, and the
+// lv_property_t union overlaps `num` with `ptr`/`style` — i.e. the device would
+// treat `30` as a font pointer and crash in the draw path.
+bool apply_font_size(lv_obj_t *obj, const touchy_SetPropertyCmd &cmd, lv_prop_id_t pid)
+{
+    if (!is_text_font_prop(pid)) {
+        ESP_LOGW(TAG, "font_size_value needs the 'text_font' property ('%s' on '%s')",
+                 ident_of(cmd).c_str(), cmd.widget_id);
+        return false;
+    }
+
+    const int32_t px = (int32_t)cmd.value.font_size_value;
+    if (px == touchy_FontSize_FONT_SIZE_DEFAULT) {
+        // FONT_SIZE_DEFAULT: drop the local font so the widget inherits its
+        // style stack (and ultimately the theme) again — the runtime mirror of
+        // an unset `Style.font_size`.
+        const bool dropped = lv_obj_remove_local_style_prop(obj, LV_STYLE_TEXT_FONT, 0);
+        ESP_LOGI(TAG, "font_size=%d on '%s' (%s)", (int)px, cmd.widget_id,
+                 dropped ? "dropped the local font" : "no local font to drop");
+        return true;
+    }
+
+    const lv_font_t *font = font_for_size(px);
+    if (!font) return false;   // font_for_size() logged the WARN
+
+    // Selector 0 == LV_PART_MAIN | LV_STATE_DEFAULT, matching how the generic
+    // style-property path applies an override (it leaves `selector` unset).
+    lv_obj_set_style_text_font(obj, font, 0);
+    ESP_LOGI(TAG, "font_size=%d on '%s'", (int)px, cmd.widget_id);
+    return true;
+}
+
 // Apply one override's value to a live object. Returns false if the
 // property can't be resolved / set. An unset value is a no-op here (the
 // removal only affects future rebuilds).
@@ -97,12 +157,7 @@ bool apply_to_obj(lv_obj_t *obj, const touchy_SetPropertyCmd &cmd)
     // the same override semantics as a label's.
     if (span_group_apply_text_override(obj, cmd)) return true;
 
-    lv_prop_id_t pid = LV_PROPERTY_ID_INVALID;
-    if (cmd.which_property == touchy_SetPropertyCmd_property_name_tag) {
-        pid = lv_obj_property_get_id(obj, cmd.property.property_name);
-    } else if (cmd.which_property == touchy_SetPropertyCmd_property_id_tag) {
-        pid = (lv_prop_id_t)cmd.property.property_id;
-    }
+    const lv_prop_id_t pid = resolve_prop_id(obj, cmd);
     if (pid == LV_PROPERTY_ID_INVALID) {
         ESP_LOGW(TAG, "unknown property '%s' on widget '%s'",
                  cmd.which_property == touchy_SetPropertyCmd_property_name_tag
@@ -111,9 +166,27 @@ bool apply_to_obj(lv_obj_t *obj, const touchy_SetPropertyCmd &cmd)
         return false;
     }
 
+    // Stage lb26 — the typed font-size arm, and the reverse footgun: the
+    // `text_font` style property's real value is a `const lv_font_t *`, so
+    // *every* other value arm aimed at it (int / bool / colour / string /
+    // point) would be handed to LVGL as that pointer.
+    if (cmd.which_value == touchy_SetPropertyCmd_font_size_value_tag) {
+        return apply_font_size(obj, cmd, pid);
+    }
+    if (is_text_font_prop(pid)) {
+        ESP_LOGW(TAG,
+                 "widget '%s': 'text_font' takes font_size_value (a pixel size) — "
+                 "any other value would be read as a font pointer",
+                 cmd.widget_id);
+        return false;
+    }
+
     lv_property_t prop;
     lv_memzero(&prop, sizeof(prop));
     prop.id = pid;
+    // NB: `font_size_value` never reaches here — it is applied by
+    // apply_font_size() above, because it carries a pixel size rather than a
+    // value the generic property setter can consume.
     switch (cmd.which_value) {
     case touchy_SetPropertyCmd_bool_value_tag:
         prop.num = cmd.value.bool_value ? 1 : 0;

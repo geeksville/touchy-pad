@@ -981,7 +981,8 @@ def property_group() -> None:
     "as_int",
     is_flag=True,
     help="Send VALUE as an integer property instead of a string "
-    "(e.g. `anim_duration 4000`, a label scroll-speed in ms).",
+    "(e.g. `anim_duration 4000`, a label scroll-speed in ms). "
+    "For `text_font` the integer is a pixel size (see FONT_SIZES).",
 )
 def property_set(widget_id: str, prop: str, value: tuple[str, ...], as_int: bool) -> None:
     """Set widget WIDGET_ID's property PROP to VALUE.
@@ -996,6 +997,11 @@ def property_set(widget_id: str, prop: str, value: tuple[str, ...], as_int: bool
     lap; see ``docs/python-api.md`` → "Scrolling speed"):
     ``touchy property set ticker anim_duration 4000 --int``.
     Decimal, ``0x`` hex and ``0b`` binary literals are accepted.
+
+    Stage lb26 — a font size is a ``--int`` on the ``text_font`` property,
+    in pixels, and must be one of the sizes the firmware compiled
+    (``FONT_SIZES``: 8, 14, 16, 30; 0 restores the theme default):
+    ``touchy property set title text_font 30 --int``.
 
     The override is session-scoped and sticky: it survives screen reloads
     and applies whenever the widget next appears. (Sent as a one-entry
@@ -1012,8 +1018,15 @@ def property_set(widget_id: str, prop: str, value: tuple[str, ...], as_int: bool
             raise click.BadParameter(
                 f"VALUE must be an integer when --int is used, got {raw!r}"
             ) from exc
+    # Build (and validate) the entry before connecting: a rejected property or
+    # value — e.g. an uncompiled font size for `text_font` — should fail fast
+    # with a readable message rather than a traceback after an RPC is queued.
+    try:
+        entry = build_property_override(widget_id, prop, payload)
+    except (TypeError, ValueError) as exc:
+        raise click.BadParameter(str(exc)) from exc
     with _client() as c:
-        c.set_properties([build_property_override(widget_id, prop, payload)])
+        c.set_properties([entry])
 
 
 # ---------------------------------------------------------------------------

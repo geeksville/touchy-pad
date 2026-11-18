@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use crate::client::{Client, FILE_WRITE_CHUNK};
 use crate::error::{Result, TouchyError};
 use crate::images::{looks_like_supported_image, normalize_for_device, rewrite_to_bin_path};
-use crate::proto::{LvEvent, ResultCode, Screen, Widget};
+use crate::proto::{FontSize, LvEvent, ResultCode, Screen, SetPropertyCmd, Widget};
 use crate::transport::Transport;
 use crate::transport_net::{TcpTransport, sim_url_from_env};
 use crate::transport_usb::UsbTransport;
@@ -398,6 +398,54 @@ impl Touchy {
 	/// match its own wire version.
 	pub async fn screen_load(&self, path: &str) -> Result<()> {
 		self.client.screen_load(path).await
+	}
+
+	/// Apply a batch of runtime widget-property overrides (stages lb12/lb14).
+	///
+	/// Thin passthrough to [`Client::set_properties`] — see there for the
+	/// sticky/removal semantics. Entries are built by hand:
+	///
+	/// ```no_run
+	/// # use touchy_pad::proto::{SetPropertyCmd, set_property_cmd};
+	/// let entry = SetPropertyCmd {
+	///     widget_id: "title".into(),
+	///     property: Some(set_property_cmd::Property::PropertyName("text".into())),
+	///     value: Some(set_property_cmd::Value::StringValue("New title".into())),
+	/// };
+	/// # let _ = entry;
+	/// ```
+	///
+	/// # Errors
+	///
+	/// Same failure surface as [`Client::set_properties`].
+	pub async fn set_properties(&self, props: Vec<SetPropertyCmd>) -> Result<()> {
+		self.client.set_properties(props).await
+	}
+
+	/// Change one widget's text font size at runtime (stage lb26).
+	///
+	/// `size` must be a size the firmware compiled — a [`FontSize`] member
+	/// ([`crate::FONT_SIZES`] lists the pixel values). Use
+	/// [`FontSize::Default`] (proto `FONT_SIZE_DEFAULT`) to restore the theme
+	/// font:
+	///
+	/// ```no_run
+	/// # async fn demo(pad: &touchy_pad::Touchy) -> touchy_pad::Result<()> {
+	/// use touchy_pad::FontSize;
+	/// pad.set_font_size("title", FontSize::FontSize30).await?;
+	/// pad.set_font_size("title", FontSize::Default).await?; // back to the theme
+	/// # Ok(())
+	/// # }
+	/// ```
+	///
+	/// Session-scoped and sticky: it survives screen reloads and page swaps.
+	///
+	/// # Errors
+	///
+	/// Same failure surface as [`Client::set_font_size`] — `INVALID_ARG` when
+	/// the firmware has no font of that size.
+	pub async fn set_font_size(&self, widget_id: &str, size: FontSize) -> Result<()> {
+		self.client.set_font_size(widget_id, size).await
 	}
 
 	/// Stop the background event poller. Called automatically on drop.

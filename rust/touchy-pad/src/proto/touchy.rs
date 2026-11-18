@@ -1202,6 +1202,41 @@ impl TextAlign {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
+pub enum FontSize {
+    Default = 0,
+    FontSize8 = 8,
+    FontSize14 = 14,
+    FontSize16 = 16,
+    FontSize30 = 30,
+}
+impl FontSize {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Default => "FONT_SIZE_DEFAULT",
+            Self::FontSize8 => "FONT_SIZE_8",
+            Self::FontSize14 => "FONT_SIZE_14",
+            Self::FontSize16 => "FONT_SIZE_16",
+            Self::FontSize30 => "FONT_SIZE_30",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "FONT_SIZE_DEFAULT" => Some(Self::Default),
+            "FONT_SIZE_8" => Some(Self::FontSize8),
+            "FONT_SIZE_14" => Some(Self::FontSize14),
+            "FONT_SIZE_16" => Some(Self::FontSize16),
+            "FONT_SIZE_30" => Some(Self::FontSize30),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
 pub enum LongMode {
     Wrap = 0,
     Dots = 1,
@@ -1442,7 +1477,7 @@ pub struct SetPropertyCmd {
     pub widget_id: ::prost::alloc::string::String,
     #[prost(oneof = "set_property_cmd::Property", tags = "2, 3")]
     pub property: ::core::option::Option<set_property_cmd::Property>,
-    #[prost(oneof = "set_property_cmd::Value", tags = "4, 5, 6, 7, 8")]
+    #[prost(oneof = "set_property_cmd::Value", tags = "4, 5, 6, 7, 8, 9")]
     pub value: ::core::option::Option<set_property_cmd::Value>,
 }
 /// Nested message and enum types in `SetPropertyCmd`.
@@ -1466,6 +1501,8 @@ pub mod set_property_cmd {
         ColorValue(u32),
         #[prost(message, tag = "8")]
         PointValue(super::Point),
+        #[prost(enumeration = "super::FontSize", tag = "9")]
+        FontSizeValue(i32),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1562,7 +1599,7 @@ pub mod sys_board_info_response {
     #[repr(i32)]
     pub enum ProtocolVersion {
         Unspecified = 0,
-        Current = 14,
+        Current = 15,
         MinFirmwareVersion = 13,
         V1 = 1,
         V2 = 2,
@@ -1576,6 +1613,7 @@ pub mod sys_board_info_response {
         V10 = 10,
         V11 = 11,
         V12 = 12,
+        V14 = 14,
     }
     impl ProtocolVersion {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -1599,6 +1637,7 @@ pub mod sys_board_info_response {
                 Self::V10 => "V10",
                 Self::V11 => "V11",
                 Self::V12 => "V12",
+                Self::V14 => "V14",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1619,6 +1658,7 @@ pub mod sys_board_info_response {
                 "V10" => Some(Self::V10),
                 "V11" => Some(Self::V11),
                 "V12" => Some(Self::V12),
+                "V14" => Some(Self::V14),
                 _ => None,
             }
         }

@@ -13,7 +13,7 @@
 //! ```
 
 use touchy_pad::proto::{Action, ActionHost, Button, Label, Layout, LayoutFlex, Widget, action, layout_flex, widget};
-use touchy_pad::{DEFAULT_SCREEN_PATH, Touchy};
+use touchy_pad::{DEFAULT_SCREEN_PATH, FontSize, Touchy};
 
 /// A press/release pair that reports back to the host as `host_code`.
 fn host_action(code: u32) -> Action {
@@ -74,6 +74,12 @@ async fn main() -> touchy_pad::Result<()> {
 	pad.user_screen_save("rust_example", &root).await?;
 	pad.screen_load(DEFAULT_SCREEN_PATH).await?;
 	pad.show_user_screen("rust_example").await?;
+
+	// Stage lb26 — restyle a widget *without* re-uploading the page. The size
+	// has to be one the firmware compiled (`FONT_SIZES`), and the override is
+	// sticky: it survives screen reloads and page swaps until the device
+	// reboots. `FontSize::Default` drops it again (back to the theme font).
+	pad.set_font_size("title", FontSize::FontSize30).await?;
 
 	println!("rust_example page is on screen; run `cargo run --example events` to watch touches");
 	Ok(())

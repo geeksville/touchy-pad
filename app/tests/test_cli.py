@@ -113,6 +113,29 @@ def test_property_set_int_flag_rejects_a_non_number(monkeypatch: pytest.MonkeyPa
     assert sent == []
 
 
+def test_property_set_text_font_int_is_a_font_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stage lb26 — `--int` on `text_font` reaches the typed font-size arm.
+
+    A plain `int_value` for `text_font` would be read by LVGL as a
+    `const lv_font_t *`, so the CLI path must produce `font_size_value`.
+    """
+    sent, result = _run_property_set(monkeypatch, ["title", "text_font", "30", "--int"])
+    assert result.exit_code == 0, result.output
+    assert len(sent) == 1
+    assert sent[0].property_name == "text_font"
+    assert sent[0].WhichOneof("value") == "font_size_value"
+    assert sent[0].font_size_value == 30
+
+
+def test_property_set_text_font_rejects_an_uncompiled_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent, result = _run_property_set(monkeypatch, ["title", "text_font", "24", "--int"])
+    assert result.exit_code != 0
+    assert "no font of that size" in result.output
+    assert sent == []
+
+
 # ---------------------------------------------------------------------------
 # `touchy screen demo` — page switching must respect the board's touch support.
 # ---------------------------------------------------------------------------
