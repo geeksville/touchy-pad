@@ -5,6 +5,6 @@ Each submodule exposes a ``build()`` function that returns a
 :meth:`~touchy_pad.api.touchy.Touchy.user_screen_save`.
 """
 
-from . import test, trackpad
+from . import span, test, trackpad
 
-__all__ = ["test", "trackpad"]
+__all__ = ["span", "test", "trackpad"]

@@ -36,6 +36,7 @@ from queue import Empty, Queue
 from google.protobuf import json_format
 
 from .. import _proto
+from ..rich_text import parse_recolor_markup
 from .fs import SimFs
 
 _log = logging.getLogger("touchy_pad.sim")
@@ -143,8 +144,15 @@ def _apply_override_to_widget(w: _proto.Widget, entry: _proto.SetPropertyCmd) ->
         if kind in ("button", "label"):
             getattr(w, kind).text = entry.string_value
             return True
+        if kind == "span_group":
+            # Stage lb24 — on the device a `text` override on a span group is
+            # markup that gets re-parsed into the span list (the firmware does it
+            # in widget_span.cpp). Mirror that here with the same parser.
+            del w.span_group.spans[:]
+            w.span_group.spans.extend(parse_recolor_markup(entry.string_value))
+            return True
         _log.warning(
-            "sim: set_properties 'text' only on button/label (%r is %s) — ignored",
+            "sim: set_properties 'text' only on button/label/span_group " "(%r is %s) — ignored",
             entry.widget_id,
             kind,
         )

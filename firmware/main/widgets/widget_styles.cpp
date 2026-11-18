@@ -137,10 +137,17 @@ lv_style_transition_dsc_t *build_lv_transition(const touchy_Transition &t,
     return tr;
 }
 
+}  // namespace
+
 // Map a requested pixel font size to the nearest Montserrat font that is
 // compiled into this firmware build. Returns nullptr for sizes with no
 // matching font (the caller then leaves the theme default in place).
 // Add new sizes here as they are enabled in sdkconfig.defaults.
+//
+// Exported via widget_styles.h since Stage lb24 — the rich-text builder
+// (widget_span.cpp) needs the same mapping for a per-span font size. It sits
+// *outside* the file's anonymous namespace for that reason, sandwiched between
+// the two halves of it.
 const lv_font_t *font_for_size(int32_t size)
 {
     switch (size) {
@@ -215,6 +222,8 @@ const lv_font_t *font_for_size(int32_t size)
     default: return nullptr;
     }
 }
+
+namespace {
 
 // Build one `lv_style_t` from a `touchy_Style` message. Each populated
 // scalar contributes one `lv_style_set_<prop>` call; fields whose

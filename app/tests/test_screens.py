@@ -38,6 +38,8 @@ from touchy_pad.api import (
     row,
     slider,
     spacer,
+    span,
+    span_group,
     style,
     toggle,
     trackpad,
@@ -879,9 +881,9 @@ def test_build_demo_returns_screen_and_widgets():
     # The body grows to fill the column (Stage 72 grow_x/grow_y).
     assert body.grow_y == 1
     assert body.grow_x == 1
-    # Two named user pages, sorted by build order.
+    # Three named user pages, sorted by build order (stage lb24 added `span`).
     names = [n for n, _ in widgets]
-    assert names == ["test", "trackpad"]
+    assert names == ["span", "test", "trackpad"]
 
 
 def test_build_demo_chrome_wires_change_widget_ref_actions():
@@ -976,7 +978,9 @@ def test_build_default_screen_is_vertical_flex_with_growing_body():
 def test_build_user_pages_targets_user_screens_dir():
     """Page bodies are addressed into F:host/uscr/ by the chrome actions."""
     pages = dict(build_user_pages())
-    assert set(pages) == {"test", "trackpad"}
+    # Stage lb24 added the rich-text `span` page (sorted order: span, test,
+    # trackpad — the chrome's Next/Prev wrap follows that order).
+    assert set(pages) == {"span", "test", "trackpad"}
     screen = build_default_screen()
     decoded = _proto.Screen.FromString(screen.to_bytes())
     chrome = decoded.active.layout_flex.layout.children[0]
@@ -1036,6 +1040,117 @@ def test_label_recolor_defaults_off():
     decoded = _proto.Screen.FromString(s.to_bytes())
     w = _children(decoded.active)[0]
     assert w.label.recolor is False
+
+
+def test_label_recolor_keeps_the_wire_format_after_lb24():
+    """lb24 changed only the *engine*: `recolor` + its text are untouched.
+
+    This is the no-host-change guarantee for existing consumers (voicebot):
+    a screen authored today is byte-identical to one authored for lb23, only
+    `Widget.Version` moves.
+    """
+    s = Screen("rc", layout=col())
+    s += label("marquee", text="#FF0000 Danger!# watch out", recolor=True)
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert w.WhichOneof("kind") == "label"
+    assert w.label.recolor is True
+    assert w.label.text == "#FF0000 Danger!# watch out"
+    assert w.label.long_mode == _proto.LongMode.LONG_MODE_WRAP
+
+
+# ---- stage lb24: rich text (span groups) ------------------------------------
+
+
+def test_widget_version_is_31():
+    """lb24 added SpanGroup + moved recolor to spans."""
+    assert _proto.Widget.Version.CURRENT == 31
+
+
+def test_span_group_round_trips():
+    s = Screen("rich", layout=col())
+    s += span_group(
+        "quip",
+        [
+            span("cocks head", color=0xA020F0),
+            span("I bet he's in a cave"),
+            " — plain run",
+        ],
+        overflow=_proto.SpanOverflow.SPAN_OVERFLOW_CLIP,
+        max_lines=3,
+        text_align=_proto.TextAlign.CENTER,
+        rect=rect(x=1, y=2, w=300, h=120),
+    )
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    w = _children(decoded.active)[0]
+    assert w.WhichOneof("kind") == "span_group"
+    sg = w.span_group
+    assert [sp.text for sp in sg.spans] == [
+        "cocks head",
+        "I bet he's in a cave",
+        " — plain run",
+    ]
+    assert sg.spans[0].HasField("text_color")
+    assert sg.spans[0].text_color == 0xA020F0
+    assert sg.spans[1].HasField("text_color") is False
+    assert sg.overflow == _proto.SpanOverflow.SPAN_OVERFLOW_CLIP
+    assert sg.max_lines == 3
+    assert sg.text_align == _proto.TextAlign.CENTER
+    assert (w.rect.x, w.rect.y, w.rect.w, w.rect.h) == (1, 2, 300, 120)
+
+
+def test_span_group_defaults_are_ellipsis_and_unlimited_lines():
+    s = Screen("rich", layout=col())
+    s += span_group("a", [span("hi")])
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    sg = _children(decoded.active)[0].span_group
+    assert sg.overflow == _proto.SpanOverflow.SPAN_OVERFLOW_ELLIPSIS
+    assert sg.max_lines == 0
+    assert sg.text_align == _proto.TextAlign.AUTO
+
+
+def test_span_group_without_runs_still_sets_the_kind():
+    """An empty group is legal; the oneof must still be `span_group`."""
+    s = Screen("rich", layout=col())
+    s += span_group("empty")
+    decoded = _proto.Screen.FromString(s.to_bytes())
+    assert _children(decoded.active)[0].WhichOneof("kind") == "span_group"
+
+
+def test_span_carries_colour_and_font():
+    sp = span("big red", color=0xFF0000, font_size=30)
+    assert sp.text == "big red"
+    assert sp.text_color == 0xFF0000
+    assert sp.font_size == 30
+
+
+def test_span_omitted_colour_and_font_mean_inherit():
+    sp = span("plain")
+    assert sp.HasField("text_color") is False
+    assert sp.HasField("font_size") is False
+
+
+def test_span_accepts_black_as_an_explicit_colour():
+    """`None` means inherit, so 0x000000 must still be expressible."""
+    sp = span("black", color=0x000000)
+    assert sp.HasField("text_color") is True
+    assert sp.text_color == 0
+
+
+def test_span_rejects_out_of_range_values():
+    with pytest.raises(ValueError):
+        span("x", color=0x1000000)
+    with pytest.raises(ValueError):
+        span("x", color=-1)
+    with pytest.raises(ValueError):
+        span("x", font_size=-2)
+
+
+def test_span_group_rejects_bad_overflow_and_max_lines():
+    with pytest.raises(ValueError):
+        span_group("a", [span("x")], max_lines=-1)
+    with pytest.raises(ValueError):
+        span_group("a", [span("x")], overflow=7)
 
 
 def test_label_scroll_duration_round_trips():

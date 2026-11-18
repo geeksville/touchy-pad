@@ -24,37 +24,49 @@ from __future__ import annotations
 
 import html
 import logging
-import re
 from collections.abc import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import _proto
+from ..rich_text import parse_recolor_markup
 from .fs import SimFs
 
 _log = logging.getLogger("touchy_pad.sim")
 
-#: LVGL inline-recolour run: ``#RRGGBB text#`` (colour to the first space,
-#: text to the closing ``#``). Stage LB17.
-_RECOLOR_RE = re.compile(r"#([0-9a-fA-F]{6}) (.*?)#", re.DOTALL)
+
+def spans_to_html(spans) -> str:
+    """Render rich-text runs as Qt rich text (stage lb24).
+
+    Advisory equivalent of the firmware's span-group rendering: one ``<span>``
+    per run that carries its own colour and/or font size, and escaped plain text
+    for a run that inherits both from the group's style.
+    """
+    out: list[str] = []
+    for s in spans:
+        body = html.escape(s.text or "")
+        styles: list[str] = []
+        if s.HasField("text_color"):
+            styles.append(f"color:#{s.text_color:06X}")
+        if s.HasField("font_size") and s.font_size:
+            styles.append(f"font-size:{int(s.font_size)}pt")
+        if styles:
+            out.append(f'<span style="{"; ".join(styles)}">{body}</span>')
+        else:
+            out.append(body)
+    return "".join(out)
 
 
 def _recolor_to_html(text: str) -> str:
     """Render LVGL inline-recolour markup as Qt rich text (stage LB17).
 
-    A minimal, advisory equivalent of the firmware's ``lv_label_set_recolor``:
-    each ``#RRGGBB text#`` run becomes a coloured ``<span>``; everything else is
-    plain (the label's default colour). Anything the pattern doesn't match is
-    kept literally.
+    Since stage lb24 this runs the *same* parser the device uses
+    (:func:`touchy_pad.rich_text.parse_recolor_markup`) — the firmware stopped
+    handing the string to LVGL's label recolour parser, which mis-handles a run
+    that crosses a wrapped line, and renders it through a span group instead.
+    The markup string itself is unchanged.
     """
-    out: list[str] = []
-    pos = 0
-    for match in _RECOLOR_RE.finditer(text):
-        out.append(html.escape(text[pos : match.start()]))
-        out.append(f'<span style="color:#{match.group(1)}">{html.escape(match.group(2))}</span>')
-        pos = match.end()
-    out.append(html.escape(text[pos:]))
-    return "".join(out)
+    return spans_to_html(parse_recolor_markup(text))
 
 
 #: Callback fired when a leaf widget is activated.
@@ -326,6 +338,31 @@ def _build_leaf(
         # single-line and lets Qt clip at the label's fixed width — close
         # enough for advisory sim rendering of SCROLL / DOTS / CLIP.
         lbl.setWordWrap(w.label.long_mode == _proto.LongMode.LONG_MODE_WRAP)
+        return lbl
+
+    if kind == "span_group":
+        # Stage lb24 — rich text: real styled runs rather than in-string markup.
+        # Advisory Qt rendering (Qt rich text), so `overflow` / `max_lines` are
+        # approximated: word wrap on, and a maximum height derived from the line
+        # count when the host capped it.
+        sg = w.span_group
+        lbl = QtWidgets.QLabel(spans_to_html(sg.spans))
+        lbl.setTextFormat(QtCore.Qt.RichText)
+        lbl.setWordWrap(True)
+        lbl.setAlignment(_qt_align(sg.text_align))
+        font_size = next(
+            (st.font_size for st in reversed(w.styles) if st.HasField("font_size")),
+            0,
+        )
+        if font_size:
+            f = lbl.font()
+            f.setPointSize(int(font_size))
+            lbl.setFont(f)
+        if sg.max_lines > 0:
+            # Qt cannot ellipsise at a per-line limit; bounding the height is the
+            # closest readable approximation of the firmware's stop-at-the-box
+            # behaviour.
+            lbl.setMaximumHeight(int(sg.max_lines) * lbl.fontMetrics().lineSpacing() + 8)
         return lbl
 
     if kind == "slider":

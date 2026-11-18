@@ -173,8 +173,8 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
-`lb` line (lb5–lb21) are **done**. Latest active wire-format:
-`Widget.Version.CURRENT == 30`,
+`lb` line (lb5–lb24) are **done**. Latest active wire-format:
+`Widget.Version.CURRENT == 31`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
 `PreferencesFile.Version.CURRENT == 9`.
 
@@ -906,6 +906,32 @@ Highlights worth remembering:
   addressable at all). Firmware-only, no wire change. Plan:
   `docs/plans/widget-ref-property-overrides.md`.
 
+- **Stage lb24 (rich text via span groups; `recolor` reimplemented on them).**
+  A voicebot-reported **LVGL** defect: the label recolour parser keeps its
+  command state local to one draw/measure call and never advances it at a line
+  start (or when the draw skips to its first visible line), so a `#RRGGBB …#`
+  run that straddled an automatic wrap measured the closing `#` and the next
+  word at zero width, overran the box, and got drawn twice at the seam
+  (LVGL #4599 / #8547 — see `docs/open-issues.md`). Two halves, neither needing
+  a host change: (1) **`Label.recolor` keeps its exact wire format/API**, but
+  `build_label()` delegates to `build_recolor_span_group()`
+  (`firmware/main/widgets/widget_span.{h,cpp}`), which builds an **LVGL
+  spangroup** and parses the markup device-side — the same parser a runtime
+  `text` override runs, so the one-RPC-per-frame live path is unchanged; the two
+  **scrolling** long modes deliberately keep the label path (a span group cannot
+  marquee, and an unwrapped scroll line never hit the bug). (2) New `Span` /
+  `SpanGroup` messages + `Widget.kind.span_group = 34` are now the *recommended*
+  rich-text API: real styled runs (per-run colour **and** font), `overflow`
+  (clip/ellipsis), `max_lines`, `text_align`, with `span()` / `span_group()` and
+  `parse_recolor_markup()` (`touchy_pad/rich_text.py`, the Python mirror the sim
+  shares) on the host. There is **no `mode` field** — LVGL deprecated
+  `lv_spangroup_set_mode()` in 9.5. A spangroup has no LVGL `text` property, so
+  `widget_property.cpp::apply_to_obj()` routes a string `text` write to
+  `span_group_apply_text_override()` first (marked objects carry a magic-tagged
+  `user_data` ctx); removal behaves as it always did for labels. Also: a new
+  demo/regression page `touchy_pad/pages/span.py`, so the `F:host/uscr/` page
+  cycle is now span → test → trackpad. **`Widget.Version` 30 → 31**; no
+  `ProtocolVersion` / prefs change. Plan: `docs/plans/span-rich-text.md`.
 
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host
   code).** libusb ≥ 1.0.27 caches its device list **per libusb context**, and

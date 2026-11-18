@@ -4,6 +4,7 @@
 
 #include "widget_property.h"
 #include "tc_tag.h"
+#include "widget_span.h"   // Stage lb24 — markup-backed span groups take `text`
 
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -88,6 +89,13 @@ void delete_cb(lv_event_t *e)
 bool apply_to_obj(lv_obj_t *obj, const touchy_SetPropertyCmd &cmd)
 {
     if (cmd.which_value == 0) return true;
+
+    // Stage lb24 — a markup-backed span group (an explicit `span_group` widget,
+    // or the object that implements a `recolor` label) has no LVGL `text`
+    // property, so a `text` write means "re-parse this markup into the span
+    // list". That keeps a chatty host's live update at one RPC per frame, with
+    // the same override semantics as a label's.
+    if (span_group_apply_text_override(obj, cmd)) return true;
 
     lv_prop_id_t pid = LV_PROPERTY_ID_INVALID;
     if (cmd.which_property == touchy_SetPropertyCmd_property_name_tag) {

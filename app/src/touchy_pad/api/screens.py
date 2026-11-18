@@ -31,6 +31,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from .. import _proto
+from ..rich_text import parse_recolor_markup
 from . import _events
 from .images_dynamic import ImageSource
 from .macros import (
@@ -81,6 +82,9 @@ __all__ = [
     "prev_widget_action",
     "button",
     "label",
+    "span",
+    "span_group",
+    "parse_recolor_markup",
     "slider",
     "toggle",
     "checkbox",
@@ -106,6 +110,7 @@ __all__ = [
     "StyleProp",
     "TextAlign",
     "LongMode",
+    "SpanOverflow",
     # Stage LB19 — valid range for ``label(scroll_speed_px_s=...)``.
     "SCROLL_SPEED_MIN_PX_S",
     "SCROLL_SPEED_MAX_PX_S",
@@ -120,6 +125,8 @@ LvState = _proto.LvState
 StyleProp = _proto.StyleProp
 TextAlign = _proto.TextAlign
 LongMode = _proto.LongMode
+# Stage lb24 — how a rich-text span group overflows its box.
+SpanOverflow = _proto.SpanOverflow
 
 
 # ---------------------------------------------------------------------------
@@ -854,6 +861,97 @@ def label(
         w.label.scroll_duration_ms = int(scroll_duration_ms)
     if scroll_speed_px_s:
         w.label.scroll_speed_px_s = int(scroll_speed_px_s)
+    return w
+
+
+def span(
+    text: str,
+    color: int | None = None,
+    font_size: int | None = None,
+) -> _proto.Span:
+    """One styled run of text for :func:`span_group` (stage lb24).
+
+    ``text`` is **literal** — unlike :func:`label` with ``recolor=True``, no
+    ``#RRGGBB …#`` markup is interpreted here (that is the point: the run carries
+    its own style, so there is no in-string command state to mis-carry across a
+    wrapped line).
+
+    ``color`` is a packed ``0xRRGGBB`` int; ``None`` (the default) inherits the
+    group widget's ``text_color`` style. ``font_size`` is a pixel size; ``None``
+    inherits the group's font.
+    """
+    if color is not None and not 0 <= color <= 0xFFFFFF:
+        raise ValueError(f"span(): color must be 0x000000..0xFFFFFF (got {color!r})")
+    if font_size is not None and font_size < 0:
+        raise ValueError(f"span(): font_size must be >= 0 (got {font_size!r})")
+    s = _proto.Span(text=text)
+    if color is not None:
+        s.text_color = int(color)
+    if font_size is not None:
+        s.font_size = int(font_size)
+    return s
+
+
+def span_group(
+    id: str,
+    spans: Iterable[_proto.Span | str] = (),
+    *,
+    overflow: int = SpanOverflow.SPAN_OVERFLOW_ELLIPSIS,
+    max_lines: int = 0,
+    text_align: int | None = None,
+    rect: _proto.Rect | None = None,
+    style: _proto.Style | Iterable[_proto.Style] | None = None,
+    animations: _proto.Animation | Iterable[_proto.Animation] | None = None,
+) -> _proto.Widget:
+    """Multi-colour / multi-font text in one wrapping block (stage lb24).
+
+    This is the **recommended** way to put several colours in one text layout.
+    Unlike ``label(..., recolor=True)`` — which hands a markup string to LVGL's
+    label recolour parser, where a run that crosses an automatic line break is
+    mis-measured and drawn twice — a span group is built from real styled runs,
+    so there is no in-string state to lose and the defect cannot occur.
+
+    ``spans`` is a sequence of :func:`span` values (a bare ``str`` is accepted as
+    an uncoloured run). ``overflow`` (``SPAN_OVERFLOW_*``, default ``ELLIPSIS``)
+    decides what happens when the text does not fit the box: ``ELLIPSIS`` puts a
+    ``…`` on the last line that fits, ``CLIP`` cuts it off. ``max_lines`` caps the
+    line count (``0`` = unlimited). ``text_align`` centres/aligns the block
+    horizontally *within its box* (``TextAlign.*``; unset follows LVGL).
+
+    Size comes from the usual placement — ``rect`` (or a flex/grid parent), not
+    from the text: give it a fixed width to wrap, or leave the height unset to
+    grow with the text.
+
+    Live updates are cheap: a single runtime ``text`` property override whose
+    value is markup re-parses into the span list on the device::
+
+        pad.set_properties([
+            build_property_override("quip", "text", "#A020F0 cocks head#I bet…")
+        ])
+
+    The markup there is the same ``#RRGGBB text#`` syntax ``recolor`` labels use
+    (:func:`parse_recolor_markup` parses it host-side if you want explicit spans
+    instead). A span group cannot scroll — for a coloured ticker keep using
+    ``label(..., recolor=True, long_mode=LONG_MODE_SCROLL*)``.
+    """
+    if max_lines < 0:
+        raise ValueError(f"span_group(): max_lines must be >= 0 (got {max_lines!r})")
+    if overflow not in (
+        SpanOverflow.SPAN_OVERFLOW_CLIP,
+        SpanOverflow.SPAN_OVERFLOW_ELLIPSIS,
+    ):
+        raise ValueError(
+            "span_group(): overflow must be SpanOverflow.SPAN_OVERFLOW_CLIP or "
+            f"SPAN_OVERFLOW_ELLIPSIS (got {overflow!r})"
+        )
+    w = _widget(id, rect=rect, style=style, animations=animations)
+    sg = w.span_group
+    for s in spans:
+        sg.spans.append(_proto.Span(text=s) if isinstance(s, str) else s)
+    sg.overflow = overflow
+    sg.max_lines = int(max_lines)
+    if text_align is not None:
+        sg.text_align = text_align
     return w
 
 
@@ -1864,21 +1962,30 @@ def build_user_pages() -> list[tuple[str, _proto.Widget]]:
     Returns a list of ``(name, Widget)`` pairs the caller uploads via
     :meth:`Touchy.user_screen_save` (CLI: ``touchy init`` /
     ``touchy screen demo``). Lexicographic order in that directory is
-    ``test`` then ``trackpad``, so the chrome's Next/Prev wrap predictably.
+    ``span`` → ``test`` → ``trackpad``, so the chrome's Next/Prev wrap
+    predictably.
 
     * ``"trackpad"`` — full-bleed multitouch trackpad (USB HID mouse).
       Written by ``touchy init`` so the device has a usable page out of
-      the box.  See :mod:`touchy_pad.api.pages.trackpad`.
+      the box.  See :mod:`touchy_pad.pages.trackpad`.
     * ``"test"`` — Stage 16 / 18 / 20 widget showcase (hello / ping /
       force / fps / slider / checkbox / smiley image-button / log line),
       with Stage-67 inline ``host_action(on_event=...)`` callbacks. Added
       by ``screen demo`` on top of the baseline.  See
-      :mod:`touchy_pad.api.pages.test`.
+      :mod:`touchy_pad.pages.test`.
+    * ``"span"`` — Stage-lb24 rich text: an explicit :func:`span_group` plus
+      the coloured-run-across-a-wrap regression page (see
+      :mod:`touchy_pad.pages.span`). Added by ``screen demo``.
     """
+    from touchy_pad.pages import span as _span_page
     from touchy_pad.pages import test as _test_page
     from touchy_pad.pages import trackpad as _trackpad_page
 
-    return [_test_page.build(), _trackpad_page.build()]
+    return [
+        _span_page.build(),
+        _test_page.build(),
+        _trackpad_page.build(),
+    ]
 
 
 def build_demo() -> tuple[Screen, list[tuple[str, _proto.Widget]]]:

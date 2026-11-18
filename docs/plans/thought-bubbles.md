@@ -6,9 +6,9 @@ into the firmware).
 
 | | |
 |---|---|
-| **Stage name if implemented** | `lb24` (last landed stage is lb23) |
+| **Stage name if implemented** | `lb25` — **renumbered**: `lb24` was taken by `docs/plans/span-rich-text.md`, which landed 2026-11-18. Last landed stage is lb24. |
 | **Sides touched** | `proto/`, `firmware/main/`, `app/` (DSL + sim + docs); `rust/` only via the regenerated prost bindings |
-| **Wire impact** | additive fields on `Style` + `LayoutFlex`; **`Widget.Version` 30 → 31**. No `ProtocolVersion` / `PreferencesFile.Version` change |
+| **Wire impact** | additive fields on `Style` + `LayoutFlex`; **`Widget.Version` 31 → 32** (30 → 31 was consumed by `span-rich-text.md`). No `ProtocolVersion` / `PreferencesFile.Version` change |
 | **Just recipes that validate it** | `just build-proto`, `just app-test`, `just firmware-build` (+ `just rust-gen-proto`) |
 
 ## 1. Goal
@@ -136,8 +136,9 @@ changes — the bubble's text stays an ordinary `label`.
 
   This is what lets a bubble centre its text **vertically** (COLUMN main axis) without
   inventing new text semantics, and it is generally useful (centred button rows, cards).
-* `Widget.Version.CURRENT` 30 → 31 (the *look* changes, and the project bumps on
+* `Widget.Version.CURRENT` 31 → 32 (the *look* changes, and the project bumps on
   wire-visible features even when older firmware simply ignores the new fields).
+  (31 was taken by `span-rich-text.md` when it landed as lb24.)
 
 ### 4.2 Firmware
 
@@ -262,7 +263,7 @@ change, LB19-style).
 5. **Demo/validation page** — `app/src/touchy_pad/pages/bubble.py` (a few bubbles: one plain,
    one with `recolor` markup, one with a border, one translucent) plus an entry in
    `pages/test.py`.
-6. **Docs** — `docs/design.md` **Stage lb24**, `AGENTS.md` highlight + `Widget.Version` 31,
+6. **Docs** — `docs/design.md` **Stage lb25**, `AGENTS.md` highlight + `Widget.Version` 32,
    `docs/python-api.md` ("Bubbles / per-corner radii" section next to the existing
    "Overriding widget properties" one), `llms.txt` version numbers + a snippet,
    `CHANGELOG.md` entry.

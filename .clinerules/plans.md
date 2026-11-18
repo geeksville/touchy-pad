@@ -105,6 +105,24 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   Rust `file_write_raw()` gets the same flush+retry (`Client::flush_stale_frames`).
   On-hardware 20×`kill -9` loop still to run.
 
+* `docs/plans/span-rich-text.md` — **done — Stage lb24**: a voicebot-reported
+  **LVGL** defect — the label recolour parser resets per line / per draw pass, so
+  a `#RRGGBB …#` run that straddles a wrapping break loses its colour, swallows
+  the next word and draws the seam twice (LVGL #4599 / #8547). **`Label.recolor`
+  kept its exact wire/API** and the *firmware* stopped calling
+  `lv_label_set_recolor()`: `build_label` now delegates to
+  `build_recolor_span_group()` (`firmware/main/widgets/widget_span.{h,cpp}`),
+  which builds an LVGL **spangroup** with the markup parsed device-side (so the
+  live `set_properties(id, "text", markup)` path kept working, unchanged and
+  one-RPC-per-frame). New `Span` / `SpanGroup` + `Widget.kind.span_group = 34` +
+  `span()` / `span_group()` / `parse_recolor_markup()` are the recommended
+  rich-text API; `SCROLL` / `SCROLL_CIRCULAR` labels deliberately keep the old
+  path (unaffected, and a spangroup cannot marquee). `Widget.Version` 30 → 31;
+  new demo/regression page `pages/span.py` (page cycle is now span → test →
+  trackpad). Verified: 324 host tests, `just app-lint`, `just firmware-build`,
+  plus an end-to-end sim run with a live override; **on-hardware wrap check still
+  to run**. Detailed notes: `docs/hardware/lightbar/design.md` → "stage lb24".
+
 * `docs/plans/thought-bubbles.md` — **proposed (decision pending)** — chat-style
   "thought bubbles" for voicebot: a rounded rectangle with **three rounded corners and one
   sharp one**, text centred. Today nothing in the stack can express it — LVGL 9.5 has a single
@@ -116,7 +134,9 @@ mkdocs site: `app/mkdocs.yml` builds the published Python API docs from
   one sharp corner), `LayoutFlex.main_align/cross_align` (`lv_obj_set_flex_align`) so a bubble
   can centre its text vertically, two local-style fixes in `widget_builders.cpp` (layout
   containers and labels currently force local styles that beat host styles), a host-side
-  `bubble()` DSL helper, a Qt per-corner-radius sim mirror, and `Widget.Version` 30 → 31.
+  `bubble()` DSL helper, a Qt per-corner-radius sim mirror, and `Widget.Version`
+  31 → 32 (stage **`lb25`** — renumbered: lb24 was taken by `span-rich-text.md`,
+  which landed 2026-11-18).
   Alternatives Route B (a `Bubble` widget kind) / Route C (a bubble-capable `Label`) are
   documented with their trade-offs (firmware-owned text loses the `set_properties("text")`
   path; bespoke vertical text centring).

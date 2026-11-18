@@ -23,6 +23,7 @@
 #include "widget_actions.h"
 #include "widget_animations.h"
 #include "widget_property.h"
+#include "widget_span.h"        // Stage lb24 — SpanGroup / recolor via span groups
 #include "widget_styles.h"
 
 #include "esp_log.h"
@@ -290,6 +291,20 @@ lv_obj_t *build_button(lv_obj_t *parent, const touchy_Widget &w)
 
 lv_obj_t *build_label(lv_obj_t *parent, const touchy_Widget &w)
 {
+    // Stage lb24 — LVGL's label recolour parser keeps its command state local to
+    // one draw / measure call and never advances it when a new line starts, so a
+    // `#RRGGBB …#` run that straddles an automatic wrap is measured at the wrong
+    // width (line overrun) and drawn twice at the seam (overlapping glyphs).
+    // Render the very same markup string with a span group instead; the wire
+    // format, the API and the runtime `text` override are unchanged
+    // (docs/plans/span-rich-text.md).
+    if (w.kind.label.recolor) {
+        if (lv_obj_t *group = build_recolor_span_group(parent, w)) return group;
+        // nullptr => either LV_USE_SPAN is off or the long mode is one of the
+        // scrolling modes, which a span group cannot do: fall through to the
+        // plain label (see below).
+    }
+
     lv_obj_t *lbl = lv_label_create(parent);
     lv_label_set_text(lbl, w.kind.label.text);
     // LVGL 9 base object default is opaque white background; make labels
@@ -316,12 +331,12 @@ lv_obj_t *build_label(lv_obj_t *parent, const touchy_Widget &w)
         lv_label_set_long_mode(lbl,
             (lv_label_long_mode_t)w.kind.label.long_mode);
     }
-    // Stage LB17 — inline recolour. Enabling this lets the label parse
-    // `#RRGGBB text#` runs so one string can carry several colours; text
-    // outside a run uses the style's text_color. Off by default (the
-    // markup would otherwise be shown literally). Runtime `text` property
-    // overrides re-parse the markup on every change, so nothing else is
-    // needed for the live path.
+    // Stage LB17 / lb24 — inline recolour. This label path is now only reached
+    // for `recolor` labels in a *scrolling* long mode: every other long mode is
+    // rendered by `build_recolor_span_group()` above, because LVGL's in-string
+    // recolour parser mis-handles a run that crosses a wrapped line. A scrolling
+    // label lays its text out as one unwrapped line, so the parser state is never
+    // split and this path is unaffected (and a span group cannot marquee at all).
     if (w.kind.label.recolor) {
         lv_label_set_recolor(lbl, true);
     }
@@ -1262,6 +1277,7 @@ lv_obj_t *widget_build(lv_obj_t *parent, const touchy_Widget &w)
     case touchy_Widget_log_tag:          return build_log(parent, w);
     case touchy_Widget_fps_tag:          return build_fps(parent, w);
     case touchy_Widget_force_render_tag: return build_force_render(parent, w);
+    case touchy_Widget_span_group_tag:   return build_span_group(parent, w);
     case touchy_Widget_layout_absolute_tag:
     case touchy_Widget_layout_flex_tag:
     case touchy_Widget_layout_grid_tag:

@@ -90,6 +90,14 @@ CONFIG_LV_FONT_UNSCII_8=y
 CONFIG_LV_USE_OBJ_PROPERTY=y
 CONFIG_LV_USE_OBJ_PROPERTY_NAME=y
 
+# Stage lb24 — LVGL's span widget (lv_spangroup / lv_span), which renders the
+# `SpanGroup` widget kind and implements `Label.recolor` (see
+# docs/plans/span-rich-text.md). LVGL's Kconfig already defaults this to y, but
+# state it explicitly so a future minimal-config change cannot silently drop
+# multi-colour text support. The snippet stack is LVGL's draw-time scratch
+# (per-snippet glyph buffers), not a span-count limit.
+CONFIG_LV_USE_SPAN=y
+
 
 # Stage 20: LVGL POSIX filesystem bridge so host-uploaded image assets
 # in /littlefs/from_host/ can back Image / ImageButton widgets.

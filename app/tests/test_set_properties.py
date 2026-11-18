@@ -244,3 +244,68 @@ def test_sim_absent_widget_is_not_an_error(tmp_path):
     _apply(dev, [build_property_override("ghost", "x", 5)])
     # Still OK (checked in _apply) and the widget never materialises.
     assert _widget(dev, "ghost") is None
+
+
+# ---- stage lb24: a `text` override on a span group is markup -----------------
+
+
+def _span_group_screen_bytes() -> bytes:
+    s = _proto.Screen()
+    root = s.active
+    root.id = "root"
+    root.layout_absolute.SetInParent()
+    sg = root.layout_absolute.layout.children.add()
+    sg.id = "quip"
+    sg.rect.SetInParent()
+    sg.rect.x, sg.rect.y, sg.rect.w, sg.rect.h = 0, 0, 300, 120
+    sg.span_group.spans.add(text="original", text_color=0x00FF00)
+    return s.SerializeToString()
+
+
+def _sim_with_span_group(tmp_path):
+    from touchy_pad.sim.device import SimDevice
+    from touchy_pad.sim.fs import SimFs
+
+    fs = SimFs(tmp_path, "sim")
+    fs.save("F:host/s/default.pb", _span_group_screen_bytes())
+    return SimDevice(fs)
+
+
+def test_sim_text_override_on_span_group_reparses_markup(tmp_path):
+    dev = _sim_with_span_group(tmp_path)
+    _apply(dev, [build_property_override("quip", "text", "#A020F0 cocks head#I bet")])
+    spans = _widget(dev, "quip").span_group.spans
+    assert [(s.text, s.text_color if s.HasField("text_color") else None) for s in spans] == [
+        ("cocks head", 0xA020F0),
+        ("I bet", None),
+    ]
+
+
+def test_sim_span_group_text_override_removal_restores_pristine(tmp_path):
+    dev = _sim_with_span_group(tmp_path)
+    _apply(dev, [build_property_override("quip", "text", "replaced")])
+    assert [s.text for s in _widget(dev, "quip").span_group.spans] == ["replaced"]
+    _apply(dev, [build_property_override("quip", "text", None)])
+    spans = _widget(dev, "quip").span_group.spans
+    assert [s.text for s in spans] == ["original"]
+    assert spans[0].text_color == 0x00FF00
+
+
+def test_sim_text_override_still_rejects_other_kinds(caplog, tmp_path):
+    """A slider has no text; the unsupported-path warning must survive."""
+    from touchy_pad.sim.device import SimDevice
+    from touchy_pad.sim.fs import SimFs
+
+    s = _proto.Screen()
+    s.active.id = "root"
+    s.active.layout_absolute.SetInParent()
+    sl = s.active.layout_absolute.layout.children.add()
+    sl.id = "level"
+    sl.rect.SetInParent()
+    sl.slider.min, sl.slider.max, sl.slider.value = 0, 10, 5
+    fs = SimFs(tmp_path, "sim2")
+    fs.save("F:host/s/default.pb", s.SerializeToString())
+    dev = SimDevice(fs)
+    with caplog.at_level(logging.WARNING):
+        _apply(dev, [build_property_override("level", "text", "nope")])
+    assert any("only on button/label/span_group" in r.message for r in caplog.records)

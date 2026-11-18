@@ -5922,6 +5922,14 @@ dead code — a literal `#` in the text is swallowed, so hosts strip it.
 **Wire:** `Widget.Version` 28→29. No `ProtocolVersion` / `PreferencesFile.Version`
 change. Full stage notes: `docs/hardware/lightbar/design.md` → "stage LB17".
 
+> **Superseded in part by lb24:** `build_label` no longer calls
+> `lv_label_set_recolor()` except for the two *scrolling* long modes. LVGL's
+> in-string recolour parser loses its command state at a line start, which
+> corrupted any coloured run that crossed an automatic wrap; a `recolor` label is
+> now rendered as an LVGL **span group** with the markup parsed device-side (the
+> wire format, the DSL and the `text` override are unchanged). See Stage lb24
+> and `docs/plans/span-rich-text.md`.
+
 **Follow-up, same stage — the `text` override cap.** `SetPropertyCmd.string_value`
 was capped at 128 bytes in `proto/touchy.options`, so a scrolling `text` override
 maxed out at **127 characters**. A chatty host hit that immediately: voicebot's
@@ -6309,6 +6317,46 @@ only those never sees `llms.txt`. Plan: `docs/plans/rust-ai-consumer-docs.md`.
 -W clippy::missing_errors_doc` reports **zero** remaining sites; `cargo package`
 ships the examples. No wire change — `proto/*.proto` untouched and the
 checked-in bindings are unchanged.
+
+## Stage lb24: rich text via span groups (and `recolor` on top of them) — DONE
+
+**Status: implemented, hardware check pending.** A long-standing **LVGL** defect
+broke multi-colour wrapped labels: LVGL's label recolour parser keeps its command
+state *local to one draw / measure call* and never advances it when a new line
+starts or when the draw skips to its first visible line, so a `#RRGGBB …#` run
+that straddles an automatic wrap was measured at zero width for its closing `#`
+and the following word (the line overran the box) and drawn twice at the seam
+(overlapping glyphs). Same defect as LVGL #4599 / #8547. Reported by **voicebot**
+on a `jc4827w543`, whose default multiline LCD mode was unusable for
+multi-coloured replies. Plan + full analysis: `docs/plans/span-rich-text.md`.
+
+The fix has two halves, and neither requires a host change:
+
+* **`Label.recolor` keeps its exact wire format and API**, but the firmware no
+  longer calls `lv_label_set_recolor()`. `build_label()` now delegates to
+  `build_recolor_span_group()` (`firmware/main/widgets/widget_span.{h,cpp}`),
+  which builds an **LVGL spangroup** and parses the `#RRGGBB text#` markup into
+  spans device-side — the same parser a runtime `text` property override runs, so
+  the one-RPC-per-frame live path is unchanged. Text outside a run inherits the
+  widget's `Style.text_color`, exactly as before. Only the two **scrolling** long
+  modes still use the label path (a span group cannot marquee, and an unwrapped
+  scroll line never hit the bug).
+* **`Span` / `SpanGroup`** are new proto messages plus `Widget.kind.span_group
+  = 34` — LVGL's own supported rich-text path, now the *recommended* way to write
+  multi-colour text: real styled runs (per-run colour **and** font), `overflow`
+  (clip / ellipsis), `max_lines` and `text_align`, laid out with the same
+  placement rules as a label. Host DSL: `span()` / `span_group()`, with
+  `parse_recolor_markup()` (`touchy_pad/rich_text.py`) as the Python mirror of
+  the device parser (shared with the simulator).
+
+**`Widget.Version.CURRENT` 30 → 31**; `ProtocolVersion` (14) and
+`PreferencesFile.Version` (9) unchanged. `CONFIG_LV_USE_SPAN=y` is now stated
+explicitly in `firmware/sdkconfig.defaults` (LVGL already defaulted it on, so no
+size cost). Verified: `just build-proto` + `just rust-gen-proto` (committed), 324
+host tests, `just app-lint`, `just firmware-build` (44 % flash free), and an
+end-to-end simulator run of the new `span` page including a live markup override.
+On-hardware check of the wrap case is still to run (the plan's §10 acceptance
+case). Full stage notes: `docs/hardware/lightbar/design.md` → "stage lb24".
 
 # Old/Existing projects
 

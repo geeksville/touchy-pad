@@ -29,7 +29,7 @@ author screens, drive LCD or LED panels, stream live updates, bind gestures.
 - **Screens are protobuf, not XML/HTML.** Widgets are LVGL objects described by
   `proto/widgets.proto`. The device is layout-agnostic: it materialises whatever
   tree you send.
-- **Wire versions at HEAD:** `Widget.Version.CURRENT == 30`,
+- **Wire versions at HEAD:** `Widget.Version.CURRENT == 31`,
   `SysBoardInfoResponse.ProtocolVersion.CURRENT == 14`,
   `PreferencesFile.Version.CURRENT == 9`. The version lives on the **root
   `Widget`** of every screen/widget file (there is no `Screen.Version`); the
@@ -177,11 +177,11 @@ from touchy_pad.api import macros     # (macros is a submodule — import it exp
 | Area | Names |
 |---|---|
 | Layouts | `absolute()`, `flex(flow, gap)`, `row(gap)`, `col(gap)`, `grid(cols, rows=0, gap=0)`, `cell(w, col, row, col_span=1, row_span=1, *, grow_x, grow_y)`, `rect(x, y, w, h)`, `grow(w, x=, y=)` |
-| Widgets | `button(id, text, on_click, on_press, on_release, …)`, `label(id, text, font_size, text_align, long_mode, recolor, scroll_duration_ms, scroll_speed_px_s, …)`, `slider(id, min, max, value, on_change)`, `toggle(id, on, on_change)`, `checkbox(id, text, checked, on_change)`, `image(id, asset, scale, rotation)`, `image_button(id, asset, pressed_asset, on_click, …, scale, pressed_scale)`, `arc(id, min, max, value)`, `spacer(id)`, `widget_ref(path, *, id)`, `trackpad(id, …)`, `log_line(id)`, `fps(id)`, `force_render(id)` |
+| Widgets | `button(id, text, on_click, on_press, on_release, …)`, `label(id, text, font_size, text_align, long_mode, recolor, scroll_duration_ms, scroll_speed_px_s, …)`, **`span_group(id, spans, *, overflow, max_lines, text_align, rect, style)` + `span(text, color=None, font_size=None)`** (multi-colour text — the recommended way), `slider(id, min, max, value, on_change)`, `toggle(id, on, on_change)`, `checkbox(id, text, checked, on_change)`, `image(id, asset, scale, rotation)`, `image_button(id, asset, pressed_asset, on_click, …, scale, pressed_scale)`, `arc(id, min, max, value)`, `spacer(id)`, `widget_ref(path, *, id)`, `trackpad(id, …)`, `log_line(id)`, `fps(id)`, `force_render(id)` |
 | Styling | `style(bg_color, radius, border_w, pad, text_color, font_size, recolor, recolor_opa, transform_width, shadow_width, for_state, transition)` — colours are `0xRRGGBB` ints; `for_state` is an `LvState` bitmask (e.g. `STATE_PRESSED`). Stack several by passing a list. `transition(props, path, duration_ms, delay_ms)` animates a style change. |
 | Animations | `ripple_animation(...)` and `AnimPath` are re-exported; `animation(*anim_track(...), duration_ms, path, repeat_count, reverse, …)` and `anim_track(prop, start, end, *, start_inverted, end_inverted)` live in `touchy_pad.api.screens` (`prop` is a `StyleProp` member, e.g. `StyleProp.X`). Pass them via the widget factories' `animations=` argument. |
 | Actions | `action(...)`, `host_action(code=None, *, on_event=callable)`, `macro_action(steps)`, `device_action(...)`, `change_widget_ref_action(id, path)`, `next_widget_action(id, dir)` / `prev_widget_action(id, dir)`, `set_image_button_slot_action(id, pressed, path)` |
-| Enums / consts | `AnimPath`, `LongMode`, `LvState`, `StyleProp`, `TextAlign`, `SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S` |
+| Enums / consts | `AnimPath`, `LongMode`, `LvState`, `StyleProp`, `TextAlign`, `SpanOverflow`, `SCROLL_SPEED_MIN_PX_S` / `SCROLL_SPEED_MAX_PX_S`, `parse_recolor_markup(text) -> list[Span]` |
 | Lifecycle | `touchy_open`, `touchy_get_pad_ids`, `Touchy`, `TouchyClient`, `TouchyError`, `IncompatibleFirmwareError`, `ImageCache`, `Color`, `Point`, `build_property_override`, `protobuf` (raw generated classes) |
 | Macros | `macros.key_tap/key_down/key_up/type_text`, `macros.mouse_click/mouse_move/scroll_move/zoom_move/mouse_button_down/mouse_button_up`, `macros.consumer_key(VOLUME_UP\|VOLUME_DOWN\|MUTE\|PLAY_PAUSE)`, `macros.set_delay/delay`, `hid_keys.*` (import `macros` explicitly — it is not part of `import *`) |
 | Upload helpers | `Screen(name, layout=, widgets=, *, top=, sys=, bottom=)`, `Layer(layout=, widgets=)` (use `Layer` when you want a `widget_ref`-style body without a whole screen), `build_default_screen()`, `build_demo_screen()`, `build_setup_screen_touchless()` |
@@ -582,8 +582,15 @@ touchy simulator [--headless] [--port N]
 - **The root `Widget` carries the version** (there is no `Screen.Version`). The
   DSL stamps it; for raw protobuf set
   `msg.active.version = protobuf.Widget.Version.CURRENT`.
-- **`#` is the LVGL recolor delimiter** and this LVGL's `##` escape is dead code:
-  with `recolor=True` a literal `#` in the text is swallowed — strip it host-side.
+- **Multi-colour text: prefer `span_group`** (`span(text, color=…)` per run).
+  `label(recolor=True)` still works and is fixed as of stage lb24 (the device
+  renders its `#RRGGBB text#` markup as a span group instead of through LVGL's
+  label recolour parser, which corrupted any run that crossed a line break) — but
+  only the two *scrolling* long modes keep the label path, because a span group
+  cannot marquee. A `text` override on either re-parses the markup, one RPC.
+- **`#` is the markup delimiter** and this LVGL's `##` escape is dead code: with
+  `recolor=True` a literal `#` in the text is swallowed — strip it host-side.
+  Span-group runs are literal text, so no escaping is needed there.
 - **Scrolling labels only animate when their box is fixed and narrower than the
   text.** Default scroll speed is 40 px/s; set `scroll_speed_px_s` (10…10000) or
   `scroll_duration_ms` (mutually exclusive), or re-time live with
@@ -614,6 +621,7 @@ touchy simulator [--headless] [--port N]
 |---|---|
 | **Status / info panel** | `Screen` + `grid`/`col` + `label`; refresh with `set_properties([...])` from a loop (`build_property_override`), which also keeps the backlight awake. |
 | **StreamDeck-style key grid** | `grid` + `image_button` per key (stable ids) + `ImageCache` + `pad.set_image_button_slot(id, pressed, path)`; `on_press`/`on_release` → `host_action` or `macro_action`. |
+| **Multi-colour / chat-style text** | `span_group(id, [span(text, color=…), …], overflow=SpanOverflow.SPAN_OVERFLOW_ELLIPSIS, max_lines=N)` in a fixed-width box; update with one `build_property_override(id, "text", "#RRGGBB run# rest")` per frame. Use `label(recolor=True)` instead only when it must *scroll*. |
 | **Remote signage / ticker** | `label(long_mode=LongMode.LONG_MODE_SCROLL_CIRCULAR, recolor=True, scroll_speed_px_s=…)` plus a host loop pushing `text` overrides; or the HTTP/JSON endpoint from any language. |
 | **LED art / hanging column** | LED board + `touchy pref from-template led-96x8-chain`, `absolute()` + `rect`, `anim_track(..., end_inverted=True)` for size-independent motion, `ImageSource`/`set_properties` for frames. |
 | **Macro pad / touchpad** | `trackpad(...)` with gesture `Action` lists + `macros.*`; works with no host app attached. |

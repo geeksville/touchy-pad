@@ -371,6 +371,26 @@ pub struct Label {
     pub scroll_speed_px_s: ::core::option::Option<u32>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Span {
+    #[prost(string, tag = "1")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag = "2")]
+    pub text_color: ::core::option::Option<u32>,
+    #[prost(int32, optional, tag = "3")]
+    pub font_size: ::core::option::Option<i32>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpanGroup {
+    #[prost(message, repeated, tag = "1")]
+    pub spans: ::prost::alloc::vec::Vec<Span>,
+    #[prost(enumeration = "SpanOverflow", tag = "2")]
+    pub overflow: i32,
+    #[prost(int32, tag = "3")]
+    pub max_lines: i32,
+    #[prost(enumeration = "TextAlign", tag = "4")]
+    pub text_align: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Slider {
     #[prost(int32, tag = "1")]
     pub min: i32,
@@ -632,7 +652,7 @@ pub struct Widget {
     pub placement: ::core::option::Option<widget::Placement>,
     #[prost(
         oneof = "widget::Kind",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 30, 31, 32, 33"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 30, 31, 32, 33, 34"
     )]
     pub kind: ::core::option::Option<widget::Kind>,
 }
@@ -652,7 +672,7 @@ pub mod widget {
     #[repr(i32)]
     pub enum Version {
         Unknown = 0,
-        Current = 30,
+        Current = 31,
     }
     impl Version {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -717,6 +737,8 @@ pub mod widget {
         LayoutGrid(super::LayoutGrid),
         #[prost(message, tag = "33")]
         WidgetRef(super::WidgetRef),
+        #[prost(message, tag = "34")]
+        SpanGroup(super::SpanGroup),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1209,6 +1231,32 @@ impl LongMode {
             "LONG_MODE_SCROLL" => Some(Self::Scroll),
             "LONG_MODE_SCROLL_CIRCULAR" => Some(Self::ScrollCircular),
             "LONG_MODE_CLIP" => Some(Self::Clip),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SpanOverflow {
+    Clip = 0,
+    Ellipsis = 1,
+}
+impl SpanOverflow {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Clip => "SPAN_OVERFLOW_CLIP",
+            Self::Ellipsis => "SPAN_OVERFLOW_ELLIPSIS",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "SPAN_OVERFLOW_CLIP" => Some(Self::Clip),
+            "SPAN_OVERFLOW_ELLIPSIS" => Some(Self::Ellipsis),
             _ => None,
         }
     }

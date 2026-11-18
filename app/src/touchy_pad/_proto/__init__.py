@@ -70,6 +70,9 @@ from .widgets_pb2 import (  # noqa: F401  (re-exported)
     Screen,
     Slider,
     Spacer,
+    Span,
+    SpanGroup,
+    SpanOverflow,
     Style,
     StyleProp,
     Switch,
@@ -96,6 +99,11 @@ LOG_PRIORITY_DEBUG = LogPriority.Value("DEBUG")
 LOG_PRIORITY_INFO = LogPriority.Value("INFO")
 LOG_PRIORITY_WARN = LogPriority.Value("WARN")
 LOG_PRIORITY_ERROR = LogPriority.Value("ERROR")
+
+# Flat aliases for the ``SpanOverflow`` enum (stage lb24 — rich text) so callers
+# can write ``_proto.SPAN_OVERFLOW_ELLIPSIS`` without poking at the descriptor.
+SPAN_OVERFLOW_CLIP = SpanOverflow.Value("SPAN_OVERFLOW_CLIP")
+SPAN_OVERFLOW_ELLIPSIS = SpanOverflow.Value("SPAN_OVERFLOW_ELLIPSIS")
 
 # Flat aliases for the ``TextAlign`` enum so callers can write
 # ``_proto.TEXT_ALIGN_CENTER`` without poking into the descriptor.

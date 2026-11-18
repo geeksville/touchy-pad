@@ -2170,3 +2170,172 @@ truncate (voicebot does, to 511). Not a wire-schema change, so no
 * Escaping a literal `#` — LVGL's `##` escape is dead code in this version, so
   hosts strip `#` instead (see `voicebot`).
 * Recolour on other text widgets (button / checkbox) — labels only for now.
+
+## stage lb24 — rich text via span groups (`recolor` reimplemented on them)
+
+**Status: implemented (firmware build + host suite + sim validated); the
+on-hardware wrap check is still to run.** Plan and full defect analysis:
+`docs/plans/span-rich-text.md`; user-facing summary: `docs/design.md` → Stage
+lb24.
+
+### Background — the LVGL defect this works around
+
+Reported by **voicebot** against a `jc4827w543` (480×272, `Widget.Version` 30,
+LVGL 9.5.0). A `label` with `recolor = true` and a wrapping long mode rendered the
+line at a colour-run boundary twice: a violet copy offset up/left and a white copy
+on the baseline, with the run's tail colliding with it and the line overrunning
+the box.
+
+Root cause (LVGL, not touchy-pad — `build_label` only called
+`lv_label_set_recolor()`):
+
+* **Measurement** — `lv_text_get_next_line()` (`src/misc/lv_text.c`) creates
+  `lv_text_cmd_state_t cmd_state = LV_TEXT_CMD_STATE_WAIT;` **per call** while its
+  caller passes `&txt[line_start]`. A line beginning inside a run therefore starts
+  in `WAIT`, so the **closing** `#` is read as an opener: `#`, the next word and
+  the following space all measure at **zero width**, and word wrap fits an extra
+  word onto the line.
+* **Drawing** — `lv_draw_label()` declares `recolor_cmd_state` /
+  `is_first_space_after_cmd` *after* its "skip to the first visible line" loop, so
+  a pass starting at line > 0 (`LV_LABEL_LONG_TXT_HINT` fast path, clipped/tiled
+  draw) re-parses from mid-run: `head` draws in the base colour, `I ` is dropped,
+  the rest of the line shifts — and composited with a line-0 pass you get two
+  offset copies.
+
+`lv_text_get_width()` has the same reset, so centre/right aligned recoloured
+wrapped labels were hit too. This is LVGL **#4599** (v8) / **#8547** (v9.3, closed
+stale, fix PR unmerged). `recolor` was removed in early v9 precisely because it
+was "too limited … can be replaced by `lv_span`".
+
+### What landed
+
+1. **Proto** (`proto/widgets.proto`, `proto/widgets.options`):
+   * `Span { string text; optional uint32 text_color; optional int32 font_size }`
+     — a **literal** run (no markup inside it: that is the point).
+   * `enum SpanOverflow { SPAN_OVERFLOW_CLIP, SPAN_OVERFLOW_ELLIPSIS }`.
+   * `SpanGroup { repeated Span spans; SpanOverflow overflow; int32 max_lines;
+     TextAlign text_align }` — **no `mode` field**: LVGL deprecated
+     `lv_spangroup_set_mode()` in 9.5 (the mode follows the object's size, which
+     `Widget.placement` already controls).
+   * `Widget.kind.span_group = 34` (33 was the highest used) and
+     **`Widget.Version.CURRENT` 30 → 31**.
+   * nanopb: `Span.text max_size:128` (a *run*, not a paragraph — long text rides
+     the 512-byte `SetPropertyCmd.string_value` override) and
+     `SpanGroup.spans type:FT_POINTER`.
+2. **Firmware** — the new `firmware/main/widgets/widget_span.{h,cpp}` owns both
+   paths:
+   * `parse_markup()` — one pass, no regex, no buffer: an opener is `#` + exactly
+     six hex digits + a **consumed space**; a closer is the next `#`; an unmatched
+     `#` is literal; an empty run contributes nothing; an unterminated run keeps
+     its colour to the end. (LVGL's own semantics, minus the state bug.)
+   * `apply_specs()` — clears the group's spans first (`lv_spangroup_get_child` +
+     `lv_spangroup_delete_span`; otherwise every update would append a paragraph),
+     then one `lv_span_set_text()` + per-span `lv_style_set_text_color` /
+     `lv_style_set_text_font` on `lv_span_get_style(span)`, then one
+     `lv_spangroup_refresh()` (`lv_span_set_text` does not invalidate).
+   * `build_span_group()` — the explicit kind. `build_recolor_span_group()` — the
+     compat path: the label's markup text, `text_align`, and overflow from
+     `long_mode` (`DOTS` → ellipsis, `WRAP`/`CLIP` → clip; the object's own height
+     bounds the text exactly as the label's box did). SCROLL / SCROLL_CIRCULAR
+     return `nullptr` so `build_label()` keeps its label.
+   * `span_group_apply_text_override()` — the live path (see below).
+   * `font_for_size()` moved **out of** `widget_styles.cpp`'s anonymous namespace
+     (exported via `widget_styles.h`) so a per-span font uses the same Montserrat
+     mapping `Style.font_size` does.
+   * Everything is `#if LV_USE_SPAN`-guarded with a documented fallback, and
+     `firmware/sdkconfig.defaults` now states `CONFIG_LV_USE_SPAN=y` explicitly
+     (the LVGL Kconfig already defaulted it on, so there is no size cost).
+3. **The live path (the part that had to keep working).** A spangroup has **no
+   LVGL `text` property** (`lv_span_properties[]` exposes only
+   align/overflow/indent/mode/max_lines), so `lv_obj_set_property(obj, "text", …)`
+   could not reach it — which would have broken the one API voicebot depends on.
+   Instead the object carries a marker (a heap `SpanGroupCtx` with a magic tag,
+   stored via `lv_obj_set_user_data` and freed from `LV_EVENT_DELETE`, the
+   Stage-lb19 pattern), and `widgets/widget_property.cpp::apply_to_obj()` asks
+   `span_group_apply_text_override()` **first**: for one of our groups a string
+   `text` write re-parses the markup into the span list. Returning `true` means
+   the Stage-lb16 immediate-repaint path (invalidate + ready the refresh timer +
+   wake the LVGL task) applies unchanged. The ctx also remembers the last markup,
+   so a repeated identical override skips the span churn. Override *removal*
+   behaves exactly as it does for a label (`set_one_locked()` just drops the
+   stored override; the on-screen text returns on the next rebuild).
+4. **Host library**: `span()` / `span_group()` in `api/screens.py`,
+   `SpanOverflow` (re-exported proto enum), `parse_recolor_markup()` in the new
+   `touchy_pad/rich_text.py` (the Python mirror of the device parser, at the
+   package root so `sim/` can import it without an import cycle), and re-exports
+   from `touchy_pad.api` + `_proto` (`Span`, `SpanGroup`, `SpanOverflow`,
+   `SPAN_OVERFLOW_*`). `span(color=None)` means *inherit* — `None`, not `0`, so an
+   explicit black run stays expressible. `label()` is untouched.
+5. **Simulator**: `span_group` renders as Qt rich text (`spans_to_html`), and
+   `_recolor_to_html` was **reimplemented on the shared `parse_recolor_markup()`**
+   (it used to be an independent regex), so the sim's label preview and the device
+   agree by construction. `sim/device.py` accepts a `text` override on a span
+   group and re-parses it, mirroring the firmware (and, unlike the device, is
+   lossless on removal because it re-materialises from pristine bytes).
+6. **Demo / regression page** — `touchy_pad/pages/span.py`, now part of
+   `build_user_pages()` and uploaded by `touchy screen demo`: the reported quip in
+   a `LONG_MODE_DOTS` recolour label (the eyeball-on-hardware case), an explicit
+   span group with two fonts and `max_lines=2` + ellipsis, and a plain label for
+   comparison. Because `span` sorts first, the `F:host/uscr/` page cycle is now
+   **span → test → trackpad** (the tests that pinned the old order were updated
+   deliberately).
+
+### Verification
+
+* `just build-proto` (+ `rust-gen-proto`, committed) — `Widget.Version` 31 in
+  C/Python/Rust; `Span`/`SpanGroup`/`SpanOverflow` present.
+* `just app-test` — **324 passed, 2 skipped**, including the new
+  `test_span_markup.py` (the shared parser table: the voicebot string, adjacent
+  runs, unmatched `#`, empty / unterminated runs, a seven-digit "opener",
+  lower-case hex), the `span_group` round-trip + validation, a `recolor`
+  wire-format regression test, the sim renderer, and the sim `text`-override path.
+* `just app-lint` clean. `just firmware-build` green for `jc4827w543`
+  (`widget_span.cpp` compiled; binary 0x1af930, 44 % flash free).
+* End-to-end against the in-process simulator: the `span` page loads, a single
+  `SetPropertiesCmd` carrying `#A020F0 cocks head#I bet` re-parses into
+  `[("cocks head", 0xA020F0), ("I bet", inherit)]`, and the Qt renderer produces
+  the expected rich text for both the label and the group.
+* **Still to run:** the on-hardware acceptance case (plan §10) — push
+  `pages/span.py` to a `jc4827w543` running the new firmware and confirm the
+  `cocks head` run is one continuous violet run with no overrun or double-drawn
+  glyphs, then loop `text` overrides at ~2 Hz watching `free_heap_bytes` for
+  growth. Also cross-check `LONG_MODE_DOTS` / `CLIP` against the old label
+  behaviour: if the ellipsis line count differs, tune `overflow` / `max_lines`
+  (plan §11).
+
+### Deviations from the plan
+
+* The plan sketched a `SpanMode` field mirroring `lv_span_mode_t`; LVGL 9.5
+  **deprecates** `lv_spangroup_set_mode()`, so the enum was dropped and the mode
+  is whatever the object's size says (documented in the proto).
+* The plan mentioned adding an entry to `pages/test.py`; instead the new page is
+  registered in `build_user_pages()` (a 4×7 showcase grid has no room, and the
+  page-cycle tests needed a deliberate update either way).
+* `span(color=...)` uses `None` for "inherit" rather than the planned `0`, so
+  `0x000000` remains usable as an explicit colour.
+
+### Deferred / out of scope
+
+* **Scrolling span groups.** A spangroup cannot marquee, so `recolor` +
+  `SCROLL` / `SCROLL_CIRCULAR` stays on LVGL's own parser (safe there: a scrolling
+  label lays out one unwrapped line). A coloured *ticker* therefore still means
+  `label(recolor=True, long_mode=SCROLL*)`.
+* **Escaping `#` in our own parser.** Now that the device owns the parser we
+  *could* accept `##` / `\#`, but that would diverge from LVGL's semantics and
+  needs the sim/DSL mirror to match — its own stage if ever wanted.
+* **A `text` field on `SpanGroup`.** Rejected deliberately: static content is
+  explicit `spans`, live content is the markup `text` override. One concept each,
+  no precedence rule.
+* **Per-span underline / opacity / letter-space**, and rich text on
+  button/checkbox — not exposed.
+* **A `span_group()` builder for the Rust crate / `touchy-demo`** — the crate can
+  already send the proto and set the `text` override; no Rust code changed.
+* **Label-only property overrides on a `recolor` label.** Because such a label is
+  now a span group, the LVGL properties a label owns but a spangroup does not
+  (`long_mode`, `text_selection_start` / `_end`) no longer resolve on it — a
+  `set_properties` entry naming them logs "unknown property" and fails, where it
+  used to work. In practice only `long_mode` is reachable from the DSL, and
+  flipping a wrapping label to `SCROLL` *at runtime* was never a supported path
+  (the scroll-speed machinery is applied at build time); `text` — the property
+  every host actually uses — is routed to the parser and keeps working. Documented
+  in `docs/python-api.md`; revisit only if a host reports it.

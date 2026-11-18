@@ -58,10 +58,51 @@ with touchy_open() as pad:
 `Screen.to_proto()` is also exposed for advanced users who want the raw
 protobuf message before upload.
 
-### Inline colour on a label (stage LB17)
+### Rich text with spans (stage LB24) — the recommended way
 
-`label(..., recolor=True)` switches on LVGL's inline recolour **markup**, so a
-single string can carry several colours:
+To put **several colours in one text layout**, use a span group: a paragraph made
+of styled *runs*.
+
+```python
+from touchy_pad.api import SpanOverflow, TextAlign, span, span_group
+
+s += span_group(
+    "quip",
+    [
+        span("cocks head", color=0xA020F0, font_size=30),
+        span("I bet he's in a cave", color=0xFFFFFF),
+    ],
+    overflow=SpanOverflow.SPAN_OVERFLOW_ELLIPSIS,   # … on the last line that fits
+    max_lines=3,                                    # 0 = unlimited
+    text_align=TextAlign.LEFT,
+    rect=rect(x=8, y=8, w=464, h=140),
+)
+```
+
+`span(text, color=None, font_size=None)` is one run; `text` is **literal** (no
+markup is interpreted inside it), `color=None` inherits the group's
+`text_color` style, `font_size=None` the group's font. A bare `str` in
+`spans=[...]` is shorthand for an uncoloured run. Size comes from the usual
+placement (`rect` / a flex or grid parent): give it a fixed width to wrap, leave
+the height unset to grow with the text.
+
+**Live updates stay one RPC per frame.** A `text` property override whose value is
+recolour markup is re-parsed into the span list on the device:
+
+```python
+from touchy_pad.api import build_property_override
+
+pad.set_properties([build_property_override("quip", "text", "#A020F0 cocks head#I bet…")])
+```
+
+(If you'd rather author explicit spans host-side, `parse_recolor_markup(text)`
+returns a `list[Span]` from that same markup.) A span group **cannot scroll** —
+for a coloured *ticker*, keep using `label(..., recolor=True,
+long_mode=LONG_MODE_SCROLL*)` below.
+
+### Inline colour on a label (stage LB17) — compatible spelling
+
+`label(..., recolor=True)` still means "this string carries recolour markup":
 
 ```python
 s += label("marquee", text="#FF0000 Danger!# watch out", recolor=True,
@@ -69,15 +110,19 @@ s += label("marquee", text="#FF0000 Danger!# watch out", recolor=True,
 ```
 
 A `#RRGGBB text#` run is drawn in that colour; anything *outside* a run uses the
-label's `text_color` style (white by default) — i.e. plain LVGL default
-behaviour, with no state to carry between updates. It is what lets a host stream a
-multi-coloured scrolling message (see `voicebot`, now developed out-of-tree), and
-because the runtime `text` property override re-parses the markup, a new frame is
-still one property write.
+label's `text_color` style (white by default). The wire format and the API are
+unchanged since LB17 — but **since LB24 the device renders this markup as a span
+group** rather than through LVGL's label recolour parser, which loses its command
+state at a line start: a run that straddled an automatic wrap used to lose its
+colour, swallow the next word, overrun the box and draw the seam twice. That is
+fixed for every existing host with no code change (see
+[`docs/plans/span-rich-text.md`](plans/span-rich-text.md)). The one exception is
+the two scrolling long modes, which keep the label path (a span group cannot
+marquee, and an unwrapped scrolling line never hit the bug).
 
 Off by default (the markup then renders literally). Note `#` is the command
-delimiter: this LVGL version's `##` escape is dead code, so a literal `#` in the
-text is swallowed rather than shown — strip it host-side if it matters.
+delimiter in *this* syntax: LVGL's `##` escape is dead code, so a literal `#` is
+swallowed rather than shown — strip it host-side if it matters.
 
 ### Scrolling speed (stage LB19)
 
@@ -366,6 +411,20 @@ awake without any extra wake calls (stage lb15).
 
 The CLI keeps a string-only shortcut:
 `touchy property set WIDGET_ID PROPERTY VALUE` (sent as a one-entry batch).
+
+A `text` override targets a **button**, a **label**, or a rich-text span group
+(stage LB24). On a span group (and on a `recolor` label, which the device builds
+as one) the string is recolour **markup** and is re-parsed into the group's runs —
+still one RPC per frame. Removing an override (`value=None`) drops it from the
+device's sticky table; the widget's original text reappears the next time it is
+(re)built — a screen load or a page swap — not instantly. That is unchanged from
+the label behaviour.
+
+> One consequence of that: because a `recolor` label is rendered as a span group,
+> the *label-only* properties (`long_mode`, `text_selection_start` / `_end`) no
+> longer resolve on it — a `set_properties` entry naming them fails with
+> "unknown property". `text` is routed to the markup parser and works as always.
+> If you need a scrolling label, set `long_mode` in the screen itself.
 
 The **simulator** honours the documented subset `x` / `y` / `w` / `h`
 (geometry, via the widget's rect), `bg_color` (style) and `text`

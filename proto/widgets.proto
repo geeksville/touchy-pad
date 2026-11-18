@@ -657,6 +657,55 @@ message Label {
     optional uint32 scroll_speed_px_s  = 7;
 }
 
+// Stage lb24 — rich text: a paragraph built from independently styled runs.
+//
+// This is LVGL's own supported rich-text path (lv_spangroup / lv_span) and the
+// *recommended* way to put several colours in one text layout. The alternative,
+// `Label.recolor` + `#RRGGBB text#` markup, keeps its wire format but is now
+// rendered by the firmware as an implicit span group as well, because LVGL's
+// in-string recolour parser loses its state across wrapped lines and mis-draws a
+// run that straddles a break (see docs/plans/span-rich-text.md).
+//
+// One styled run inside a `SpanGroup`. NOTE: `text` is LITERAL — a span carries
+// its own style, so no `#RRGGBB …#` markup is parsed inside it. That is the
+// whole point (no in-string command state to lose across lines).
+message Span {
+    string text = 1;
+    // 0xRRGGBB. Unset = inherit the group widget's `Style.text_color`.
+    optional uint32 text_color = 2;
+    // Font size in pixels; same names / mapping as `Style.font_size` (the
+    // nearest lv_font_montserrat_<N> compiled in). Unset/0 = the group's font.
+    optional int32 font_size = 3;
+}
+
+// What a `SpanGroup` does when the text does not fit its box.
+enum SpanOverflow {
+    SPAN_OVERFLOW_CLIP     = 0;  // LVGL default
+    SPAN_OVERFLOW_ELLIPSIS = 1;  // "…" at the end of the last line that fits
+}
+
+// A multi-colour / multi-font paragraph, laid out as one wrapping text block.
+//
+// There is deliberately NO `mode` field: LVGL deprecated
+// `lv_spangroup_set_mode()` in 9.5 — the mode is implied by the object's size,
+// so a content-sized width expands and a fixed width wraps. Size comes from the
+// shared `Widget` placement (`rect` / `cell` / `grow_*`), exactly as it does for
+// a `Label`.
+//
+// Live updates use the normal property-override path with a markup string:
+// `set_properties([build_property_override(id, "text", "#RRGGBB one# two")])`
+// re-parses the markup into this group's spans on the device — one RPC per
+// frame, and no per-span `span0_text` chatter.
+message SpanGroup {
+    repeated Span spans = 1;  // see widgets.options (FT_POINTER)
+    SpanOverflow overflow = 2;
+    // Maximum number of lines to draw. 0 or negative = unlimited (LVGL wants
+    // `< 0` for unlimited, so the firmware translates 0 -> -1).
+    int32 max_lines = 3;
+    // Horizontal alignment of the text block; AUTO = LVGL default.
+    TextAlign text_align = 4;
+}
+
 message Slider {
     int32  min                = 1;
     int32  max                = 2;
@@ -1025,7 +1074,8 @@ message Widget {
         // LB11: AnimTrack start/end_inverted.
         // LB17: Label.recolor (inline recolour markup).
         // LB19: Label.scroll_duration_ms / scroll_speed_px_s.
-        CURRENT         = 30;
+        // LB24: SpanGroup; Label.recolor rendered via span groups.
+        CURRENT         = 31;
     }
     Version version = 6;
 
@@ -1091,6 +1141,9 @@ message Widget {
         // separate `.pb` file on the device filesystem. See
         // `WidgetRef` above.
         WidgetRef widget_ref = 33;
+
+        // Stage lb24 — rich text (one wrapping block of styled runs).
+        SpanGroup span_group = 34;
     }
 }
 

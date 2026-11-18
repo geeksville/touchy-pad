@@ -116,6 +116,68 @@ in-flight reply. Rust got the same flush-and-retry in
 `app/tests/test_client.py` (`*_stale_*`) and `app/tests/test_api.py`
 (`test_touchy_open_*board_info*`).
 
+## Upstream LVGL — a label recolour run that crosses a wrapped line (worked around in stage lb24)
+
+**Symptom (reported by `voicebot`, 2026-11, `jc4827w543`, LVGL 9.5.0):** a `label`
+with `recolor = true` and a wrapping long mode (`WRAP` / `DOTS`) mis-renders the
+line at a colour-run boundary when an automatic line break falls *inside* a
+`#RRGGBB …#` run. The continuation line loses the run's colour, the **closing**
+`#` is re-read as an *opening* command, the next word is swallowed as the colour
+parameter, the line overruns the box by a word, and the seam glyphs are drawn
+twice — a violet copy offset up/left plus a base-coloured copy at the baseline,
+so the words collide. Text *outside* the run and lines that begin at a valid
+opener are unaffected, which is why it took a while to spot.
+
+**Root cause (LVGL, not touchy-pad):** the parser state is local to one
+call/pass and is never advanced across them.
+
+* `lv_text_get_next_line()` (`src/misc/lv_text.c`) creates
+  `lv_text_cmd_state_t cmd_state = LV_TEXT_CMD_STATE_WAIT;` **per call**, while
+  its caller passes `&txt[line_start]`. A line starting inside a run therefore
+  starts in `WAIT`, so `lv_text_is_cmd()` treats the closing `#` as an opener:
+  `#`, the next word and the following space all measure at **zero width** — and
+  word wrap is all-or-nothing, so an extra word fits on the line.
+* `lv_draw_label()` (`src/draw/lv_draw_label.c`) declares `recolor_cmd_state` /
+  `is_first_space_after_cmd` *after* its "skip to the first visible line" loop, so
+  any pass that starts at line > 0 (the `LV_LABEL_LONG_TXT_HINT` fast path a tall
+  label takes, or a clipped/tiled draw) re-parses from mid-run: the seam word draws
+  in the base colour, one word is dropped, the rest of the line shifts — and
+  composited with a pass that started at line 0 you get the two offset copies.
+* `lv_text_get_width()` has the same per-call reset, so **centre/right aligned**
+  recoloured wrapped labels are affected too.
+
+**Upstream:** the same long-standing defect as
+[#4599](https://github.com/lvgl/lvgl/issues/4599) (v8) and
+[#8547](https://github.com/lvgl/lvgl/issues/8547) (v9.3 — closed stale, fix PR
+unmerged). `recolor` was even removed in early v9 on the grounds that it was "too
+limited … can be replaced by `lv_span`", and `lv_span`/`lv_spangroup` remains
+LVGL's supported rich-text path.
+
+**Workaround (touchy-pad, stage lb24 — no upstream patch):** the firmware stopped
+using LVGL's parser for wrapping labels. `build_label()` now delegates a
+`recolor` label to `build_recolor_span_group()`
+(`firmware/main/widgets/widget_span.{h,cpp}`), which builds an **LVGL spangroup**
+and parses the very same `#RRGGBB text#` string into spans device-side — no
+in-string command state to carry, so the defect cannot occur. The wire format,
+the `label(recolor=True)` API and the runtime `text` override are unchanged, so
+existing hosts (voicebot included) were fixed by a firmware update alone. New
+code should prefer the explicit `span_group()` API. The two **scrolling** long
+modes still use LVGL's parser deliberately: a span group cannot marquee, and a
+scrolling label lays its text out as a single unwrapped line, where the state is
+never split.
+
+**A fix worth filing upstream:** carry the parser state across lines and draw
+passes — have `lv_text_get_next_line()` / `lv_text_get_next_word()` take the
+caller's `cmd_state` (or re-derive it from `txt[0..line_start)`); initialise
+`recolor_cmd_state` in `lv_draw_label()` *before* the first-visible-line skip and
+feed every skipped line through `lv_text_is_cmd()`; same for
+`lv_text_get_width()`. Reference the closed-stale #8547 rather than opening a new
+issue blind.
+
+Full analysis, the minimal PC-simulator repro, the rejected alternatives and the
+migration notes: `docs/plans/span-rich-text.md`;
+`docs/hardware/lightbar/design.md` → "stage lb24".
+
 ## Stage 59 — Animated object leaves draw artifacts on LVGL slider's inactive track
 
 **Symptom:** When the Stage-59 `reddot` spacer animates across the "test"

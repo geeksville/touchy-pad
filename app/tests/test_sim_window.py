@@ -83,7 +83,8 @@ def test_next_button_changes_widget_ref(qapp, provisioned_fs) -> None:
     Stage 57 — the demo now uses a single screen + a widget_ref page
     slot. Pressing Next must rebind that ref in-RAM (no screen change).
     Initial path is ``F:host/uscr/trackpad.pb``; the sorted directory is
-    ``[test, trackpad]`` so NEXT wraps trackpad → test.
+    ``[span, test, trackpad]`` (stage lb24 added ``span``) so NEXT wraps
+    trackpad → span.
     """
     dev = SimDevice(provisioned_fs)
     win = SimWindow(dev, size=(480, 300))
@@ -94,7 +95,7 @@ def test_next_button_changes_widget_ref(qapp, provisioned_fs) -> None:
     qapp.processEvents()
 
     assert dev.active_screen_path == "F:host/s/default.pb"
-    assert win._widget_ref_overrides.get("page") == "F:host/uscr/test.pb"
+    assert win._widget_ref_overrides.get("page") == "F:host/uscr/span.pb"
 
 
 def test_host_action_pushes_event(qapp, provisioned_fs) -> None:
@@ -103,10 +104,17 @@ def test_host_action_pushes_event(qapp, provisioned_fs) -> None:
     win = SimWindow(dev, size=(480, 300))
     qapp.processEvents()
 
-    # Hop to the "test" widget page which has the host-action widgets.
+    # Hop to the "test" widget page which has the host-action widgets. The
+    # sorted page list is [span, test, trackpad] since stage lb24, so the first
+    # `Next >` lands on `span` and the second on `test`.
     nxt = next(b for b in win.findChildren(QPushButton) if "Next" in b.text())
     nxt.click()
     qapp.processEvents()
+    nxt = next(b for b in win.findChildren(QPushButton) if "Next" in b.text())
+    nxt.click()
+    qapp.processEvents()
+    assert dev.active_screen_path == "F:host/s/default.pb"
+    assert win._widget_ref_overrides.get("page") == "F:host/uscr/test.pb"
 
     ping = next(b for b in win.findChildren(QPushButton) if "Ping" in b.text())
     ping.click()

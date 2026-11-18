@@ -16,6 +16,10 @@
 # ----- fixed-size strings (max bytes, NUL terminator included) -----
 touchy.Button.text                     max_size:64
 touchy.Label.text                      max_size:128
+# Stage lb24 — one *run* of rich text. Matches Label.text (a span is a run, not
+# a whole paragraph); the long multi-colour string rides the 512-byte
+# SetPropertyCmd.string_value markup override instead.
+touchy.Span.text                       max_size:128
 touchy.Checkbox.text                   max_size:64
 touchy.Image.path                      max_size:96
 touchy.Widget.id                       max_size:32
@@ -54,3 +58,5 @@ touchy.ActionMacro.steps               type:FT_POINTER
 touchy.Transition.props                type:FT_POINTER
 touchy.Widget.animations               type:FT_POINTER
 touchy.Animation.tracks                type:FT_POINTER
+# Stage lb24 — rich-text runs (one Span struct per run, heap-allocated array).
+touchy.SpanGroup.spans                 type:FT_POINTER

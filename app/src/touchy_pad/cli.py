@@ -1123,11 +1123,13 @@ def screens_demo(ctx: click.Context, as_json: bool) -> None:
 
     Runs ``touchy init`` first (writing ``F:host/s/default.pb`` plus the
     baseline ``F:host/uscr/trackpad.pb``), then adds the widget-showcase
-    ``test`` page into ``F:host/uscr/`` and the 16x16 smiley image asset.
+    ``test`` page and the stage-lb24 rich-text ``span`` page into
+    ``F:host/uscr/`` and the 16x16 smiley image asset.
 
     The default chrome's persistent ``[< Prev | Next >]`` row pages its
-    body ``widget_ref`` through ``F:host/uscr/``; flip to the ``test``
-    page on-device with ``Next >``.
+    body ``widget_ref`` through ``F:host/uscr/``; flip between the pages
+    on-device with ``Next >`` (sorted: ``span`` → ``test`` →
+    ``trackpad``).
 
     Touch-less boards (LED matrices) get the self-contained animated setup
     screen instead, which has no page ``widget_ref`` and no navigation
@@ -1172,11 +1174,14 @@ def screens_demo(ctx: click.Context, as_json: bool) -> None:
         # Baseline: default chrome + trackpad page (and load default).
         touchless = _do_screen_init(pad)
 
-        # Demo extras: the smiley asset and the showcase `test` page.
+        # Demo extras: the smiley asset, the showcase `test` page and the
+        # stage-lb24 rich-text `span` page.
         pad.file_save("F:host/images/smiley.png", smiley)
         logger.info("sent F:host/images/smiley.png (%d bytes source)", len(smiley))
         pad.user_screen_save("test", pages["test"])
         logger.info("sent F:host/uscr/test.pb")
+        pad.user_screen_save("span", pages["span"])
+        logger.info("sent F:host/uscr/span.pb")
         pad.screen_load(DEFAULT_SCREEN_PATH)
         logger.info("loaded %s", DEFAULT_SCREEN_PATH)
         if touchless:

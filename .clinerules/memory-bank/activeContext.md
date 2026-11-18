@@ -1,6 +1,37 @@
 # Active Context — current focus
 
 **Open plan (not implemented; design decision pending):**
+`docs/plans/thought-bubbles.md` — see below (span-rich-text has now landed).
+
+**Landed since the last update — Stage lb24 (`docs/plans/span-rich-text.md`),
+2026-11-18.** A second voicebot bug report, this time in **LVGL** itself: the
+label recolour parser state is local to one draw/measure call and is not advanced
+when `lv_draw_label()` skips to its first visible line or when
+`lv_text_get_next_line()` starts a new line, so a `#RRGGBB …#` run that straddles
+an automatic wrap loses its colour, re-reads the *closing* `#` as an opener
+(swallowing the next word), over-runs the box and draws the seam twice (LVGL
+#4599 / #8547). Decision: **`Label.recolor` keeps its exact wire format and API**
+— `build_label()` simply stops calling `lv_label_set_recolor()` and builds an
+LVGL **spangroup** instead, parsing the `#RRGGBB …#` markup device-side, so
+existing hosts (voicebot) need no code change at all and the live
+`set_properties(id, "text", markup)` path stays one RPC per frame. On top of
+that, new `Span` / `SpanGroup` proto messages + `Widget.kind.span_group = 34` +
+`span()` / `span_group()` / `parse_recolor_markup()` DSL become the **recommended**
+rich-text API (per-run colour *and* font, `max_lines`, ellipsis, alignment);
+`SCROLL` / `SCROLL_CIRCULAR` labels deliberately keep the old label path (a
+spangroup cannot marquee, and an unwrapped scroll line never hits the bug).
+**`Widget.Version` 30 → 31**, no `ProtocolVersion` / prefs bump. Verified:
+`just build-proto` + `just rust-gen-proto` (committed), **324 host tests passed /
+2 skipped**, `just app-lint` clean, `just firmware-build` green for `jc4827w543`
+(44 % flash free), and an end-to-end simulator run of the new
+`touchy_pad/pages/span.py` page (which is now part of `build_user_pages()`, so the
+`F:host/uscr/` page cycle is **span → test → trackpad**) including a live
+`SetPropertiesCmd` markup override. **Still to run: the on-hardware wrap check**
+(plan §10) — a `jc4827w543` is attached but currently runs the *old* firmware, so
+it needs `just flash` first. **Stage name `lb24` is now used — the
+thought-bubbles plan below must renumber to `lb25`** (and its `Widget.Version`
+bump becomes 31 → 32).
+
 `docs/plans/thought-bubbles.md` — voicebot wants SMS-style "thought bubbles" (a rounded
 rectangle with three rounded corners and one sharp bottom-right corner, text centred). The
 answer to "can the current API do it?" is **no, not natively**: LVGL 9.5 exposes exactly one
@@ -13,10 +44,12 @@ and `apply_layout` never calls `lv_obj_set_flex_align`. The plan records the thr
 **zero-firmware** workarounds that work today (rounded button + corner-filling spacer;
 host-rendered bubble image + label; plain four-rounded-corner) and proposes **Route A** —
 per-corner radii on `Style` + `LayoutFlex` alignment + a host-side `bubble()` helper +
-`Widget.Version` 30 → 31 (stage `lb24`) — with Routes B (a `Bubble` widget kind) / C (a
+`Widget.Version` 31 → 32 (stage **`lb25`** — renumbered: lb24 is taken by
+span-rich-text) — with Routes B (a `Bubble` widget kind) / C (a
 bubble-capable `Label`) documented as alternatives. **Awaiting the user's route choice.**
 
-**Last updated:** 2026-11-17 (**host-side desync recovery** — a bug report from
+**Last updated:** 2026-11-18 (**Stage lb24 — rich text via span groups**, above).
+Before that, 2026-11-17 (**host-side desync recovery** — a bug report from
 voicebot, a consumer of the published `touchy-pad` PyPI package: a host
 hard-killed mid-RPC leaves a reply unread in the device's reply FIFO, and since
 the wire protocol has no command id every later reply is one command behind. The
