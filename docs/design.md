@@ -6422,6 +6422,46 @@ build-proto` + `just rust-gen-proto` (committed), 345 host tests (21 new),
 `just app-lint`, `just rust-lint`, `just rust-test`, `just firmware-build`.
 On-hardware check of a live `text_font` change is still to run.
 
+## Stage lb27: portable source-checkout flashing (macOS + Linux) — DONE
+
+**Status: implemented.** The `flash`, `flash-erase`, `merge-bin` and
+`flash-merged` recipes only worked inside the devcontainer. They sourced
+`~/.espressif/tools/activate_idf_v6.1.sh` without checking that it existed,
+searched only `/host/dev`, and used `mapfile` (Bash 4; macOS ships Bash 3.2).
+`touchy update` also knew only Linux port names, so macOS relied on esptool's
+USB probe.
+
+The shared work now lives in `bin/flash.sh` (`write` / `erase` / `merge` /
+`merged`), and the four recipes are thin wrappers. The script:
+
+- tries the devcontainer activate script, then `~/esp/esp-idf/export.sh`, then
+  an already-active `PATH`; a failed source prints the same venv-repair hint as
+  `firmware-build`;
+- honours and validates `TOUCHY_PORT`; otherwise discovers
+  `/dev/cu.usbmodem*`, `cu.usbserial*`, `cu.wchusbserial*`,
+  `cu.SLAB_USBtoUART*` on macOS and `/host/dev` then `/dev`
+  `ttyACM*`/`ttyUSB*` on Linux; refuses to guess when several candidates exist;
+- parses `firmware/build/flash_args` without `mapfile` and keeps
+  `<offset> <path>` pairs intact (including build paths with spaces);
+- reads the chip from `CMakeCache.txt`, and keeps the merged image at `0x0`.
+
+`flash-erase` keeps its existing `0x310000 0xC0000` region, which is the
+LittleFS `storage` partition in `firmware/partitions/4M.csv` only; the 16M
+layout starts storage at `0x410000`, so the recipe is documented as 4M-only.
+
+`update.py` gained `_serial_port_candidates()` with the macOS `/dev/cu.*`
+families and the existing Linux ordering (with realpath de-duplication of
+`/host/dev` aliases); `_autodetect_serial_port()` still returns the first
+accessible candidate and `_do_flash` still falls back to esptool's probe. The
+CLI `--port` help now shows a macOS example. Docs: `docs/development.md`
+(source-checkout flashing) and `docs/installing.md` (port troubleshooting).
+
+**Verified:** `bin/flash.sh` clean under `/bin/bash` 3.2 `-n` and
+`shellcheck`; 29 new tests (18 script, 11 port detection) pass with fake
+esptool/ESP-IDF scripts on macOS; full host suite 357 passed, 5 skipped;
+`ruff check` and `ruff format --check` clean on changed files. Linux recipe
+behaviour is covered by the same tests in the Ubuntu CI matrix. Hardware flash
+on the JC4827W543 is still to run.
 ## Stage lb28: public background-reader health — DONE
 
 **Status: implemented.** `Touchy` starts a background thread that polls the

@@ -78,6 +78,46 @@ The generated protobuf bindings (`touchy_pb2.py`, `widgets_pb2.py`) are
 **not** checked in; every `app-*` recipe depends on `build-proto-py`, which
 regenerates them from [`proto/`](../proto/).
 
+## Flashing from a source checkout
+
+`just flash` builds the firmware and writes it to the connected device. Use a
+USB **data** cable; a charge-only cable powers the board but creates no serial
+port.
+
+The recipe honours `TOUCHY_PORT` when it is set, otherwise it discovers the
+port:
+
+| Host | Ports tried, in order |
+|------|-----------------------|
+| macOS | `/dev/cu.usbmodem*`, `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*`, `/dev/cu.SLAB_USBtoUART*` |
+| Linux | `/host/dev/ttyACM*`, `/host/dev/ttyUSB*`, then `/dev/ttyACM*`, `/dev/ttyUSB*` |
+
+More than one candidate is an error, so the recipe never guesses before
+writing hardware. Pick one explicitly:
+
+```sh
+TOUCHY_PORT=/dev/cu.usbmodem1234 just flash
+```
+
+If no port appears, hold **BOOT**, tap **RST**, release **BOOT**, then retry.
+
+Related recipes:
+
+```sh
+just flash-erase     # erase the LittleFS storage partition (4M layout only)
+just merge-bin       # build the single merged release image
+just flash-merged    # merge, then write that image at offset 0x0
+```
+
+`just flash-erase` targets the `storage` partition in
+`firmware/partitions/4M.csv` (`0x310000`, `0xC0000`). Do not use it on a 16M
+build, where `storage` starts at `0x410000`.
+
+The recipes source the devcontainer activation script first, then
+`~/esp/esp-idf/export.sh`, and otherwise use an already-active toolchain.
+[`touchy update`](installing.md) remains the end-user path: it downloads a
+release image and needs neither this checkout nor ESP-IDF.
+
 ## Git hooks
 
 `just init` installs two hooks via `pre-commit`:

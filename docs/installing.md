@@ -43,6 +43,27 @@ Hard resetting via RTS pin...
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
+## If `touchy update` cannot find the device
+
+`touchy update` uses the serial port it finds automatically. On macOS those
+ports are named `/dev/cu.usbmodem*`, `/dev/cu.usbserial*`,
+`/dev/cu.wchusbserial*` or `/dev/cu.SLAB_USBtoUART*`; on Linux they are
+`/dev/ttyACM*` or `/dev/ttyUSB*`.
+
+If it picks the wrong port, or finds none, pass one explicitly (the flag goes
+before `update`):
+
+```sh
+touchy --port /dev/cu.usbmodem1234 update
+```
+
+A charge-only USB cable never creates a serial port, so use a data cable. If
+the port is still missing, hold **BOOT**, tap **RST**, release **BOOT**, then
+run the command again.
+
+Building from a source checkout is a separate flow; see
+[development.md](development.md#flashing-from-a-source-checkout).
+
 ## Configuring WiFi
 
 If you want your touchypad to be accessible by wifi:

@@ -84,7 +84,8 @@ def _parse_size(ctx, param, value: str | None) -> tuple[int, int] | None:
     type=click.Path(dir_okay=False, path_type=str),
     default=None,
     metavar="PATH",
-    help="Serial port path (e.g. `/dev/ttyACM0` or `COM3`). When set, "
+    help="Serial port path (e.g. `/dev/ttyACM0`, `/dev/cu.usbmodem1234`, "
+    "or `COM3`). When set, "
     "protocol commands talk to the device over this serial port at "
     "115200 baud instead of auto-discovering it by USB VID/PID. "
     "Auto-discovery already covers CH340-attached CYD boards, so most "

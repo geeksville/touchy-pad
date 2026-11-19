@@ -226,18 +226,59 @@ def _wait_for_bootloader(console: Console, *, timeout: int) -> bool:
     return False
 
 
-def _autodetect_serial_port() -> str | None:
-    """Pick the first writable ttyACM*/ttyUSB* on Linux, or None.
+# macOS exposes USB serial adapters as /dev/cu.* (the "call-out" device;
+# /dev/tty.* blocks waiting for carrier). Native USB and bridges differ.
+_DARWIN_PORT_PATTERNS: tuple[str, ...] = (
+    "cu.usbmodem*",
+    "cu.usbserial*",
+    "cu.wchusbserial*",
+    "cu.SLAB_USBtoUART*",
+)
+# Native-USB boards enumerate as ttyACM*; UART-bridge boards (CH340 on
+# esp32_2432s028rv3) enumerate as ttyUSB*.
+_LINUX_PORT_PATTERNS: tuple[str, ...] = ("ttyACM*", "ttyUSB*")
 
-    Mirrors the heuristic the Justfile `flash` recipe uses. esptool can
-    also auto-detect via libusb when ``-p`` is omitted, so a None return
-    is fine — we just delegate to esptool.
+
+def _serial_port_candidates() -> list[str]:
+    """Return serial-port paths in the order they should be tried.
+
+    macOS: the four ``/dev/cu.*`` USB-serial families, sorted within each
+    family. Linux: ``/host/dev`` before ``/dev`` (the devcontainer mounts
+    the host's live devices at ``/host/dev``), ``ttyACM*`` before
+    ``ttyUSB*`` within each root. Other platforms return no candidates:
+    esptool's libusb probe handles Windows.
     """
+    if sys.platform == "darwin":
+        roots: tuple[str, ...] = ("/dev",)
+        patterns = _DARWIN_PORT_PATTERNS
+    elif sys.platform.startswith("linux"):
+        roots = ("/host/dev", "/dev")
+        patterns = _LINUX_PORT_PATTERNS
+    else:
+        return []
+
     candidates: list[str] = []
-    for root in ("/host/dev", "/dev"):
-        candidates.extend(sorted(glob.glob(f"{root}/ttyACM*")))
-        candidates.extend(sorted(glob.glob(f"{root}/ttyUSB*")))
-    for c in candidates:
+    seen: set[str] = set()
+    for root in roots:
+        for pattern in patterns:
+            for path in sorted(glob.glob(f"{root}/{pattern}")):
+                # /host/dev and /dev can be aliases for the same device.
+                key = os.path.realpath(path)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(path)
+    return candidates
+
+
+def _autodetect_serial_port() -> str | None:
+    """Pick the first readable+writable serial port, or ``None``.
+
+    Mirrors the heuristic ``bin/flash.sh`` uses. esptool can also
+    auto-detect via libusb when ``-p`` is omitted, so a None return is
+    fine — we just delegate to esptool.
+    """
+    for c in _serial_port_candidates():
         if os.access(c, os.R_OK | os.W_OK):
             return c
     return None
@@ -352,7 +393,7 @@ def _do_flash(
             console.print(f"using serial port [cyan]{resolved_port}[/cyan]")
         else:
             console.print(
-                "[yellow]note:[/yellow] no --port given and no ttyACM*/ttyUSB* "
+                "[yellow]note:[/yellow] no --port given and no serial port "
                 "auto-detected; letting esptool probe the bus."
             )
 
