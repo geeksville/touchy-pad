@@ -188,6 +188,7 @@ However, in some of my other open-source projects, I've seen the current hell PR
 
 ## Credits/Thanks
 
+* [@jellydn](https://github.com/jellydn) identified and fixed [4 good bugs](https://github.com/geeksville/touchy-pad/issues/20) (and improved os-x support).
 * [@Kn3h](https://github.com/Kn3h) jc4827w543: fix intermittent GT911 I2C init crash due to floating INT pin
 * [@chmouel](https://github.com/chmouel) added support for the resistive touchscreen variant of the jc4827w543 board.
 * [@ckirmse](https://github.com/ckirmse) added support for:
