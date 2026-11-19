@@ -113,6 +113,7 @@ FONT_SIZE_DEFAULT = FontSize.Value("FONT_SIZE_DEFAULT")
 FONT_SIZE_8 = FontSize.Value("FONT_SIZE_8")
 FONT_SIZE_14 = FontSize.Value("FONT_SIZE_14")
 FONT_SIZE_16 = FontSize.Value("FONT_SIZE_16")
+FONT_SIZE_24 = FontSize.Value("FONT_SIZE_24")
 FONT_SIZE_30 = FontSize.Value("FONT_SIZE_30")
 
 # Flat aliases for the ``TextAlign`` enum so callers can write

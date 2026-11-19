@@ -344,8 +344,8 @@ message Style {
     // The firmware maps the value through `font_for_size()`, which
     // *exact*-matches the fonts compiled into this build (see
     // CONFIG_LV_FONT_* in firmware/sdkconfig.defaults): today the valid
-    // values are `FontSize.FONT_SIZE_8` (LVGL UNSCII 8), `_14`, `_16` and
-    // `_30`. Any other number silently renders at the theme default, so
+    // values are `FontSize.FONT_SIZE_8` (LVGL UNSCII 8), `_14`, `_16`, `_24`
+    // and `_30`. Any other number silently renders at the theme default, so
     // validate against `FontSize` / `touchy_pad.api.FONT_SIZES` rather than
     // passing an arbitrary int.
     optional int32  font_size         = 21;
@@ -624,6 +624,7 @@ enum FontSize {
     FONT_SIZE_8       = 8;
     FONT_SIZE_14      = 14;
     FONT_SIZE_16      = 16;
+    FONT_SIZE_24      = 24;
     FONT_SIZE_30      = 30;
 }
 

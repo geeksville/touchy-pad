@@ -1160,7 +1160,7 @@ def test_span_group_rejects_bad_overflow_and_max_lines():
 
 def test_font_sizes_are_derived_from_the_enum():
     """`FONT_SIZES` is the enum's non-zero members — one source of truth."""
-    assert FONT_SIZES == (8, 14, 16, 30)
+    assert FONT_SIZES == (8, 14, 16, 24, 30)
     assert set(FONT_SIZES) == {v for v in FontSize.values() if v}
     assert FontSize.FONT_SIZE_30 == 30  # the members ARE the pixel sizes
 
@@ -1189,9 +1189,9 @@ def test_font_size_zero_means_theme_default():
 def test_font_size_rejects_uncompiled_sizes():
     """A size the firmware didn't compile in would silently theme the text."""
     with pytest.raises(ValueError, match="theme default"):
-        label("t", text="x", font_size=24)
+        label("t", text="x", font_size=20)
     with pytest.raises(ValueError, match="theme default"):
-        style(font_size=24)
+        style(font_size=20)
     with pytest.raises(ValueError, match="theme default"):
         span("x", font_size=13)
 

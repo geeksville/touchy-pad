@@ -4,6 +4,30 @@
 `docs/plans/thought-bubbles.md` — see below (span-rich-text and font-size-api
 have both now landed).
 
+**Landed since the last update — Stage lb29, 2026-11-19: 24 px Montserrat font
++ `just firmware-report`.** Two follow-ons to lb26. (1) The user added
+`CONFIG_LV_FONT_MONTSERRAT_24=y` to `firmware/sdkconfig.defaults`;
+`font_for_size()` already had a guarded `case 24:`, so the only code change was
+`FontSize` gaining `FONT_SIZE_24 = 24` — which grew the derived published list
+(`touchy_pad.api.FONT_SIZES` / `touchy_pad::FONT_SIZES`) to **`(8, 14, 16, 24,
+30)`**. `font_size=24` was lb26's canonical *rejected* example and is now valid;
+the three tests that used 24 as an "uncompiled size"
+(`test_screens.py::test_font_size_rejects_uncompiled_sizes`,
+`test_set_properties.py` ×2, `test_cli.py`) were repointed at **20**. No
+`Widget.Version` / `ProtocolVersion` / `PreferencesFile.Version` bump (additive
+enum value). (2) New **`just firmware-report`** recipe (thin wrapper over the
+portable `bin/firmware-report.sh`, modelled on `bin/flash.sh`) runs
+`idf.py -C firmware size` (builds first) and appends an app-partition line —
+bytes used / total / **% full** / free — to IDF's memory-type table; it reports
+for the *currently configured* board+chip. The script sources the IDF activate
+script in a `bash` whose `$0` is `bash` and runs `idf.py` in that same shell
+(IDF's `idf.py` is a shell function that dies across a re-exec). Docs updated:
+`docs/design.md` (Stage lb29), `CHANGELOG.md`, `AGENTS.md`, `llms.txt`,
+`docs/python-api.md`, `docs/plans/font-size-api.md`. Verified: `just build-proto`
+(incl. Rust), **393 host tests / 2 skipped** (7 new in
+`app/tests/test_firmware_report_script.py`), `just app-lint`, `just rust-lint`,
+`just rust-test`, `just firmware-report` (`App image: … 57% full`).
+
 **Landed since the last update — Stage lb26 (`docs/plans/font-size-api.md`),
 2026-11-18: published font sizes + a runtime font-size override.** Font size was
 an untyped `int32` everywhere and `font_for_size()` exact-matches the compiled

@@ -258,7 +258,7 @@ fn font_sizes_const_matches_the_enum() {
 	// Stage lb26 — the published list is exactly the enum's non-zero members,
 	// in ascending order. (prost strips the enum-name prefix, hence
 	// `FontSize8` rather than `FontSize_FONT_SIZE_8`.)
-	let mut from_enum: Vec<u32> = [FontSize::FontSize8, FontSize::FontSize14, FontSize::FontSize16, FontSize::FontSize30]
+	let mut from_enum: Vec<u32> = [FontSize::FontSize8, FontSize::FontSize14, FontSize::FontSize16, FontSize::FontSize24, FontSize::FontSize30]
 		.iter()
 		.map(|f| *f as u32)
 		.collect();

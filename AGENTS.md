@@ -59,6 +59,7 @@ just app-test          # pytest (proto bindings auto-rebuilt)
 just app-lint          # ruff format + lint
 just app-run -- ...    # invoke the `touchy` CLI inside Poetry
 just firmware-build    # ESP-IDF build for the current board
+just firmware-report   # flash/RAM usage + % full for the current board+target
 just flash             # build + flash
 just streamcontroller-run [--sim | --sim-headless]
 ```
@@ -173,7 +174,7 @@ touches `usb.core.find()` must guard against `NoBackendError`
 
 ## Implementation status
 All stages 0–24.4, 50.2, 51, 64.1, 64.3, 64.4, 65, 65.1, 67, 68, 72, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 100, and the whole
-`lb` line (lb5–lb26) are **done**. Latest active wire-format:
+`lb` line (lb5–lb29) are **done**. Latest active wire-format:
 `Widget.Version.CURRENT == 31`,
 `SysBoardInfoResponse.ProtocolVersion.CURRENT == 15`,
 `PreferencesFile.Version.CURRENT == 9`.
@@ -936,14 +937,14 @@ Highlights worth remembering:
 - **Stage lb26 (published font sizes + a runtime font-size override).** Font size
   was an untyped `int32` everywhere, and `font_for_size()`
   (`firmware/main/widgets/widget_styles.cpp`) exact-matches the compiled fonts
-  (`LV_FONT_UNSCII_8` + `MONTSERRAT_14/16/30`), so any other size silently
+  (`LV_FONT_UNSCII_8` + `MONTSERRAT_14/16/24/30`), so any other size silently
   rendered at the **theme default (Montserrat 14)** — `font_size=24` was in
   `app/examples/demo.py`. (1) New `FontSize` enum in `proto/widgets.proto`
-  (`FONT_SIZE_DEFAULT = 0`, `FONT_SIZE_8/14/16/30`; the values *are* the pixel
+  (`FONT_SIZE_DEFAULT = 0`, `FONT_SIZE_8/14/16/24/30`; the values *are* the pixel
   sizes, so `Style.font_size` / `Span.font_size` stay `int32` — **no
   `Widget.Version` bump**) generates the names for Python / Rust / C from one
   definition; `touchy_pad.api.FONT_SIZES` and `touchy_pad::FONT_SIZES` are
-  derived from it (`(8, 14, 16, 30)`), and `label()` / `span()` / `style()` now
+  derived from it (`(8, 14, 16, 24, 30)`), and `label()` / `span()` / `style()` now
   **raise `ValueError`** for anything else (the device WARNs instead, for
   hand-built protos). A host test pins the enum to `firmware/sdkconfig.defaults`.
   (2) `SetPropertyCmd.value` gained **`FontSize font_size_value = 9`**, so a font
@@ -960,6 +961,22 @@ Highlights worth remembering:
   `Touchy::set_font_size`). **`ProtocolVersion` 14 → 15**; no `Widget.Version` /
   prefs change. Also fixed `font_for_size()`'s duplicate `case 8:` (UNSCII 8 +
   Montserrat 8 together did not compile). Plan: `docs/plans/font-size-api.md`.
+
+- **Stage lb29 (24 px font + `just firmware-report`).** `CONFIG_LV_FONT_MONTSERRAT_24=y`
+  joined the font set in `firmware/sdkconfig.defaults`, so `FontSize` gained
+  `FONT_SIZE_24 = 24` and the published list is now
+  `FONT_SIZES == (8, 14, 16, 24, 30)` — `font_size=24` used to be the plan's
+  canonical *rejected* example and now renders for real. No wire-version bump
+  (an additive enum value; `font_for_size()` already had the guarded `case 24:`).
+  Separately, a new `just firmware-report` recipe (backed by the portable
+  `bin/firmware-report.sh`, modelled on `bin/flash.sh`) runs
+  `idf.py -C firmware size`
+  (which builds first, so the numbers match the current sources) and appends an
+  app-partition line — bytes used / total / **% full** / free — to IDF's
+  memory-type summary. It reports for whatever board+chip the build config
+  already has (`just firmware-reconfigure [board]` switches it). Backed by the
+  portable `bin/firmware-report.sh` (like `bin/flash.sh`); covered by
+  `app/tests/test_firmware_report_script.py`.
 
 - **USB enumeration gotcha (fixed 2026-09-29, keep in mind when writing host
   code).** libusb ≥ 1.0.27 caches its device list **per libusb context**, and

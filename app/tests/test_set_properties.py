@@ -150,7 +150,7 @@ def test_override_text_font_zero_is_the_font_arm_not_a_removal():
 def test_override_text_font_rejects_uncompiled_size():
     """An uncompiled size would silently theme the text on the device."""
     with pytest.raises(ValueError, match="no font of that size"):
-        _ov("text_font", 24)
+        _ov("text_font", 20)
 
 
 def test_override_text_font_rejects_non_int_values():
@@ -348,7 +348,7 @@ def test_sim_text_font_removal_restores_pristine(tmp_path):
 def test_sim_text_font_uncompiled_size_warns_and_is_ignored(caplog, tmp_path):
     """Bypass the host-side validation to prove the sim mirrors the device."""
     dev = _sim(tmp_path)
-    entry = _proto.SetPropertyCmd(widget_id="title", property_name="text_font", font_size_value=24)
+    entry = _proto.SetPropertyCmd(widget_id="title", property_name="text_font", font_size_value=20)
     with caplog.at_level(logging.WARNING):
         _apply(dev, [entry])
     assert any("no compiled font" in r.message for r in caplog.records)

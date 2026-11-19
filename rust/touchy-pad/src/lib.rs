@@ -104,11 +104,11 @@ pub use proto::FontSize;
 ///
 /// `Style.font_size` / `Span.font_size` are `int32` on the wire, but the
 /// device only maps the fonts its build compiled: today
-/// `[8, 14, 16, 30]` (8 is LVGL's UNSCII 8, the rest Montserrat; see
+/// `[8, 14, 16, 24, 30]` (8 is LVGL's UNSCII 8, the rest Montserrat; see
 /// `CONFIG_LV_FONT_*` in `firmware/sdkconfig.defaults`). Any other value
 /// silently renders at the theme default (Montserrat 14), so validate against
 /// this list (or `FontSize`) rather than passing an arbitrary number.
-pub const FONT_SIZES: &[u32] = &[8, 14, 16, 30];
+pub const FONT_SIZES: &[u32] = &[8, 14, 16, 24, 30];
 
 /// On-device directory holding screen-layout blobs (Stage 68; moved from
 /// the old `host/screens/`). Mirror of `touchy_pad.paths.SCREENS_DIR`.

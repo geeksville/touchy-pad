@@ -512,7 +512,7 @@ from the `FontSize` enum, so the two can never drift) is the published list:
 ```python
 from touchy_pad.api import FONT_SIZES, FontSize
 
-FONT_SIZES              # (8, 14, 16, 30)
+FONT_SIZES              # (8, 14, 16, 24, 30)
 FontSize.FONT_SIZE_30   # 30 — the members ARE the pixel sizes
 ```
 
@@ -521,7 +521,7 @@ FontSize.FONT_SIZE_30   # 30 — the members ARE the pixel sizes
 * `0` / unset means the **theme default**, which is Montserrat **14**.
 * Any *other* number is not a request the device can honour: `font_for_size()`
   exact-matches the compiled fonts and otherwise leaves the theme font in place
-  — so `font_size=24` would silently render at 14 px.
+  — so `font_size=20` would silently render at 14 px.
 
 `label(…, font_size=…)`, `span(…, font_size=…)`, `style(font_size=…)` and
 `build_property_override(…, "text_font", …)` therefore **raise `ValueError`**

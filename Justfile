@@ -449,6 +449,17 @@ firmware-build: build-proto-c build-default-screen
         idf.py -C firmware build
     '
 
+# Print a flash / RAM usage report for the currently configured board+target.
+# `idf.py size` builds first, so the numbers match the current sources, then
+# prints IDF's memory-type summary; we append an app-partition line with the
+# used/total bytes and % full. The board+chip come from the existing build
+# config, so run `just firmware-reconfigure [board]` first to switch target.
+# Portable helper: bin/firmware-report.sh (macOS + Linux, like bin/flash.sh).
+firmware-report: build-proto-c build-default-screen
+    #!/usr/bin/env bash
+    export TOUCHY_IDF_VERSION={{idf_version}}
+    exec bin/firmware-report.sh
+
 # List supported board names (one per line).  Used by shell completion:
 #   bash: complete -C 'just _boards' -F firmware-reconfigure
 #   fish: complete -c just -n '__fish_seen_subcommand_from firmware-reconfigure' -f -a "(just _boards 2>/dev/null)"
@@ -525,6 +536,7 @@ flash: firmware-build
     #!/usr/bin/env bash
     export TOUCHY_IDF_VERSION={{idf_version}}
     exec bin/flash.sh write
+    just firmware-report
 
 # Produce a single merged firmware binary (bootloader + partition table +
 # app, all at their flash offsets, padded with 0xFF) at

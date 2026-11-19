@@ -130,7 +130,7 @@ def test_property_set_text_font_int_is_a_font_size(monkeypatch: pytest.MonkeyPat
 def test_property_set_text_font_rejects_an_uncompiled_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sent, result = _run_property_set(monkeypatch, ["title", "text_font", "24", "--int"])
+    sent, result = _run_property_set(monkeypatch, ["title", "text_font", "20", "--int"])
     assert result.exit_code != 0
     assert "no font of that size" in result.output
     assert sent == []

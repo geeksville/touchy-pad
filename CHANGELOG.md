@@ -19,10 +19,10 @@ by that design history and the git tags (`git tag -l`).
 - **`FontSize` / `FONT_SIZES`: the list of font sizes the device can render.**
   `label(…, font_size=…)`, `span(…)`, `style(font_size=…)` and
   `build_property_override(…, "text_font", …)` now take a pixel size from a
-  published set — `FONT_SIZES == (8, 14, 16, 30)` (`FontSize.FONT_SIZE_*`; 8 is
-  LVGL's UNSCII 8 for the LED panels, the rest Montserrat) — and raise
+  published set — `FONT_SIZES == (8, 14, 16, 24, 30)` (`FontSize.FONT_SIZE_*`; 8
+  is LVGL's UNSCII 8 for the LED panels, the rest Montserrat) — and raise
   `ValueError` for anything else. Previously any other number silently rendered
-  at the theme default (Montserrat 14), so `font_size=24` looked "supported" but
+  at the theme default (Montserrat 14), so `font_size=20` looked "supported" but
   came out at 14 px. The list is generated from the proto enum, so Python, Rust
   and firmware can never disagree.
 - **Change a label's font size at runtime** — no screen re-upload:
@@ -35,6 +35,14 @@ by that design history and the git tags (`git tag -l`).
   restores the theme font.
 - The Rust crate gained `Touchy::set_properties` / `Touchy::set_font_size` and
   re-exports `FontSize` + `FONT_SIZES`.
+- **A 24 px Montserrat font** is now compiled in (`CONFIG_LV_FONT_MONTSERRAT_24`),
+  so the published set grew to `FONT_SIZES == (8, 14, 16, 24, 30)` and
+  `font_size=24` / `FontSize.FONT_SIZE_24` render for real instead of silently
+  falling back to 14 px.
+- **`just firmware-report`** prints the flash/RAM usage for the currently
+  configured board+target: IDF's memory-type summary plus an app-partition line
+  with the bytes used, the **percentage full** and the bytes free. The helper is
+  `bin/firmware-report.sh` (portable, like `bin/flash.sh`).
 - **Rich text: the `span_group` widget** (`Widget.kind.span_group`, `span()` /
   `span_group()` in `touchy_pad.api`). A paragraph built from independently
   styled *runs* — per-run text colour **and** font size — with `overflow`

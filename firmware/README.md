@@ -244,6 +244,7 @@ With `just` (recommended — it sources ESP-IDF for you):
 ```bash
 just firmware-reconfigure jc4827w543   # select a board + its chip
 just firmware-build                    # → firmware/build/touchy_pad_v2.elf (+ .bin)
+just firmware-report                   # flash/RAM usage + % full for this target
 just flash                             # build + flash over the board's UART
 just hw-543                            # shortcut: reconfigure for jc4827w543
 just merge-bin                         # single merged image at 0x0 (touchy update)

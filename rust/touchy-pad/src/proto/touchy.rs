@@ -1207,6 +1207,7 @@ pub enum FontSize {
     FontSize8 = 8,
     FontSize14 = 14,
     FontSize16 = 16,
+    FontSize24 = 24,
     FontSize30 = 30,
 }
 impl FontSize {
@@ -1220,6 +1221,7 @@ impl FontSize {
             Self::FontSize8 => "FONT_SIZE_8",
             Self::FontSize14 => "FONT_SIZE_14",
             Self::FontSize16 => "FONT_SIZE_16",
+            Self::FontSize24 => "FONT_SIZE_24",
             Self::FontSize30 => "FONT_SIZE_30",
         }
     }
@@ -1230,6 +1232,7 @@ impl FontSize {
             "FONT_SIZE_8" => Some(Self::FontSize8),
             "FONT_SIZE_14" => Some(Self::FontSize14),
             "FONT_SIZE_16" => Some(Self::FontSize16),
+            "FONT_SIZE_24" => Some(Self::FontSize24),
             "FONT_SIZE_30" => Some(Self::FontSize30),
             _ => None,
         }

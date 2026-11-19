@@ -6,6 +6,10 @@ enum), **strict** DSL validation, and a `ProtocolVersion` **14 → 15** bump. Th
 file is kept as the design record; the on-hardware check of a live `text_font`
 change is the only outstanding item (§7).
 
+*Update (Stage lb29): `CONFIG_LV_FONT_MONTSERRAT_24` was enabled, so the
+published list is now `(8, 14, 16, 24, 30)` rather than the `(8, 14, 16, 30)`
+this plan assumed — `font_size=24` is no longer the "rejected" example.*
+
 **Stage: `lb26`** — `lb25` is reserved by the still-open
 `docs/plans/thought-bubbles.md`; if that plan is dropped or renumbered, take the
 lower number.

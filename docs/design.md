@@ -6371,6 +6371,10 @@ every caller read as "leave the theme font": so `font_size=24` rendered at the
 **theme default (Montserrat 14)** with no error anywhere (the repo itself shipped
 that line in `app/examples/demo.py`). Plan: `docs/plans/font-size-api.md`.
 
+*(Stage lb29 later enabled `CONFIG_LV_FONT_MONTSERRAT_24` and extended the
+published list to `(8, 14, 16, 24, 30)` — the sizes quoted below are the lb26
+state.)*
+
 Two halves, one new wire member:
 
 * **A published list.** New `FontSize` enum in `proto/widgets.proto`
@@ -6504,6 +6508,48 @@ an unexpected transport failure (property flips false plus an ERROR log with
 close), `start_event_thread=False`, and a raising callback that is logged while
 the reader keeps dispatching. Full host suite: 334 passed, 5 skipped; `ruff
 check` and `ruff format --check` clean.
+
+## Stage lb29: 24 px Montserrat font + `just firmware-report` — DONE
+
+**Status: implemented.** Two small, unrelated follow-ons.
+
+**(1) A 24 px font.** `firmware/sdkconfig.defaults` gained
+`CONFIG_LV_FONT_MONTSERRAT_24=y`, so the Montserrat **24** face is now
+compiled in (it sits between the 16 px body font and the 30 px headline font, and
+was the size `app/examples/demo.py` originally reached for). `font_for_size()`
+(`firmware/main/widgets/widget_styles.cpp`) already had a
+`#if LV_FONT_MONTSERRAT_24` / `case 24:` arm — it just never fired — so the
+firmware change is the Kconfig line alone, and the `FontSize` enum in
+`proto/widgets.proto` gained `FONT_SIZE_24 = 24`. The published list
+(`touchy_pad.api.FONT_SIZES` / `touchy_pad::FONT_SIZES`) is derived from the enum,
+so it grew to `(8, 14, 16, 24, 30)` everywhere at once, and the `text_font`
+runtime override (`build_property_override(…, "text_font", 24)`) reaches the new
+size too. No `Widget.Version` / `ProtocolVersion` / `PreferencesFile.Version`
+bump — an additive enum value, and `Style.font_size` / `Span.font_size` stay
+`int32`. The host parity test
+(`app/tests/test_screens.py::test_font_sizes_match_the_firmware_fonts`) now pins
+the enum to the four new `CONFIG_LV_FONT_*` lines.
+
+**(2) `just firmware-report`.** A new recipe that prints the flash/RAM usage for
+the **currently configured** board+chip (the one already baked into
+`firmware/build`, so `just firmware-reconfigure [board]` selects the target). Its
+body is the portable helper `bin/firmware-report.sh` (modelled on the Stage-lb27
+`bin/flash.sh`): it locates the ESP-IDF activate/export script, sources it in a
+`bash` whose `$0` is `bash` (so IDF's `is_sourced()` check passes) **and runs
+`idf.py` in that same shell** — IDF exposes `idf.py` as a shell function that
+does not survive a re-exec. It runs `idf.py -C firmware size` (which builds
+first, so the numbers match the current sources), then appends a one-line
+app-partition summary parsed from `check_sizes.py`'s output: *bytes used / total
+/ % full / bytes free*. IDF's own memory-type table (DRAM/IRAM/flash) is left on
+screen above it. The `idf.py` exit status is propagated so an overflow still
+fails the recipe.
+
+**Verified:** `just firmware-report` against `jc4827w543` prints the report and
+`App image: … 57% full`; `just build-proto` (Python + C + Rust) and
+`just firmware-build` clean; host suite 393 passed / 2 skipped (7 new in
+`app/tests/test_firmware_report_script.py`, which drives `bin/firmware-report.sh`
+against fake `idf.py`/activation scripts on `/bin/bash`), `just app-lint`,
+`just rust-lint`, `just rust-test` clean.
 
 # Old/Existing projects
 
