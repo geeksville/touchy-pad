@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "proto-gen"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "prost-build",
 ]
@@ -1476,7 +1476,7 @@ dependencies = [
 
 [[package]]
 name = "touchy-demo"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1489,7 +1489,7 @@ dependencies = [
 
 [[package]]
 name = "touchy-opendeck"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1504,7 +1504,7 @@ dependencies = [
 
 [[package]]
 name = "touchy-pad"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "base64",
