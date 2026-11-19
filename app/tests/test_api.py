@@ -19,6 +19,7 @@ import pytest
 from touchy_pad import _proto
 from touchy_pad.api import (
     MINIMUM_FIRMWARE_VERSION,
+    DeviceNotFoundError,
     IncompatibleFirmwareError,
     Screen,
     Touchy,
@@ -403,6 +404,14 @@ def test_user_screen_save_registers_inline_callback(open_pad):
 # ---------------------------------------------------------------------------
 # background event-thread health (``event_thread_alive``)
 # ---------------------------------------------------------------------------
+
+
+def test_device_not_found_error_is_public() -> None:
+    """The documented reconnect loop catches this from ``touchy_pad.api``."""
+    from touchy_pad.api._transport import DeviceNotFoundError as Internal
+
+    assert DeviceNotFoundError is Internal
+    assert issubclass(DeviceNotFoundError, Exception)
 
 
 def _wait_for(predicate, *, timeout: float = 2.0) -> bool:

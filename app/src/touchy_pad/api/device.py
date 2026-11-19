@@ -679,10 +679,9 @@ def touchy_open(
     ``transport`` is an internal escape hatch used by tests — production
     code should leave it ``None``.
 
-    Raises :class:`touchy_pad.api._transport.DeviceNotFoundError` when no
-    matching device is attached, and :class:`IncompatibleFirmwareError`
-    when the device reports a firmware version older than
-    :data:`MINIMUM_FIRMWARE_VERSION`.
+    Raises :class:`DeviceNotFoundError` when no matching device is attached,
+    and :class:`IncompatibleFirmwareError` when the device reports a firmware
+    version older than :data:`MINIMUM_FIRMWARE_VERSION`.
 
     If :func:`touchy_pad.api.create_sim_device` has been called this
     process and ``serial`` matches the sim's serial (or no real USB

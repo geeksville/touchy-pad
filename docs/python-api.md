@@ -46,19 +46,24 @@ stops. `Touchy.event_thread_alive` reports whether it is still running:
 ```python
 import time
 
-from touchy_pad.api import touchy_open
+from touchy_pad.api import DeviceNotFoundError, TouchyError, touchy_open
 
-pad = touchy_open()
-try:
-    while True:
-        if not pad.event_thread_alive:
-            # The reader stopped: the link failed or the stream ended.
-            # The fatal traceback is in the ``touchy_pad.api.device`` logger.
-            pad.close()
-            pad = touchy_open()      # application-owned retry
-        time.sleep(1.0)
-finally:
-    pad.close()
+RETRY_S = 2.0
+
+while True:                          # application-owned retry loop
+    try:
+        pad = touchy_open()
+    except (DeviceNotFoundError, TouchyError):
+        time.sleep(RETRY_S)          # unplugged or busy; wait, then retry
+        continue
+    try:
+        while pad.event_thread_alive:
+            time.sleep(1.0)
+        # The reader stopped: the link failed or the stream ended.
+        # The fatal traceback is in the ``touchy_pad.api.device`` logger.
+    finally:
+        pad.close()
+    time.sleep(RETRY_S)
 ```
 
 It is `True` only while the reader is alive and shutdown has not been
