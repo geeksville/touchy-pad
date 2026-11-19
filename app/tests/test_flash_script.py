@@ -99,6 +99,13 @@ class Fixture:
         path.chmod(mode)
         return path
 
+    def link_port(self, root: Path, target: Path, suffix: str = "1") -> Path:
+        """Expose a real device node under ``root`` as a serial-port name."""
+        root.mkdir(parents=True, exist_ok=True)
+        path = root / _port_name(suffix)
+        path.symlink_to(target)
+        return path
+
     def env(self, **overrides: str | None) -> dict[str, str]:
         env = os.environ.copy()
         env["HOME"] = str(self.home)
@@ -266,6 +273,36 @@ def test_multiple_ports_require_explicit_selection(tmp_path: Path) -> None:
     second = fx.add_port("2")
 
     result = fx.run("write")
+
+    assert result.returncode != 0
+    assert "more than one USB serial port" in result.stderr
+    assert str(first) in result.stderr
+    assert str(second) in result.stderr
+    assert not fx.log.exists()
+
+
+def test_same_device_seen_twice_counts_once(tmp_path: Path) -> None:
+    fx = Fixture(tmp_path)
+    fx.activation("wrapper")
+    other = tmp_path / "host-dev"
+    first = fx.link_port(fx.dev, Path("/dev/null"))
+    second = fx.link_port(other, Path("/dev/null"))
+
+    result = fx.run("write", TOUCHY_DEV_ROOTS=f"{fx.dev}:{other}")
+
+    assert result.returncode == 0, result.stderr
+    assert fx.esptool_args()[:2] == ["-p", str(first)]
+    assert str(second) not in result.stderr
+
+
+def test_distinct_devices_in_two_roots_require_explicit_selection(tmp_path: Path) -> None:
+    fx = Fixture(tmp_path)
+    fx.activation("wrapper")
+    other = tmp_path / "host-dev"
+    first = fx.link_port(fx.dev, Path("/dev/null"))
+    second = fx.link_port(other, Path("/dev/zero"))
+
+    result = fx.run("write", TOUCHY_DEV_ROOTS=f"{fx.dev}:{other}")
 
     assert result.returncode != 0
     assert "more than one USB serial port" in result.stderr

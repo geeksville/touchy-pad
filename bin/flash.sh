@@ -127,6 +127,24 @@ _read_flash_args() {
 	fi
 }
 
+# Print a key that identifies the underlying device, so one USB port seen
+# through two mount points (e.g. /host/dev and /dev inside a container)
+# counts once. Non-device entries fall back to their canonical path.
+_dev_key() {
+	local path="$1" id=""
+	if [ -c "$path" ]; then
+		case "$(uname -s)" in
+		Darwin) id="$(stat -L -f '%r' "$path" 2>/dev/null)" ;;
+		*) id="$(stat -L -c '%t:%T' "$path" 2>/dev/null)" ;;
+		esac
+	fi
+	if [ -n "$id" ]; then
+		printf 'dev:%s\n' "$id"
+		return 0
+	fi
+	printf 'path:%s\n' "$(cd -P "${path%/*}" && pwd)/${path##*/}"
+}
+
 # Print the one serial port to use. Exits with a readable error when the
 # choice is ambiguous, so we never guess before writing hardware.
 _find_port() {
@@ -152,8 +170,8 @@ _find_port() {
 		;;
 	esac
 
-	local remaining="$roots" root match pattern key
-	local candidates=""
+	local remaining="$roots" root match pattern key path
+	local candidates="" seen=""
 	while [ -n "$remaining" ]; do
 		root="${remaining%%:*}"
 		case "$remaining" in
@@ -165,11 +183,13 @@ _find_port() {
 			for match in "$root"/$pattern; do
 				[ -e "$match" ] || continue
 				[ -r "$match" ] && [ -w "$match" ] || continue
-				key="$(cd -P "${match%/*}" && pwd)/${match##*/}"
-				case "|${candidates}|" in
+				key="$(_dev_key "$match")"
+				case "|${seen}|" in
 				*"|${key}|"*) continue ;;
 				esac
-				candidates="${candidates:+${candidates}|}${key}"
+				seen="${seen:+${seen}|}${key}"
+				path="$(cd -P "${match%/*}" && pwd)/${match##*/}"
+				candidates="${candidates:+${candidates}|}${path}"
 			done
 		done
 	done
