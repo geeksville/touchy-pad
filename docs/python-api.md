@@ -37,6 +37,48 @@ serial number from `touchy_get_pad_ids()` to select a specific one. The
 returned `Touchy` is a context manager; leaving the `with` block stops
 the background event-poller thread and closes the USB transport.
 
+## Checking the background reader
+
+`touchy_open()` starts a background thread that polls the device for events
+and runs your `on_host_event` callbacks. If the USB link drops, that thread
+stops. `Touchy.event_thread_alive` reports whether it is still running:
+
+```python
+import time
+
+from touchy_pad.api import DeviceNotFoundError, TouchyError, touchy_open
+
+RETRY_S = 2.0
+
+while True:                          # application-owned retry loop
+    try:
+        pad = touchy_open()
+    except (DeviceNotFoundError, TouchyError):
+        time.sleep(RETRY_S)          # unplugged or busy; wait, then retry
+        continue
+    try:
+        while pad.event_thread_alive:
+            time.sleep(1.0)
+        # The reader stopped: the link failed or the stream ended.
+        # The fatal traceback is in the ``touchy_pad.api.device`` logger.
+    finally:
+        pad.close()
+    time.sleep(RETRY_S)
+```
+
+It is `True` only while the reader is alive and shutdown has not been
+requested. It is `False` when the object was created with
+`start_event_thread=False`, after `close()`, and after the reader exits for
+any reason. It describes the **background reader**, not the remote device: a
+reader can still be polling a device that has stopped responding. If you
+disable the background thread and poll `event_consume()` yourself (as the
+StreamDeck shim does), do not use this predicate as a connection-health
+check.
+
+Recovery is yours to write: closing and reopening is the supported path.
+The library does not reconnect automatically, does not change `close()`
+behaviour, and does not wrap transport exceptions.
+
 ## Authoring screens
 
 The high-level **screen DSL** lives in `touchy_pad.api.screens` (and is
