@@ -509,76 +509,22 @@ firmware-reconfigure board="":
         idf.py -C firmware -DBOARD="${_BOARD}" reconfigure
     '
 
-# Erase the flash filesystem
-flash-erase: 
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # activate_idf_{{idf_version}}.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
-    # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
-    # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
-    # var (not IDF_PATH) to break the re-exec loop.
-    if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
-    fi
-    # Pick the first readable+writable ttyACM*/ttyUSB* under /host/dev/.
-    # Native-USB boards enumerate as ttyACM*; UART-bridge boards (CH340 on
-    # esp32_2432s028rv3) enumerate as ttyUSB*.
-    port=""
-    for candidate in $(ls /host/dev/ttyACM* /host/dev/ttyUSB* 2>/dev/null | sort); do
-        if [ -r "$candidate" ] && [ -w "$candidate" ]; then
-            port="$candidate"
-            break
-        fi
-    done
-    if [ -z "$port" ]; then
-        echo "error: no accessible ttyACM*/ttyUSB* device found under /host/dev/" >&2
-        exit 1
-    fi    
-    esptool -p "$port" -b 460800 --chip esp32s3 erase_region 0x310000 0xC0000
+# Portable flashing helpers live in bin/flash.sh so `just flash` works on
+# macOS and plain Linux checkouts, not just in the devcontainer. They source
+# the ESP-IDF environment the same way `firmware-build` does and honour
+# TOUCHY_PORT. End users should use `touchy update` instead.
 
+# Erase the LittleFS storage partition (4M partition layout only).
+flash-erase:
+    #!/usr/bin/env bash
+    export TOUCHY_IDF_VERSION={{idf_version}}
+    exec bin/flash.sh erase
+
+# Build and flash the connected device.
 flash: firmware-build
     #!/usr/bin/env bash
-    set -euo pipefail
-    # activate_idf_{{idf_version}}.sh's is_sourced() checks ${0##*/} against "bash"|"sh"|etc.
-    # Just's temp-script has a random name, so sourcing fails. Re-exec under a new
-    # bash that passes "bash" as $0 so is_sourced() returns true. Use a marker env
-    # var (not IDF_PATH) to break the re-exec loop.
-    if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
-    fi
-    # Pick the first readable+writable ttyACM*/ttyUSB* under /host/dev/.
-    # Native-USB boards enumerate as ttyACM*; UART-bridge boards (CH340 on
-    # esp32_2432s028rv3) enumerate as ttyUSB*.
-    port=""
-    for candidate in $(ls /host/dev/ttyACM* /host/dev/ttyUSB* 2>/dev/null | sort); do
-        if [ -r "$candidate" ] && [ -w "$candidate" ]; then
-            port="$candidate"
-            break
-        fi
-    done
-    if [ -z "$port" ]; then
-        echo "error: no accessible ttyACM*/ttyUSB* device found under /host/dev/" >&2
-        exit 1
-    fi
-    echo "flashing to $port"
-    esptool_py="esptool"
-    cd {{justfile_directory()}}/firmware/build
-    # Read the chip target from the build cache so this works for both
-    # esp32s3 (native-USB boards) and esp32 (CYD / UART-bridge boards).
-    chip=$(grep -m1 '^IDF_TARGET:STRING=' CMakeCache.txt | cut -d= -f2)
-    chip="${chip:-esp32s3}"
-    mapfile -t flash_args < flash_args
-    # flash_args has two lines: flags line, then addr:file pairs per line.
-    # Flatten them into a single array of words.
-    args=()
-    for line in "${flash_args[@]}"; do
-        read -ra words <<< "$line"
-        args+=("${words[@]}")
-    done
-    # We used to pass in the following options...
-    # --before default-reset --after hard-reset 
-    "$esptool_py" -p "$port" -b 460800 \
-        --chip "$chip" write-flash "${args[@]}"
+    export TOUCHY_IDF_VERSION={{idf_version}}
+    exec bin/flash.sh write
 
 # Produce a single merged firmware binary (bootloader + partition table +
 # app, all at their flash offsets, padded with 0xFF) at
@@ -586,55 +532,16 @@ flash: firmware-build
 # downloads from a GitHub release and flashes to a fresh board at 0x0.
 merge-bin: firmware-build
     #!/usr/bin/env bash
-    set -euo pipefail
-    # Same re-exec trick as flash: pass "bash" as $0 so is_sourced() returns true.
-    if [ -z "${TOUCHY_IDF_SOURCED:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && TOUCHY_IDF_SOURCED=1 exec bash "$1"' bash "$0"
-    fi
-    out="touchy_pad_merged.bin"
-    esptool_py="$(command -v esptool || command -v esptool.py)"
-    if [ -z "${esptool_py}" ]; then
-        echo "error: esptool not found on PATH" >&2
-        exit 1
-    fi
-    cd {{justfile_directory()}}/firmware/build
-    chip=$(grep -m1 '^IDF_TARGET:STRING=' CMakeCache.txt | cut -d= -f2)
-    chip="${chip:-esp32s3}"
-    mapfile -t flash_args < flash_args
-    args=()
-    for line in "${flash_args[@]}"; do
-        read -ra words <<< "$line"
-        args+=("${words[@]}")
-    done
-    "${esptool_py}" --chip "$chip" merge-bin -o "${out}" "${args[@]}"
-    echo "wrote {{justfile_directory()}}/firmware/build/${out}"
+    export TOUCHY_IDF_VERSION={{idf_version}}
+    exec bin/flash.sh merge
 
 # End-user flash flow: build → merge → flash the merged image at 0x0.
 # Mirrors what the `touchy update` CLI does after downloading a release
 # asset, so local hardware bring-up can exercise the exact same path.
 flash-merged: merge-bin
     #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "${IDF_PATH:-}" ]; then
-        exec bash -c 'source ~/.espressif/tools/activate_idf_{{idf_version}}.sh && exec bash "$1"' -- "$0"
-    fi
-    port=""
-    for candidate in $(ls /host/dev/ttyACM* /host/dev/ttyUSB* 2>/dev/null | sort); do
-        if [ -r "$candidate" ] && [ -w "$candidate" ]; then
-            port="$candidate"
-            break
-        fi
-    done
-    if [ -z "$port" ]; then
-        echo "error: no accessible ttyACM*/ttyUSB* device found under /host/dev/" >&2
-        exit 1
-    fi
-    chip=$(grep -m1 '^IDF_TARGET:STRING=' {{justfile_directory()}}/firmware/build/CMakeCache.txt | cut -d= -f2)
-    chip="${chip:-esp32s3}"
-    echo "flashing merged image to $port (chip: $chip)"
-    esptool -p "$port" -b 460800 \
-        --before default-reset --after hard-reset \
-        --chip "$chip" write-flash 0x0 {{justfile_directory()}}/firmware/build/touchy_pad_merged.bin
+    export TOUCHY_IDF_VERSION={{idf_version}}
+    exec bin/flash.sh merged
 
 # setup for common devboards
 hw-543:
