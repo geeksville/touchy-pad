@@ -34,7 +34,7 @@ More installation instructions [here](docs/installing.md).
 ## Current features
 <img src="docs/images/touchy-300.png" alt="Project Icon" align="right" width="140" />
 
-Disclaimer: This project is young, but moving at a fast pace.  You can already use it for a variety of cool things:
+This project is now fairly mature and stable - thank you for sending photos of how you use it.  It works for a variety of cool things:
 
 * It is a "premium feel" open-source multitouch USB touchpad with built-in customizable screen (for use with Mac/Linux/Windows/Android).  This works even if you don't want to run our sister app.
 * Works with numerous cheap ESP32 based display boards ($15-$30 USD depending on features) - no soldering required, just connect USB, run the installer and go. The automated installer provides 'one-click' install for boards you purchased from wherever.
@@ -42,7 +42,7 @@ Disclaimer: This project is young, but moving at a fast pace.  You can already u
 * Allows simple key/mouse shortcut/macros without the need for leaving the (optional) sister app running.  Generated entirely natively as USB events from our device.
 * Also works like a "StreamDeck" via the [OpenDeck](https://github.com/nekename/OpenDeck) application.  Many different plugins automatically supported, bind behaviors and displays to your touchy-deck with a polished GUI app.
 * (optional) Wifi access - so you can control your touchypads from across the room or the internet.  Fully encrypted mTLS based connection - no servers required.
-* Linux, macOS and Windows hosts are supported (in theory - currently only tested with Linux, please open a [GitHub issue](https://github.com/geeksville/touchy-pad/issues) if you see problems on your machine)
+* Linux, macOS and Windows hosts are supported.
 * Includes full (easy) [python](https://pypi.org/project/touchy-pad/) and [rust](https://crates.io/crates/touchy-pad) API libraries for making your own host side apps with cool graphical controls/displays on small/cheap USB devices — see ["you don't need to clone this repo"](#want-to-build-your-own-app-you-dont-need-to-clone-this-repo) above.
 
 ## [OpenDeck](https://github.com/nekename/OpenDeck) plugin
