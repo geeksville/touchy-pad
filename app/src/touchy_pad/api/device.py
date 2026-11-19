@@ -202,6 +202,25 @@ class Touchy:
         """
         return self._client
 
+    @property
+    def event_thread_alive(self) -> bool:
+        """Whether the background event thread is running.
+
+        ``True`` only while the reader is alive and shutdown has not been
+        requested. It is ``False`` when the object was created with
+        ``start_event_thread=False``, after :meth:`close`, and after the
+        reader stops for any other reason (transport error, clean end of
+        the event stream).
+
+        This reports the *background reader*, not the remote device: a
+        reader that is still polling can sit over a device that has
+        stopped responding, and a device can be reachable while this
+        reader is disabled. Do not use this predicate as a general
+        connection-health check.
+        """
+        t = self._thread
+        return t is not None and t.is_alive() and not self._stop.is_set()
+
     def close(self) -> None:
         """Stop the background event thread and close the USB transport."""
         self._stop.set()
@@ -620,16 +639,14 @@ class Touchy:
                     try:
                         cb(evt)
                     except Exception:  # noqa: BLE001 — user callback errors must not kill the thread.
-                        import traceback
-
-                        traceback.print_exc()
+                        logger.exception("host event callback failed (code=%s)", evt.host_code)
         except Exception:
             # Transport closed (normal during `close()`) or some other
-            # error — either way, the thread is done.
+            # error — either way, the thread is done. Normal shutdown stays
+            # quiet; anything else is logged with the traceback so the
+            # application can diagnose a reader that stopped on its own.
             if not self._stop.is_set():
-                import traceback
-
-                traceback.print_exc()
+                logger.exception("touchy-pad event thread stopped unexpectedly")
 
 
 def touchy_open(

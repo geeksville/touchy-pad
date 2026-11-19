@@ -6422,6 +6422,49 @@ build-proto` + `just rust-gen-proto` (committed), 345 host tests (21 new),
 `just app-lint`, `just rust-lint`, `just rust-test`, `just firmware-build`.
 On-hardware check of a live `text_font` change is still to run.
 
+## Stage lb28: public background-reader health — DONE
+
+**Status: implemented.** `Touchy` starts a background thread that polls the
+device for events and runs `on_host_event` callbacks. When that thread stopped
+— a dropped USB link, or the event stream ending — `_event_loop` printed a
+traceback and returned, and nothing public said so. Applications had no signal
+to distinguish "still polling" from "reader is gone", and the diagnostic went
+to stderr instead of the logging system the rest of the package uses.
+
+New read-only `Touchy.event_thread_alive`:
+
+```python
+@property
+def event_thread_alive(self) -> bool:
+    t = self._thread
+    return t is not None and t.is_alive() and not self._stop.is_set()
+```
+
+It is `True` only while the reader is alive and shutdown has not been
+requested. It is `False` when the object was created with
+`start_event_thread=False`, after `close()`, and after the reader exits for any
+reason.
+
+The fatal exit now reports through the existing module logger —
+`logger.exception("touchy-pad event thread stopped unexpectedly")` — emitted
+only when shutdown was not requested, so a normal `close()` stays quiet while
+an unexpected stop carries the traceback. A callback that raises is likewise
+logged (`logger.exception("host event callback failed (code=%s)", …)`) and
+isolated, so later callbacks and later events still run.
+
+The change is additive: `close()` behaviour, callback isolation, and the
+manual-polling path (StreamDeck shim) are unchanged; there is no automatic
+reconnect, no transport-exception wrapping, and no new exception accessor.
+Logging is the diagnostic channel. Docs: `docs/python-api.md` ("Checking the
+background reader", with an application-owned close/reopen retry loop).
+
+**Verified:** six new tests in `app/tests/test_api.py` cover a healthy reader,
+an unexpected transport failure (property flips false plus an ERROR log with
+`exc_info`), clean stream exhaustion, a quiet normal close (and repeated
+close), `start_event_thread=False`, and a raising callback that is logged while
+the reader keeps dispatching. Full host suite: 334 passed, 5 skipped; `ruff
+check` and `ruff format --check` clean.
+
 # Old/Existing projects
 
 In the very early days of this project I looked into these ideas/implementations:

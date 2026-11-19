@@ -8,6 +8,7 @@ backed by an in-process loopback transport so no USB device is needed.
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
 import time
@@ -21,6 +22,7 @@ from touchy_pad.api import (
     IncompatibleFirmwareError,
     Screen,
     Touchy,
+    TouchyClient,
     TouchyError,
     button,
     protobuf,
@@ -396,3 +398,128 @@ def test_user_screen_save_registers_inline_callback(open_pad):
 
     server.events.put(_proto.LvEvent(host_code=code))
     assert fired.wait(timeout=2.0)
+
+
+# ---------------------------------------------------------------------------
+# background event-thread health (``event_thread_alive``)
+# ---------------------------------------------------------------------------
+
+
+def _wait_for(predicate, *, timeout: float = 2.0) -> bool:
+    """Poll *predicate* until it is true or *timeout* expires."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+class _IdleClient:
+    """Client stub whose event stream ends immediately (no events, no error)."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def stream_events(self):
+        return iter(())
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _device_errors(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "touchy_pad.api.device"]
+
+
+def test_event_thread_alive_while_reader_runs(open_pad):
+    pad, server = open_pad()
+    seen = threading.Event()
+    pad.on_host_event(0x300, lambda evt: seen.set())
+
+    assert pad.event_thread_alive is True
+
+    server.events.put(_proto.LvEvent(host_code=0x300))
+    assert seen.wait(timeout=2.0), "event was never dispatched"
+    assert pad.event_thread_alive is True
+
+
+def test_transport_failure_stops_reader_and_logs_traceback(caplog):
+    transport = FakeTransport(_make_server())
+    pad = touchy_open(transport=transport)
+    try:
+        assert pad.event_thread_alive is True
+        with caplog.at_level(logging.ERROR, logger="touchy_pad.api.device"):
+            # Drop the link underneath the reader, as a yanked cable would.
+            transport.close()
+            assert _wait_for(
+                lambda: not pad.event_thread_alive
+            ), "reader did not stop after the transport failed"
+
+        fatal = [r for r in _device_errors(caplog) if "stopped unexpectedly" in r.getMessage()]
+        assert fatal, "the fatal reader exit was not logged"
+        assert fatal[0].exc_info is not None, "the log record has no traceback"
+    finally:
+        pad.close()
+
+
+def test_clean_stream_end_marks_reader_dead_without_a_fatal_log(caplog):
+    pad = Touchy(_IdleClient(), start_event_thread=True)
+    try:
+        with caplog.at_level(logging.ERROR, logger="touchy_pad.api.device"):
+            assert _wait_for(
+                lambda: not pad.event_thread_alive
+            ), "reader did not report itself dead after the stream ended"
+        assert not [r for r in _device_errors(caplog) if "stopped unexpectedly" in r.getMessage()]
+    finally:
+        pad.close()
+
+
+def test_close_is_quiet_and_marks_reader_dead(caplog):
+    pad = touchy_open(transport=FakeTransport(_make_server()))
+    assert pad.event_thread_alive is True
+
+    with caplog.at_level(logging.ERROR, logger="touchy_pad.api.device"):
+        pad.close()
+
+    assert pad.event_thread_alive is False
+    assert not [
+        r for r in _device_errors(caplog) if "stopped unexpectedly" in r.getMessage()
+    ], "a normal close must not log a fatal reader error"
+
+    pad.close()  # repeated close keeps working
+    assert pad.event_thread_alive is False
+
+
+def test_event_thread_alive_is_false_when_reader_disabled():
+    pad = Touchy(TouchyClient(FakeTransport(_make_server())), start_event_thread=False)
+    try:
+        assert pad.event_thread_alive is False
+    finally:
+        pad.close()
+
+
+def test_failing_callback_is_logged_and_reader_survives(open_pad, caplog):
+    pad, server = open_pad()
+
+    def boom(evt):
+        raise RuntimeError("callback exploded")
+
+    later = threading.Event()
+    pad.on_host_event(0x400, boom)
+    pad.on_host_event(0x401, lambda evt: later.set())
+
+    with caplog.at_level(logging.ERROR, logger="touchy_pad.api.device"):
+        server.events.put(_proto.LvEvent(host_code=0x400))
+        assert _wait_for(
+            lambda: any("callback failed" in r.getMessage() for r in _device_errors(caplog))
+        ), "the callback failure was not logged"
+
+        # The reader survives the failure and dispatches the next event.
+        server.events.put(_proto.LvEvent(host_code=0x401))
+        assert later.wait(timeout=2.0), "the reader stopped after a callback raised"
+
+    assert pad.event_thread_alive is True
+    failure = [r for r in _device_errors(caplog) if "callback failed" in r.getMessage()][0]
+    assert failure.exc_info is not None
+    assert "callback exploded" in str(failure.exc_info[1])
