@@ -40,6 +40,7 @@ from ..paths import (
     USER_SCREENS_DIR,
 )
 from . import hid_keys, images, lvgl_image, protobuf
+from ._transport import DeviceNotFoundError
 from .client import TouchyClient
 from .device import (
     MINIMUM_FIRMWARE_VERSION,
@@ -145,6 +146,7 @@ __all__ = [
     "touchy_open",
     "touchy_get_pad_ids",
     "IncompatibleFirmwareError",
+    "DeviceNotFoundError",
     "MINIMUM_FIRMWARE_VERSION",
     # Sim device registry (for testing / host apps without USB hardware).
     "create_sim_device",
